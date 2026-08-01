@@ -1,7 +1,7 @@
 import { createEffect, createEvent, createStore, sample } from 'effector'
 import { debounce } from 'patronum'
 
-import { renderMarkdown } from '../lib/pipeline'
+import { renderInWorker } from '../lib/renderWorkerClient'
 
 /** Fired with the full markdown source whenever the input the preview
  * should render changes. Nothing in this feature knows or cares where
@@ -21,24 +21,43 @@ export const sourceReceived = createEvent<string>()
 // which is what `renderFx` below is for.
 const debouncedSource = debounce(sourceReceived, 150)
 
+/** Monotonically increasing id for each render request. Read (not just
+ * written) inside the `$html` reducer below: rendering now happens off
+ * the main thread (`renderInWorker`, backed by `worker.ts`), so requests
+ * can complete out of order — a fast render of a short document can land
+ * after a slow render of a long one. A response only gets applied if its
+ * id still matches this, i.e. no newer request has been issued since. */
+let latestRequestId = 0
+
+interface RenderResult {
+  id: number
+  html: string
+}
+
 // An effect, not a plain reducer, because rendering cost — not I/O — is
-// the concern: it's still synchronous, pure tree transformation, but
-// measured up to ~2s for a 10 000-line document, and the debounce above
-// can't help with that (it only limits how often a render fires). Routing
-// it through `createEffect` + `sample` keeps this synchronous today while
-// giving the model the shape it needs to become cancellable/async later
-// (e.g. swapping in a worker-backed `.use()` handler) without another
-// reshape of the store wiring.
-const renderFx = createEffect((source: string) => renderMarkdown(source))
+// the concern: measured up to ~2s for a 10 000-line document, which is
+// exactly why the actual work happens in a worker (`renderInWorker`)
+// instead of blocking here. `createEffect` + `sample` is what already
+// made this swap-in possible without reshaping the store wiring below.
+const renderFx = createEffect(async (source: string): Promise<RenderResult> => {
+  const id = ++latestRequestId
+  const html = await renderInWorker(source, id)
+  return { id, html }
+})
 
 sample({ clock: debouncedSource, target: renderFx })
 
 /** Rendered, sanitized HTML for the current markdown source. */
 export const $html = createStore<string>('')
-  .on(renderFx.doneData, (_previousHtml, html) => html)
+  .on(renderFx.doneData, (previousHtml, result) =>
+    result.id === latestRequestId ? result.html : previousHtml,
+  )
   .on(renderFx.fail, (previousHtml, { error }) => {
     // A render failure must never blank an already-visible preview — keep
-    // showing the last successful render and only log the failure.
+    // showing the last successful render and only log the failure. (The
+    // worker/main-thread fallback in `renderInWorker` already retries
+    // once before giving up, so reaching here means the pipeline itself
+    // threw for this input, not just the worker.)
     console.error('[preview] failed to render markdown', error)
     return previousHtml
   })
