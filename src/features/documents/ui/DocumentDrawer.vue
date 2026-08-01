@@ -151,11 +151,20 @@ function trapFocus(event: KeyboardEvent) {
         </div>
       </header>
 
-      <ul class="menu min-h-0 flex-1 flex-nowrap gap-1 overflow-y-auto p-2">
+      <!-- `w-full` overrides daisyUI's `.menu { width: fit-content }`, which
+           otherwise shrinks the list to its longest title instead of filling
+           the drawer. -->
+      <ul class="menu min-h-0 w-full flex-1 flex-nowrap gap-1 overflow-y-auto p-2">
         <li v-for="doc in documents" :key="doc.id">
+          <!-- Not `menu-active`: that resolves to `--color-neutral`, which is
+               the same dark value in both themes, so the active row stayed
+               dark on the light theme. A primary tint over the drawer
+               background adapts to whichever theme is active. The text colour
+               is deliberately left to inherit from the drawer rather than set
+               here, so it always tracks the active theme. -->
           <div
-            class="group flex items-center gap-1 p-0"
-            :class="{ 'menu-active': doc.id === activeId }"
+            class="group flex w-full items-center gap-1 p-0"
+            :class="doc.id === activeId ? 'bg-primary/15' : ''"
           >
             <input
               v-if="renamingId === doc.id"
