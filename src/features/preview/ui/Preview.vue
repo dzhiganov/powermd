@@ -5,6 +5,13 @@ import { ink } from '@/shared/lib/ink'
 
 import { $html } from '../model/preview'
 
+defineProps<{
+  /** Constrains and centres the prose column to a comfortable reading
+   * width instead of stretching it edge-to-edge — only meant for
+   * single-pane modes, see `layout/ui/AppShell.vue`. */
+  centered?: boolean
+}>()
+
 const html = useUnit($html)
 
 // Bound into the scoped <style> below via `v-bind()` so the ratio behind
@@ -20,7 +27,11 @@ const deletionColor = ink('--color-error')
 </script>
 
 <template>
-  <div class="markdown-preview prose prose-sm max-w-none p-4" v-html="html" />
+  <div
+    class="markdown-preview prose prose-sm p-4"
+    :class="centered ? 'mx-auto max-w-[75ch]' : 'max-w-none'"
+    v-html="html"
+  />
 </template>
 
 <style scoped>

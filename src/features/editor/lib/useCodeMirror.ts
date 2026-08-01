@@ -23,6 +23,7 @@ interface UseCodeMirrorOptions {
  */
 export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCodeMirrorOptions) {
   const view = shallowRef<EditorView | null>(null)
+  let resizeObserver: ResizeObserver | null = null
 
   onMounted(() => {
     if (!container.value) return
@@ -51,9 +52,28 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
       state,
       parent: container.value,
     })
+
+    // CodeMirror only re-measures line wrapping and cursor coordinates
+    // when it detects a layout change of its own accord (typing, a DOM
+    // mutation it made itself, ...). Resizing the *container* from the
+    // outside — a splitter drag, or a view-mode switch that changes which
+    // panes are visible — never touches the editor's own DOM, so none of
+    // that reaches CodeMirror on its own. A ResizeObserver on the editor's
+    // own host element closes that gap entirely inside this feature: the
+    // layout feature never needs a cross-feature API to poke the editor
+    // after a resize. This also covers the `display:none` <-> `block`
+    // transition from the layout feature's `v-show`-based mode switching
+    // (never `v-if` — see EditorPane usage), since a box appearing after
+    // having none is itself a reported resize (0x0 -> real size).
+    resizeObserver = new ResizeObserver(() => {
+      view.value?.requestMeasure()
+    })
+    resizeObserver.observe(container.value)
   })
 
   onUnmounted(() => {
+    resizeObserver?.disconnect()
+    resizeObserver = null
     view.value?.destroy()
     view.value = null
   })
