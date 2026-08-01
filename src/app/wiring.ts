@@ -5,3 +5,4 @@
 // by some UI component) guarantees the model starts up regardless of
 // which components end up rendered.
 import '@/features/settings'
+import '@/features/editor'
