@@ -13,6 +13,7 @@ import {
 import type { Component } from 'vue'
 
 import { ThemeToggle } from '@/features/settings'
+import { DocumentMenuButton, SaveIndicator } from '@/features/documents'
 
 import { $viewMode, viewModeChanged } from '../model/layout'
 import type { ViewMode } from '../model/layout'
@@ -50,9 +51,9 @@ const viewModeOptions: ViewModeOption[] = [
   <header
     class="flex h-12 shrink-0 items-center justify-between border-b border-base-300 bg-base-200 px-4"
   >
-    <div class="flex items-center gap-3">
-      <span class="text-sm font-semibold text-base-content">Markdown Editor</span>
-      <span class="hidden text-sm text-base-content/60 sm:inline">untitled.md</span>
+    <div class="flex min-w-0 items-center gap-2">
+      <DocumentMenuButton />
+      <SaveIndicator class="hidden sm:flex" />
     </div>
 
     <div class="flex items-center gap-1.5">

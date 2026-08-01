@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useUnit } from 'effector-vue/composition'
 
 import { useMediaQuery } from '@/shared/lib/useMediaQuery'
+import { DocumentDrawer } from '@/features/documents'
 
 import Toolbar from './Toolbar.vue'
 import MobileTabs from './MobileTabs.vue'
@@ -47,6 +48,7 @@ const singlePane = computed(() => !showSplitter.value)
 
 <template>
   <div class="relative flex h-dvh flex-col overflow-hidden bg-base-100">
+    <DocumentDrawer />
     <Toolbar />
     <MobileTabs v-show="!isDesktop" />
 

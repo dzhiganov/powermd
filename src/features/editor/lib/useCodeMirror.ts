@@ -1,11 +1,21 @@
 import { onMounted, onUnmounted, shallowRef, type Ref } from 'vue'
-import { EditorState, Transaction } from '@codemirror/state'
+import { Annotation, EditorState } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 
 import { daisyMarkdownTheme } from './theme'
+
+/**
+ * Marks a dispatched transaction as programmatic so the update listener can
+ * skip it (never firing `onChange`, never marking the document dirty). A
+ * full-document *load* goes through `EditorState.create` + `view.setState`
+ * instead (see `loadDocument`), which produces an update whose
+ * `transactions` array is empty — the listener treats that as programmatic
+ * too. This annotation covers any future programmatic `dispatch` path.
+ */
+const programmatic = Annotation.define<boolean>()
 
 interface UseCodeMirrorOptions {
   /** Initial document text, read once when the view is created. */
@@ -25,18 +35,18 @@ interface UseCodeMirrorOptions {
  * Owns a CodeMirror 6 `EditorView` for the lifetime of the host component:
  * created in `onMounted` against the given container element, destroyed in
  * `onUnmounted`. Callers never touch the `EditorView` instance directly —
- * `setContent` is the only way to push text into it from the outside,
+ * `loadDocument` is the only way to push text into it from the outside,
  * which keeps the store <-> editor sync logic in one place.
  */
 export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCodeMirrorOptions) {
   const view = shallowRef<EditorView | null>(null)
   let resizeObserver: ResizeObserver | null = null
 
-  onMounted(() => {
-    if (!container.value) return
-
-    const state = EditorState.create({
-      doc: options.doc,
+  // Builds a fresh state for `doc`. Reused for the initial mount and for
+  // every document load, so both go through exactly the same extension set.
+  function createState(doc: string): EditorState {
+    return EditorState.create({
+      doc,
       extensions: [
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -48,15 +58,30 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         }),
         daisyMarkdownTheme,
         EditorView.updateListener.of((update) => {
-          if (update.docChanged) {
-            options.onChange(update.state.doc.toString())
-          }
+          if (!update.docChanged) return
+          // A `view.setState` rebuild (document load, see `loadDocument`)
+          // never invokes this listener at all — CodeMirror only calls
+          // `updateListener` for updates produced by `dispatch`, and
+          // `setState` doesn't go through `dispatch`. So any invocation
+          // reaching this point is necessarily a real dispatched
+          // transaction; the only remaining case to skip is an explicitly
+          // programmatic `dispatch` (the `programmatic` annotation), which
+          // must not flow out through `onChange` either.
+          const isProgrammatic = update.transactions.some(
+            (tr) => tr.annotation(programmatic) === true,
+          )
+          if (isProgrammatic) return
+          options.onChange(update.state.doc.toString())
         }),
       ],
     })
+  }
+
+  onMounted(() => {
+    if (!container.value) return
 
     view.value = new EditorView({
-      state,
+      state: createState(options.doc),
       parent: container.value,
     })
 
@@ -89,29 +114,31 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
   })
 
   /**
-   * Replaces the document with `value` if it differs from what the view
-   * currently holds. The equality check is what breaks the feedback loop
-   * with `onChange`: when a change originates from typing, the value
-   * flows editor -> onChange -> store -> back here as the same string,
-   * so this is a no-op and the cursor never moves. Only a genuine
-   * external change (not exercised until document loading in a later
-   * step) reaches the `dispatch` below.
+   * Loads a different document's text into the editor by rebuilding the
+   * whole editor state (`view.setState(EditorState.create(...))`).
    *
-   * The dispatch is excluded from the undo history (`addToHistory: false`):
-   * without it, a whole-document swap becomes a single undo step, and one
-   * Ctrl+Z after loading a different document restores the *previous*
-   * document's text, which then flows back into the store via `onChange`.
+   * This is deliberately stronger than dispatching a whole-document replace
+   * transaction (even a history-excluded one): rebuilding the state
+   * discards CodeMirror's undo history entirely, so a Ctrl+Z immediately
+   * after opening document B cannot resurrect document A's text (which
+   * would then flow back into the store and silently overwrite B). It also
+   * gives the correctness this document-identity change needs for free:
+   *
+   * - Cursor resets to the top — `EditorState.create` starts the selection
+   *   at position 0.
+   * - Dirty flag is not raised — `setState` never goes through `dispatch`,
+   *   so the update listener above is never invoked for it at all (see
+   *   `isProgrammatic`'s comment).
+   *
+   * `setState` preserves the scroller's DOM `scrollTop`, so it is reset
+   * explicitly here to open the document at the very top.
    */
-  function setContent(value: string) {
+  function loadDocument(value: string) {
     const current = view.value
     if (!current) return
-    if (current.state.doc.toString() === value) return
-
-    current.dispatch({
-      changes: { from: 0, to: current.state.doc.length, insert: value },
-      annotations: [Transaction.addToHistory.of(false)],
-    })
+    current.setState(createState(value))
+    current.scrollDOM.scrollTop = 0
   }
 
-  return { setContent }
+  return { loadDocument }
 }

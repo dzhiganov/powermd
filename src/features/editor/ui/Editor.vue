@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { useUnit } from 'effector-vue/composition'
+import { onUnmounted, ref } from 'vue'
 
 import { useCodeMirror } from '../lib/useCodeMirror'
 import { createEditorScrollHandle } from '../lib/scrollHandle'
-import { $content, contentChanged } from '../model/content'
+import { $content, contentChanged, loadContent } from '../model/content'
 import { editorScrollHandleMounted, editorScrollHandleUnmounted } from '../model/scrollHandle'
 
 defineProps<{
@@ -15,10 +14,13 @@ defineProps<{
 }>()
 
 const container = ref<HTMLDivElement | null>(null)
-const content = useUnit($content)
 
-const { setContent } = useCodeMirror(container, {
-  doc: content.value,
+const { loadDocument } = useCodeMirror(container, {
+  // Read once, synchronously, at mount. If the restored/seeded document has
+  // already been pushed into `$content` by then, the view opens with it;
+  // otherwise it opens empty and the `loadContent` subscription below fills
+  // it the moment IndexedDB resolves.
+  doc: $content.getState(),
   onChange: (value) => contentChanged(value),
   // Wraps the raw `EditorView` into the narrow `EditorScrollHandle` shape
   // right here, so nothing outside this feature ever touches CodeMirror
@@ -27,13 +29,13 @@ const { setContent } = useCodeMirror(container, {
   onViewDestroy: () => editorScrollHandleUnmounted(),
 })
 
-// Keeps the editor in sync with `$content` when it changes from outside
-// (e.g. a future "open document" action). `setContent` itself no-ops
-// when the value already matches the editor's document, which is what
-// keeps typing from looping back into a redundant dispatch.
-watch(content, (value) => {
-  setContent(value)
-})
+// A programmatic document load (initial restore, or switching documents in
+// the drawer) rebuilds the editor state: undo history discarded, cursor and
+// scroll reset to the top, and — crucially — no `contentChanged`, so
+// loading a document never flags it unsaved. `loadContent` only fires for
+// real loads, never on keystrokes, so the view is never rebuilt mid-edit.
+const subscription = loadContent.watch((value) => loadDocument(value))
+onUnmounted(subscription.unsubscribe)
 </script>
 
 <template>
