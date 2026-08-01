@@ -2,6 +2,8 @@ import { EditorView } from '@codemirror/view'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { tags as t } from '@lezer/highlight'
 
+import { ink } from '@/shared/lib/ink'
+
 /**
  * Editor chrome (background, gutters, cursor, selection) built entirely
  * from DaisyUI's CSS custom properties. DaisyUI redefines these variables
@@ -36,17 +38,6 @@ export const daisyEditorTheme = EditorView.theme({
     outline: 'none',
   },
 })
-
-/**
- * DaisyUI's semantic accent roles (--color-accent, --color-info, etc.) are
- * defined as button *background* colours — identical in light and dark
- * themes, meant to pair with --color-*-content text. Used directly as
- * foreground text on --color-base-100 they fail WCAG AA contrast on the
- * light theme. Mixing them toward --color-base-content keeps the semantic
- * role concept and stays theme-adaptive without hardcoding hex values.
- */
-const ink = (varName: string) =>
-  `color-mix(in oklab, var(${varName}) 60%, var(--color-base-content))`
 
 /**
  * Syntax colours mapped onto DaisyUI's semantic palette rather than fixed

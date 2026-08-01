@@ -99,4 +99,17 @@ export default tseslint.config(
       'vue/multi-word-component-names': 'off',
     },
   },
+
+  // The preview feature's one job is rendering markdown-derived HTML, and
+  // `rehype-sanitize` (not the absence of `v-html`) is this app's actual
+  // XSS boundary — see src/features/preview/lib/pipeline.ts. `v-html`
+  // here is the intended, load-bearing mechanism, not an oversight, so
+  // this scopes the rule off for that one file rather than suppressing it
+  // inline everywhere it'd otherwise warn.
+  {
+    files: ['src/features/preview/ui/Preview.vue'],
+    rules: {
+      'vue/no-v-html': 'off',
+    },
+  },
 )

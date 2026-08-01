@@ -4,3 +4,4 @@
     light --default,
     dark --prefersdark;
 }
+@plugin '@tailwindcss/typography';
