@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Markdown Editor</title>
+    <script>
+      // Sets data-theme before first paint so the page doesn't flash the
+      // default theme then snap to the stored one. Must match
+      // THEME_STORAGE_KEY in src/shared/config/theme.ts — kept in sync by
+      // hand since this script runs before any JS module (and can't import
+      // it). Falls back to prefers-color-scheme, matching the DaisyUI
+      // config (light --default, dark --prefersdark). Wrapped in try/catch
+      // because localStorage can throw in private browsing modes.
+      try {
+        var stored = localStorage.getItem('markdown-editor:theme')
+        var theme =
+          stored === 'light' || stored === 'dark'
+            ? stored
+            : window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+        document.documentElement.dataset.theme = theme
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/app/main.ts"></script>
+  </body>
+</html>
