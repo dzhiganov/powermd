@@ -17,10 +17,16 @@ export const daisyEditorTheme = EditorView.theme({
     backgroundColor: 'var(--color-base-100)',
     height: '100%',
   },
+  // `--md-editor-font-size`/`--md-editor-font-family` are the settings
+  // feature's persisted font preferences (`editorPreferences.ts`), applied
+  // to `<html>` as custom properties — the fallbacks here are only the
+  // pre-Step-8 defaults, kept so this theme still renders sensibly if that
+  // effect somehow hasn't run yet.
   '.cm-scroller': {
     overflow: 'auto',
-    fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
-    fontSize: '0.875rem',
+    fontFamily:
+      'var(--md-editor-font-family, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace)',
+    fontSize: 'var(--md-editor-font-size, 0.875rem)',
     lineHeight: '1.6',
   },
   '.cm-content': {

@@ -1,5 +1,5 @@
 import { onMounted, onUnmounted, shallowRef, type Ref } from 'vue'
-import { Annotation, EditorState } from '@codemirror/state'
+import { Annotation, Compartment, EditorState } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
@@ -7,6 +7,7 @@ import { languages } from '@codemirror/language-data'
 
 import { daisyMarkdownTheme } from './theme'
 import { imagePasteHandler } from './imagePaste'
+import { editorShortcutsKeymap } from './shortcuts'
 
 /**
  * Marks a dispatched transaction as programmatic so the update listener can
@@ -21,6 +22,11 @@ const programmatic = Annotation.define<boolean>()
 interface UseCodeMirrorOptions {
   /** Initial document text, read once when the view is created. */
   doc: string
+  /** Initial line-wrap state, read once when the view is created (and
+   * again on every `loadDocument` rebuild — see the `currentLineWrap`
+   * closure variable below). Later changes go through `setLineWrap`
+   * instead, which reconfigures the `Compartment` in place. */
+  initialLineWrap: boolean
   /** Called with the full document string whenever the user edits it. */
   onChange: (value: string) => void
   /** Called once, synchronously, right after the `EditorView` is created.
@@ -43,6 +49,17 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
   const view = shallowRef<EditorView | null>(null)
   let resizeObserver: ResizeObserver | null = null
 
+  // Line wrapping (Step 8, settings) is a real extension, so toggling it
+  // has to go through a `Compartment.reconfigure` dispatch rather than a
+  // `view.setState` rebuild — that would discard undo history and reset
+  // the cursor, which the document-load path (`loadDocument` below)
+  // deliberately does, but a settings toggle must not. `currentLineWrap`
+  // tracks the live value across `createState` calls (initial mount *and*
+  // every `loadDocument` rebuild) so switching documents never silently
+  // reverts a mid-session wrap toggle back to `options.initialLineWrap`.
+  const wrapCompartment = new Compartment()
+  let currentLineWrap = options.initialLineWrap
+
   // Builds a fresh state for `doc`. Reused for the initial mount and for
   // every document load, so both go through exactly the same extension set.
   function createState(doc: string): EditorState {
@@ -50,9 +67,10 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
       doc,
       extensions: [
         history(),
+        editorShortcutsKeymap,
         keymap.of([...defaultKeymap, ...historyKeymap]),
         markdown({ codeLanguages: languages }),
-        EditorView.lineWrapping,
+        wrapCompartment.of(currentLineWrap ? EditorView.lineWrapping : []),
         EditorView.contentAttributes.of({
           spellcheck: 'true',
           'aria-label': 'Markdown editor',
@@ -142,5 +160,20 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
     current.scrollDOM.scrollTop = 0
   }
 
-  return { loadDocument }
+  /**
+   * Toggles line wrapping on the *live* view via `wrapCompartment.reconfigure`
+   * — a plain `dispatch` with only an `effects` entry, no document change and
+   * no `setState`. Undo history, cursor position, and scroll are all
+   * untouched; only the wrap extension itself swaps in or out.
+   */
+  function setLineWrap(enabled: boolean) {
+    currentLineWrap = enabled
+    const current = view.value
+    if (!current) return
+    current.dispatch({
+      effects: wrapCompartment.reconfigure(enabled ? EditorView.lineWrapping : []),
+    })
+  }
+
+  return { loadDocument, setLineWrap }
 }

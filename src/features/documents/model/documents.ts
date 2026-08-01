@@ -6,13 +6,16 @@ import { createId } from '../lib/id'
 import { deriveTitle } from '../lib/title'
 import type { MarkdownDocument, SaveStatus } from './types'
 
-/** Autosave debounce: writes land ~500ms after typing pauses, never on
- * every keystroke. A document switch flushes any still-pending write first
- * (see the flush `sample` below). The debounced tick itself can't be
- * cancelled (patronum's `debounce` exposes no external cancel), so a delete
- * that fires mid-debounce is handled by dropping the tick instead — see the
- * `autosaveTick` sample below. A `pagehide`/`visibilitychange`/localStorage
- * mirror (further down) covers the reload-before-the-debounce-fires case. */
+/** Autosave debounce default: writes land ~500ms after typing pauses,
+ * never on every keystroke. A document switch flushes any still-pending
+ * write first (see the flush `sample` below). The debounced tick itself
+ * can't be cancelled (patronum's `debounce` exposes no external cancel), so
+ * a delete that fires mid-debounce is handled by dropping the tick instead
+ * — see the `autosaveTick` sample below. A `pagehide`/`visibilitychange`/
+ * localStorage mirror (further down) covers the reload-before-the-debounce
+ * -fires case. Overridable at runtime via `autosaveIntervalChanged` — see
+ * `$autosaveIntervalMs` below, driven from `features/settings`' persisted
+ * preference through `src/app/wiring.ts`. */
 const AUTOSAVE_MS = 500
 
 /** localStorage key for the synchronous mirror of `$pendingSave`. IndexedDB
@@ -51,6 +54,17 @@ export const documentDeleteCancelled = createEvent()
 
 export const drawerToggled = createEvent()
 export const drawerClosed = createEvent()
+
+/** Save whatever is currently pending immediately, bypassing the autosave
+ * debounce below. Fired from the editor feature's Mod-S binding
+ * (`features/editor`' `saveNowRequested`) via `src/app/wiring.ts`. A no-op
+ * if nothing is pending. */
+export const saveRequested = createEvent()
+
+/** Overrides the autosave debounce interval (default `AUTOSAVE_MS` above).
+ * Fired from `src/app/wiring.ts`, sourced from `features/settings`'
+ * persisted "Autosave delay" preference. */
+export const autosaveIntervalChanged = createEvent<number>()
 
 /**
  * A genuine user edit to the active document, id captured at edit time.
@@ -361,6 +375,14 @@ $documents.on(documentTouched, (docs, touched) =>
 )
 $pendingSave.on(documentTouched, (_, touched) => touched)
 
+/** Live autosave interval, defaulting to `AUTOSAVE_MS` and overridable via
+ * `autosaveIntervalChanged` (see above). Passed to patronum's `debounce` as
+ * a `Store<number>` rather than a plain number — patronum reads the
+ * store's *current* value each time the debounce re-arms, which is what
+ * lets a settings change take effect on the very next edit instead of
+ * requiring a reload. */
+const $autosaveIntervalMs = createStore(AUTOSAVE_MS).on(autosaveIntervalChanged, (_, ms) => ms)
+
 // Debounced autosave. The tick carries the last touched snapshot, but the
 // write reads the *freshest* version of that document from `$documents` at
 // fire time — so a rename applied between the edit and the tick can't be
@@ -373,7 +395,7 @@ $pendingSave.on(documentTouched, (_, touched) => touched)
 // the just-deleted document by re-`put`-ing the stale in-flight snapshot —
 // the tick is dropped instead, which is the practical equivalent of having
 // cancelled it.
-const autosaveTick = debounce(documentTouched, AUTOSAVE_MS)
+const autosaveTick = debounce(documentTouched, $autosaveIntervalMs)
 sample({
   clock: autosaveTick,
   source: { docs: $documents, known: $knownDiskUpdatedAt },
@@ -397,6 +419,22 @@ $pendingSave.on(saveDocumentFx.done, (pending, { params, result }) =>
     ? null
     : pending,
 )
+
+// --- Immediate save (Mod-S) -------------------------------------------------
+//
+// Same shape as the autosave tick above, just triggered explicitly instead
+// of by the debounce timer — "save now" only makes sense while something is
+// actually pending.
+sample({
+  clock: saveRequested,
+  source: { pending: $pendingSave, known: $knownDiskUpdatedAt },
+  filter: ({ pending }) => pending !== null,
+  fn: ({ pending, known }): SavePayload => {
+    const doc = pending as MarkdownDocument
+    return { doc, base: known[doc.id] ?? 0 }
+  },
+  target: saveDocumentFx,
+})
 
 // --- Retry a failed write --------------------------------------------------
 //

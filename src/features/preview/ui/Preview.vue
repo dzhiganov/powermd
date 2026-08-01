@@ -56,7 +56,8 @@ const deletionColor = ink('--color-error')
     <div
       ref="content"
       class="markdown-preview prose prose-sm p-4 print:max-w-none print:p-0"
-      :class="centered ? 'mx-auto max-w-[75ch]' : 'max-w-none'"
+      :class="centered ? 'mx-auto' : 'max-w-none'"
+      :style="centered ? { maxWidth: 'var(--md-reading-width, 75ch)' } : undefined"
       v-html="html"
     />
   </div>

@@ -4,6 +4,8 @@ import { useUnit } from 'effector-vue/composition'
 
 import { useMediaQuery } from '@/shared/lib/useMediaQuery'
 import { DocumentDrawer } from '@/features/documents'
+import { SettingsModal, ShortcutsModal } from '@/features/settings'
+import { WordCount } from '@/features/editor'
 
 import Toolbar from './Toolbar.vue'
 import MobileTabs from './MobileTabs.vue'
@@ -51,6 +53,8 @@ const singlePane = computed(() => !showSplitter.value)
     class="relative flex h-dvh flex-col overflow-hidden bg-base-100 print:block print:h-auto print:overflow-visible"
   >
     <DocumentDrawer />
+    <SettingsModal />
+    <ShortcutsModal />
     <Toolbar />
     <MobileTabs v-show="!isDesktop" />
 
@@ -62,5 +66,11 @@ const singlePane = computed(() => !showSplitter.value)
       <Splitter v-show="showSplitter" />
       <PreviewPane v-show="showPreview" :centered="singlePane" />
     </main>
+
+    <footer
+      class="flex h-6 shrink-0 items-center justify-end border-t border-base-300 bg-base-200 px-3 print:hidden"
+    >
+      <WordCount />
+    </footer>
   </div>
 </template>

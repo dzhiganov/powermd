@@ -5,6 +5,8 @@ import { useCodeMirror } from '../lib/useCodeMirror'
 import { createEditorScrollHandle } from '../lib/scrollHandle'
 import { $content, contentChanged, loadContent } from '../model/content'
 import { editorScrollHandleMounted, editorScrollHandleUnmounted } from '../model/scrollHandle'
+import { editorViewMounted, editorViewDestroyed } from '../model/view'
+import { $lineWrapEnabled } from '../model/editorEvents'
 
 defineProps<{
   /** Constrains and centres `.cm-content` to a comfortable reading width
@@ -15,18 +17,32 @@ defineProps<{
 
 const container = ref<HTMLDivElement | null>(null)
 
-const { loadDocument } = useCodeMirror(container, {
+const { loadDocument, setLineWrap } = useCodeMirror(container, {
   // Read once, synchronously, at mount. If the restored/seeded document has
   // already been pushed into `$content` by then, the view opens with it;
   // otherwise it opens empty and the `loadContent` subscription below fills
   // it the moment IndexedDB resolves.
   doc: $content.getState(),
+  // Same one-shot read: `wiring.ts` applies the persisted settings value to
+  // `$lineWrapEnabled` synchronously before this component ever mounts, so
+  // this already reflects the real preference, not just the store's
+  // hardcoded default.
+  initialLineWrap: $lineWrapEnabled.getState(),
   onChange: (value) => contentChanged(value),
-  // Wraps the raw `EditorView` into the narrow `EditorScrollHandle` shape
-  // right here, so nothing outside this feature ever touches CodeMirror
-  // directly — see `lib/scrollHandle.ts`.
-  onViewReady: (view) => editorScrollHandleMounted(createEditorScrollHandle(view)),
-  onViewDestroy: () => editorScrollHandleUnmounted(),
+  onViewReady: (view) => {
+    // Wraps the raw `EditorView` into the narrow `EditorScrollHandle` shape
+    // right here, so nothing outside this feature ever touches CodeMirror
+    // directly — see `lib/scrollHandle.ts`.
+    editorScrollHandleMounted(createEditorScrollHandle(view))
+    // The raw view itself, kept internal to this feature (see
+    // `model/view.ts`) — the formatting toolbar and any other in-feature UI
+    // dispatch commands against it directly.
+    editorViewMounted(view)
+  },
+  onViewDestroy: () => {
+    editorScrollHandleUnmounted()
+    editorViewDestroyed()
+  },
 })
 
 // A programmatic document load (initial restore, or switching documents in
@@ -34,8 +50,17 @@ const { loadDocument } = useCodeMirror(container, {
 // scroll reset to the top, and — crucially — no `contentChanged`, so
 // loading a document never flags it unsaved. `loadContent` only fires for
 // real loads, never on keystrokes, so the view is never rebuilt mid-edit.
-const subscription = loadContent.watch((value) => loadDocument(value))
-onUnmounted(subscription.unsubscribe)
+const contentSubscription = loadContent.watch((value) => loadDocument(value))
+onUnmounted(contentSubscription.unsubscribe)
+
+// Settings feature owns the persisted line-wrap preference; wiring.ts
+// mirrors it into this feature's own `$lineWrapEnabled`. `.watch` fires
+// immediately with the current value too (harmless here — `setLineWrap` is
+// a no-op before the view exists, see `useCodeMirror.ts`), then on every
+// later change, applying it live via the Compartment reconfigure rather
+// than a state rebuild.
+const wrapSubscription = $lineWrapEnabled.watch((enabled) => setLineWrap(enabled))
+onUnmounted(wrapSubscription.unsubscribe)
 </script>
 
 <template>
@@ -55,9 +80,16 @@ onUnmounted(subscription.unsubscribe)
  * doesn't disturb CodeMirror's own line-wrapping or cursor-coordinate
  * measurements, since both are computed from the element's actual
  * rendered box, not from `flex-grow`/`flex-basis`.
+ *
+ * `--md-reading-width` is the settings feature's persisted "Preview reading
+ * width" preference (`features/settings/model/editorPreferences.ts`),
+ * applied to `<html>` as a CSS custom property the same way the editor's
+ * own theme reads DaisyUI's `--color-*` variables — the `75ch` fallback
+ * here only matters before that effect has run, which is never in
+ * practice (it runs synchronously during app init).
  */
 .editor-centered :deep(.cm-content) {
-  max-width: 75ch;
+  max-width: var(--md-reading-width, 75ch);
   margin-inline: auto;
 }
 </style>

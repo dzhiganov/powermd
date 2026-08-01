@@ -6,7 +6,16 @@
 // which components end up rendered.
 import { sample } from 'effector'
 
-import { $content, contentChanged, loadContent, WELCOME_CONTENT } from '@/features/editor'
+import {
+  $content,
+  contentChanged,
+  loadContent,
+  WELCOME_CONTENT,
+  saveNowRequested,
+  viewModeCycleRequested,
+  helpRequested,
+  lineWrapChanged,
+} from '@/features/editor'
 import { sourceReceived, renderMarkdownForExport } from '@/features/preview'
 import { initScrollSync } from '@/features/scroll-sync'
 import {
@@ -14,16 +23,26 @@ import {
   activeDocumentEdited,
   activeDocumentLoaded,
   documentImported,
+  saveRequested,
+  autosaveIntervalChanged,
   $activeId,
   $activeDocument,
 } from '@/features/documents'
 import { initTransfer, markdownFileImported, exportSourceChanged } from '@/features/transfer'
+import { $viewMode, viewModeChanged } from '@/features/layout'
+import type { ViewMode } from '@/features/layout'
+import {
+  $lineWrapEnabled as $lineWrapPreference,
+  $autosaveDebounceMs,
+  helpOpened,
+} from '@/features/settings'
 
 import '@/features/settings'
 import '@/features/editor'
 import '@/features/preview'
 import '@/features/documents'
 import '@/features/transfer'
+import '@/features/layout'
 
 // The preview feature never imports the editor feature (or vice versa) —
 // this is the one place that's allowed to know both exist, and connects
@@ -108,3 +127,51 @@ sample({
 // the window-level drag/drop guard for the app's lifetime — see
 // `features/transfer/model/transfer.ts`'s `initTransfer`.
 initTransfer({ renderMarkdown: renderMarkdownForExport })
+
+// --- settings <-> editor / documents (Step 8) -------------------------------
+//
+// `settings` owns every persisted preference; it never imports the feature
+// that actually acts on a given one (same shape as every other link in
+// this file) — this is the one place that knows both sides.
+
+// Line wrap is a real CodeMirror extension (a `Compartment` reconfigure,
+// not a state rebuild — see `features/editor/lib/useCodeMirror.ts`), so the
+// editor feature keeps its own live mirror of the persisted preference
+// (`$lineWrapEnabled` in `model/editorEvents.ts`) rather than reading the
+// settings store directly. One explicit kick applies the restored/default
+// value before any component mounts; `sample`'s `clock` only reacts to
+// later updates (same reasoning as the `sourceReceived` kick above).
+lineWrapChanged($lineWrapPreference.getState())
+sample({ clock: $lineWrapPreference, target: lineWrapChanged })
+
+// Autosave interval: same one-kick-then-sample shape, feeding
+// `documents`' own debounce store (`$autosaveIntervalMs` in
+// `model/documents.ts`, passed to patronum's `debounce` as a reactive
+// `Store<number>` so a settings change takes effect on the very next edit).
+autosaveIntervalChanged($autosaveDebounceMs.getState())
+sample({ clock: $autosaveDebounceMs, target: autosaveIntervalChanged })
+
+// --- editor shortcuts that reach outside the editor feature -----------------
+
+// Mod-S inside the editor bypasses the documents feature's autosave
+// debounce and flushes whatever's pending immediately.
+sample({ clock: saveNowRequested, target: saveRequested })
+
+// Mod-Shift-V inside the editor cycles the toolbar's view-mode switcher —
+// the editor doesn't know `layout` exists, so it only fires an intent
+// event; the actual next mode is resolved here.
+const VIEW_MODE_CYCLE: Record<ViewMode, ViewMode> = {
+  editor: 'split',
+  split: 'preview',
+  preview: 'editor',
+}
+sample({
+  clock: viewModeCycleRequested,
+  source: $viewMode,
+  fn: (mode) => VIEW_MODE_CYCLE[mode],
+  target: viewModeChanged,
+})
+
+// Mod-/ inside the editor opens the keyboard-shortcuts help modal, owned by
+// `features/settings`.
+sample({ clock: helpRequested, target: helpOpened })

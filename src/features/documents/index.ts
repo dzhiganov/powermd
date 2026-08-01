@@ -7,6 +7,8 @@ export {
   activeDocumentEdited,
   activeDocumentLoaded,
   documentImported,
+  saveRequested,
+  autosaveIntervalChanged,
   $activeId,
   $activeDocument,
 } from './model/documents'

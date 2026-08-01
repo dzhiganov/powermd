@@ -12,7 +12,7 @@ import {
 } from '@heroicons/vue/24/solid'
 import type { Component } from 'vue'
 
-import { ThemeToggle } from '@/features/settings'
+import { ThemeToggle, HelpButton, SettingsButton } from '@/features/settings'
 import { DocumentMenuButton, SaveIndicator } from '@/features/documents'
 import { ImportButton, ExportMenu } from '@/features/transfer'
 
@@ -79,6 +79,8 @@ const viewModeOptions: ViewModeOption[] = [
 
       <ImportButton />
       <ExportMenu />
+      <HelpButton />
+      <SettingsButton />
       <ThemeToggle />
     </div>
   </header>
