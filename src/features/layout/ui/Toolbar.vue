@@ -14,6 +14,7 @@ import type { Component } from 'vue'
 
 import { ThemeToggle } from '@/features/settings'
 import { DocumentMenuButton, SaveIndicator } from '@/features/documents'
+import { ImportButton, ExportMenu } from '@/features/transfer'
 
 import { $viewMode, viewModeChanged } from '../model/layout'
 import type { ViewMode } from '../model/layout'
@@ -49,7 +50,7 @@ const viewModeOptions: ViewModeOption[] = [
 
 <template>
   <header
-    class="flex h-12 shrink-0 items-center justify-between border-b border-base-300 bg-base-200 px-4"
+    class="flex h-12 shrink-0 items-center justify-between border-b border-base-300 bg-base-200 px-4 print:hidden"
   >
     <div class="flex min-w-0 items-center gap-2">
       <DocumentMenuButton />
@@ -76,6 +77,8 @@ const viewModeOptions: ViewModeOption[] = [
         </button>
       </div>
 
+      <ImportButton />
+      <ExportMenu />
       <ThemeToggle />
     </div>
   </header>

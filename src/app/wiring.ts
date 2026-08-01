@@ -7,19 +7,23 @@
 import { sample } from 'effector'
 
 import { $content, contentChanged, loadContent, WELCOME_CONTENT } from '@/features/editor'
-import { sourceReceived } from '@/features/preview'
+import { sourceReceived, renderMarkdownForExport } from '@/features/preview'
 import { initScrollSync } from '@/features/scroll-sync'
 import {
   initDocuments,
   activeDocumentEdited,
   activeDocumentLoaded,
+  documentImported,
   $activeId,
+  $activeDocument,
 } from '@/features/documents'
+import { initTransfer, markdownFileImported, exportSourceChanged } from '@/features/transfer'
 
 import '@/features/settings'
 import '@/features/editor'
 import '@/features/preview'
 import '@/features/documents'
+import '@/features/transfer'
 
 // The preview feature never imports the editor feature (or vice versa) —
 // this is the one place that's allowed to know both exist, and connects
@@ -73,3 +77,34 @@ sample({
   clock: activeDocumentLoaded,
   target: loadContent,
 })
+
+// --- documents <-> transfer -------------------------------------------------
+//
+// `transfer` never imports `documents` (or vice versa); this is the one
+// place that knows both, same shape as every other cross-feature link in
+// this file.
+
+// A successfully-imported file (drag-drop or the toolbar's file picker,
+// see `features/transfer`) always becomes a brand-new document — never
+// overwrites the active one, see `documentImported`'s doc comment.
+sample({
+  clock: markdownFileImported,
+  target: documentImported,
+})
+
+// `transfer` needs the active document's title/content to name and build
+// exports, projected down to just that shape (`ExportDocument`) so the
+// feature never has to know about `MarkdownDocument`'s id/timestamps.
+sample({
+  source: $activeDocument,
+  fn: (doc) => (doc === null ? null : { title: doc.title, content: doc.content }),
+  target: exportSourceChanged,
+})
+
+// The one thing HTML/PDF export needs from `preview` — rendering markdown
+// to sanitized HTML — is injected here rather than imported directly by
+// `transfer`, the same way `initDocuments` above injects the editor's
+// welcome text instead of `documents` importing `editor`. Also installs
+// the window-level drag/drop guard for the app's lifetime — see
+// `features/transfer/model/transfer.ts`'s `initTransfer`.
+initTransfer({ renderMarkdown: renderMarkdownForExport })

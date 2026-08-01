@@ -6,6 +6,7 @@ import { markdown } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 
 import { daisyMarkdownTheme } from './theme'
+import { imagePasteHandler } from './imagePaste'
 
 /**
  * Marks a dispatched transaction as programmatic so the update listener can
@@ -57,6 +58,7 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
           'aria-label': 'Markdown editor',
         }),
         daisyMarkdownTheme,
+        imagePasteHandler,
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return
           // A `view.setState` rebuild (document load, see `loadDocument`)

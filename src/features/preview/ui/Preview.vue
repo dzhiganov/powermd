@@ -52,10 +52,10 @@ const deletionColor = ink('--color-error')
 </script>
 
 <template>
-  <div ref="scroller" class="h-full overflow-y-auto">
+  <div ref="scroller" class="h-full overflow-y-auto print:h-auto print:overflow-visible">
     <div
       ref="content"
-      class="markdown-preview prose prose-sm p-4"
+      class="markdown-preview prose prose-sm p-4 print:max-w-none print:p-0"
       :class="centered ? 'mx-auto max-w-[75ch]' : 'max-w-none'"
       v-html="html"
     />
@@ -126,6 +126,30 @@ const deletionColor = ink('--color-error')
 .markdown-preview :deep(table) {
   display: block;
   overflow-x: auto;
+}
+
+/* Export/PDF (`features/transfer`'s "Print / PDF"): scrollable overflow
+ * regions don't paginate — a browser's print renderer only ever captures
+ * a scroll container's visible viewport, not content a reader would have
+ * had to scroll to reach, so a wide table or a long code block clipped by
+ * `overflow-x: auto` above would print truncated. Printing switches both
+ * back to normal flow: a table too wide for the page still overflows the
+ * page edge (an accepted trade-off — there's no page-safe way to shrink
+ * arbitrary tabular content), but nothing is silently cut off, and a code
+ * block wraps instead of needing horizontal scroll it'll never get on
+ * paper.
+ */
+@media print {
+  .markdown-preview :deep(table) {
+    display: table;
+    overflow-x: visible;
+  }
+
+  .markdown-preview :deep(pre) {
+    overflow-x: visible;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 }
 
 /* Fenced code blocks: same DaisyUI-mapped palette as the editor's

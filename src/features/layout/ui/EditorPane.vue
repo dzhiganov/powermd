@@ -9,7 +9,7 @@ defineProps<{
 </script>
 
 <template>
-  <section class="h-full min-w-0 flex-1 overflow-hidden bg-base-100">
+  <section class="h-full min-w-0 flex-1 overflow-hidden bg-base-100 print:hidden">
     <Editor class="h-full" :centered="centered" />
   </section>
 </template>

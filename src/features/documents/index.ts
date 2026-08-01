@@ -6,6 +6,7 @@ export {
   initDocuments,
   activeDocumentEdited,
   activeDocumentLoaded,
+  documentImported,
   $activeId,
   $activeDocument,
 } from './model/documents'

@@ -1,7 +1,7 @@
 import { createEffect, createEvent, createStore, sample } from 'effector'
 import { debounce } from 'patronum'
 
-import { renderInWorker } from '../lib/renderWorkerClient'
+import { nextRenderRequestId, renderInWorker } from '../lib/renderWorkerClient'
 
 /** Fired with the full markdown source whenever the input the preview
  * should render changes. Nothing in this feature knows or cares where
@@ -21,12 +21,18 @@ export const sourceReceived = createEvent<string>()
 // which is what `renderFx` below is for.
 const debouncedSource = debounce(sourceReceived, 150)
 
-/** Monotonically increasing id for each render request. Read (not just
- * written) inside the `$html` reducer below: rendering now happens off
- * the main thread (`renderInWorker`, backed by `worker.ts`), so requests
- * can complete out of order — a fast render of a short document can land
- * after a slow render of a long one. A response only gets applied if its
- * id still matches this, i.e. no newer request has been issued since. */
+/** The id of the *latest request this debounced live-preview flow has
+ * issued*, read (not just written) inside the `$html` reducer below:
+ * rendering now happens off the main thread (`renderInWorker`, backed by
+ * `worker.ts`), so requests can complete out of order — a fast render of a
+ * short document can land after a slow render of a long one. A response
+ * only gets applied if its id still matches this, i.e. no newer request
+ * from *this flow* has been issued since. The id itself comes from
+ * `nextRenderRequestId`, a counter shared with one-off export renders
+ * (`lib/exportRender.ts`) — see that function's doc comment — so this
+ * only ever advances on this flow's own calls and stays a correct
+ * staleness check even though the underlying numbers aren't contiguous
+ * from this module's point of view. */
 let latestRequestId = 0
 
 interface RenderResult {
@@ -40,7 +46,8 @@ interface RenderResult {
 // instead of blocking here. `createEffect` + `sample` is what already
 // made this swap-in possible without reshaping the store wiring below.
 const renderFx = createEffect(async (source: string): Promise<RenderResult> => {
-  const id = ++latestRequestId
+  const id = nextRenderRequestId()
+  latestRequestId = id
   const html = await renderInWorker(source, id)
   return { id, html }
 })

@@ -35,6 +35,25 @@ let workerConstructionFailed = false
 const pending = new Map<number, PendingRequest>()
 const timeouts = new Map<number, ReturnType<typeof setTimeout>>()
 
+let requestCounter = 0
+
+/**
+ * Shared id source for every caller of `renderInWorker` — the live
+ * preview's debounced pipeline (`model/preview.ts`) and one-off export
+ * renders (`lib/exportRender.ts`) alike. `pending` above is keyed by id;
+ * if two independent callers each kept their own "starts at 0, increments
+ * by 1" counter, a live-preview request and an export request could be
+ * assigned the same id while both are in flight, and the second `pending.set`
+ * would silently overwrite the first entry — the first request would then
+ * never resolve from a real response (only, eventually, from the
+ * stuck-worker timeout). One shared counter makes that collision
+ * impossible.
+ */
+export function nextRenderRequestId(): number {
+  requestCounter += 1
+  return requestCounter
+}
+
 function clearPending(id: number): void {
   pending.delete(id)
   const timeout = timeouts.get(id)

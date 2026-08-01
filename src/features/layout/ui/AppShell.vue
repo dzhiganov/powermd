@@ -47,12 +47,17 @@ const singlePane = computed(() => !showSplitter.value)
 </script>
 
 <template>
-  <div class="relative flex h-dvh flex-col overflow-hidden bg-base-100">
+  <div
+    class="relative flex h-dvh flex-col overflow-hidden bg-base-100 print:block print:h-auto print:overflow-visible"
+  >
     <DocumentDrawer />
     <Toolbar />
     <MobileTabs v-show="!isDesktop" />
 
-    <main class="flex min-h-0 flex-1 overflow-hidden" :style="{ '--split-ratio': splitRatio }">
+    <main
+      class="flex min-h-0 flex-1 overflow-hidden print:block print:h-auto print:min-h-0 print:overflow-visible"
+      :style="{ '--split-ratio': splitRatio }"
+    >
       <EditorPane v-show="showEditor" :style="editorInlineStyle" :centered="singlePane" />
       <Splitter v-show="showSplitter" />
       <PreviewPane v-show="showPreview" :centered="singlePane" />

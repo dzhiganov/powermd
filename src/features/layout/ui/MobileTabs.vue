@@ -21,7 +21,7 @@ function selectTab(tab: 'editor' | 'preview') {
 <template>
   <div
     aria-label="Pane view"
-    class="flex shrink-0 gap-1 border-b border-base-300 bg-base-200 px-2 py-1.5"
+    class="flex shrink-0 gap-1 border-b border-base-300 bg-base-200 px-2 py-1.5 print:hidden"
   >
     <button
       type="button"

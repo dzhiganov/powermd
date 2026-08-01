@@ -31,6 +31,16 @@ export const documentSelected = createEvent<string>()
 export const documentRenamed = createEvent<{ id: string; title: string }>()
 /** Duplicate a document and make the copy active. */
 export const documentDuplicated = createEvent<string>()
+/**
+ * Create a document from imported file content (drag-drop or the file
+ * picker, see `src/features/transfer`) and make it active — the same
+ * "prepend + activate + persist" shape as `documentCreated`/
+ * `documentDuplicated` below, just seeded from the given title/content
+ * instead of empty/copied. Always creates a *new* document, never
+ * overwrites the active one — dropping a file onto an editor with unsaved
+ * work must never silently discard it.
+ */
+export const documentImported = createEvent<{ title: string; content: string }>()
 /** Ask to delete a document — opens the confirmation step, deletes nothing
  * yet (deletion is irreversible, so it always requires confirmation). */
 export const documentDeleteRequested = createEvent<string>()
@@ -586,6 +596,22 @@ sample({
       id: createId(),
       title: `${source?.title ?? 'Untitled'} (copy)`,
       content: source?.content ?? '',
+      createdAt: now,
+      updatedAt: now,
+    }
+  },
+  target: documentAdded,
+})
+
+sample({
+  clock: documentImported,
+  fn: ({ title, content }): MarkdownDocument => {
+    const now = Date.now()
+    const trimmed = title.trim()
+    return {
+      id: createId(),
+      title: trimmed === '' ? 'Untitled' : trimmed,
+      content,
       createdAt: now,
       updatedAt: now,
     }

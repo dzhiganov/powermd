@@ -116,13 +116,13 @@ function trapFocus(event: KeyboardEvent) {
          slide transition can run in both directions. -->
     <div
       v-show="open"
-      class="fixed inset-0 z-40 bg-black/40"
+      class="fixed inset-0 z-40 bg-black/40 print:hidden"
       aria-hidden="true"
       @click="drawerClosed()"
     />
 
     <aside
-      class="fixed inset-y-0 left-0 z-50 flex w-80 max-w-[85vw] flex-col border-r border-base-300 bg-base-200 shadow-xl transition-transform duration-200 ease-out"
+      class="fixed inset-y-0 left-0 z-50 flex w-80 max-w-[85vw] flex-col border-r border-base-300 bg-base-200 shadow-xl transition-transform duration-200 ease-out print:hidden"
       :class="open ? 'translate-x-0' : '-translate-x-full'"
       :aria-hidden="!open"
       :inert="!open"
@@ -226,7 +226,7 @@ function trapFocus(event: KeyboardEvent) {
     <div
       v-if="pendingDelete !== null"
       ref="dialogRef"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 print:hidden"
       role="dialog"
       aria-modal="true"
       aria-labelledby="delete-dialog-title"

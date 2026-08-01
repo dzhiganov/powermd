@@ -180,7 +180,7 @@ function handleKeydown(event: KeyboardEvent) {
     :aria-valuemin="ariaValueMin"
     :aria-valuemax="ariaValueMax"
     tabindex="0"
-    class="splitter relative z-10 flex w-3 shrink-0 touch-none items-stretch justify-center outline-none select-none"
+    class="splitter relative z-10 flex w-3 shrink-0 touch-none items-stretch justify-center outline-none select-none print:hidden"
     :class="{ dragging }"
     @pointerdown="handlePointerDown"
     @pointermove="handlePointerMove"
