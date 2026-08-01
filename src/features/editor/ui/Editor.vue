@@ -3,7 +3,9 @@ import { ref, watch } from 'vue'
 import { useUnit } from 'effector-vue/composition'
 
 import { useCodeMirror } from '../lib/useCodeMirror'
+import { createEditorScrollHandle } from '../lib/scrollHandle'
 import { $content, contentChanged } from '../model/content'
+import { editorScrollHandleMounted, editorScrollHandleUnmounted } from '../model/scrollHandle'
 
 defineProps<{
   /** Constrains and centres `.cm-content` to a comfortable reading width
@@ -18,6 +20,11 @@ const content = useUnit($content)
 const { setContent } = useCodeMirror(container, {
   doc: content.value,
   onChange: (value) => contentChanged(value),
+  // Wraps the raw `EditorView` into the narrow `EditorScrollHandle` shape
+  // right here, so nothing outside this feature ever touches CodeMirror
+  // directly — see `lib/scrollHandle.ts`.
+  onViewReady: (view) => editorScrollHandleMounted(createEditorScrollHandle(view)),
+  onViewDestroy: () => editorScrollHandleUnmounted(),
 })
 
 // Keeps the editor in sync with `$content` when it changes from outside

@@ -12,6 +12,13 @@ interface UseCodeMirrorOptions {
   doc: string
   /** Called with the full document string whenever the user edits it. */
   onChange: (value: string) => void
+  /** Called once, synchronously, right after the `EditorView` is created.
+   * Lets a caller (e.g. `Editor.vue`) hand the raw view off to something
+   * that immediately wraps it in a narrower interface, without this
+   * composable's return type ever having to expose the view itself. */
+  onViewReady?: (view: EditorView) => void
+  /** Called once, synchronously, right before the view is destroyed. */
+  onViewDestroy?: () => void
 }
 
 /**
@@ -53,6 +60,8 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
       parent: container.value,
     })
 
+    options.onViewReady?.(view.value)
+
     // CodeMirror only re-measures line wrapping and cursor coordinates
     // when it detects a layout change of its own accord (typing, a DOM
     // mutation it made itself, ...). Resizing the *container* from the
@@ -74,6 +83,7 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
   onUnmounted(() => {
     resizeObserver?.disconnect()
     resizeObserver = null
+    options.onViewDestroy?.()
     view.value?.destroy()
     view.value = null
   })

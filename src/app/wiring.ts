@@ -8,6 +8,7 @@ import { sample } from 'effector'
 
 import { $content } from '@/features/editor'
 import { sourceReceived } from '@/features/preview'
+import { initScrollSync } from '@/features/scroll-sync'
 
 import '@/features/settings'
 import '@/features/editor'
@@ -28,3 +29,8 @@ sample({
 // document) doesn't count as one, so without this the preview would stay
 // blank until the user's first keystroke. One explicit kick seeds it.
 sourceReceived($content.getState())
+
+// Bidirectional editor/preview scroll sync — connects the editor, preview,
+// and layout features (view mode), so it lives here rather than inside any
+// one of them. See `features/scroll-sync/model/scrollSync.ts`.
+initScrollSync()

@@ -1,4 +1,4 @@
-import { createEffect, createEvent, createStore, sample } from 'effector'
+import { combine, createEffect, createEvent, createStore, sample } from 'effector'
 
 import { readStorage, writeStorage } from '@/shared/lib/storage'
 
@@ -109,4 +109,49 @@ function toMobileTab(mode: ViewMode): MobileTab {
 export const $mobileTab = createStore<MobileTab>(toMobileTab($viewMode.getState())).on(
   mobileTabChanged,
   (_, tab) => tab,
+)
+
+// --- Desktop breakpoint & pane visibility --------------------------------
+//
+// `AppShell.vue` already tracks the `md` breakpoint via `useMediaQuery` (a
+// Vue composable, scoped to that component's lifecycle) to decide
+// `showEditor`/`showPreview`. `scroll-sync` needs the same "is this pane
+// actually on screen" signal from outside any component — and, more
+// importantly, needs it as synchronously-derived *state* rather than
+// something it measures off the DOM after the fact. Effector propagates a
+// store update to every `.watch` callback synchronously, ahead of Vue's
+// own (microtask-deferred) render flush, so a `scroll-sync` watcher that
+// re-measured `clientHeight` right after a `$viewMode`/`$mobileTab` change
+// would often still see the *previous* frame's layout, with nothing left
+// to prompt a re-check once Vue actually finished patching. Deriving
+// visibility here instead of measuring it sidesteps that race entirely.
+const DESKTOP_QUERY = '(min-width: 768px)'
+const desktopMediaQueryList =
+  typeof window === 'undefined' ? null : window.matchMedia(DESKTOP_QUERY)
+
+const isDesktopChanged = createEvent<boolean>()
+
+export const $isDesktop = createStore<boolean>(desktopMediaQueryList?.matches ?? true).on(
+  isDesktopChanged,
+  (_, matches) => matches,
+)
+
+desktopMediaQueryList?.addEventListener('change', (event) => {
+  isDesktopChanged(event.matches)
+})
+
+/** Mirrors `AppShell.vue`'s local `showEditor` computed, as a store. */
+export const $showEditor = combine(
+  $isDesktop,
+  $viewMode,
+  $mobileTab,
+  (isDesktop, viewMode, mobileTab) => (isDesktop ? viewMode !== 'preview' : mobileTab === 'editor'),
+)
+
+/** Mirrors `AppShell.vue`'s local `showPreview` computed, as a store. */
+export const $showPreview = combine(
+  $isDesktop,
+  $viewMode,
+  $mobileTab,
+  (isDesktop, viewMode, mobileTab) => (isDesktop ? viewMode !== 'editor' : mobileTab === 'preview'),
 )

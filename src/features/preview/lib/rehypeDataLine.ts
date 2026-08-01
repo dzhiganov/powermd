@@ -25,7 +25,18 @@ import type { Element, Root } from 'hast'
  *    anchor for the whole block: `li` and `tr` wherever they occur, and
  *    `p` / `blockquote` / `pre` nested inside a `ul` / `ol` / `blockquote`
  *    / `table` ancestor. Nodes without a `position` (e.g. remark-gfm's
- *    generated footnote `<section>`) are skipped, not thrown on.
+ *    generated footnote `<section>` itself) are skipped, not thrown on.
+ *
+ *    remark-gfm's generated footnotes `<section>` (`mdast-util-to-hast`'s
+ *    `footer()`) is skipped as a whole subtree, not just left unpositioned:
+ *    it moves each footnote definition's rendered `<li>` to the end of the
+ *    document but copies the *definition's original source line* onto
+ *    that `<li>` (`state.patch(definition, listItem)`), and its `<ol>`
+ *    otherwise qualifies as a `CONTAINER_TAGS` ancestor like any other
+ *    list. Left untouched, those `<li>`s would get tagged with line
+ *    numbers from earlier in the document, breaking the anchor table's
+ *    line-ascending order (`anchorTable.ts` defends against this
+ *    independently, but there's no reason to feed it bad input here).
  *
  * This has to run before `rehype-sanitize` (see sanitizeSchema.ts, which
  * allow-lists `dataLine`) and after `rehype-raw` (so the raw HTML this
@@ -35,6 +46,10 @@ import type { Element, Root } from 'hast'
 
 const CONTAINER_TAGS = new Set(['ul', 'ol', 'blockquote', 'table'])
 const NESTED_BLOCK_TAGS = new Set(['p', 'blockquote', 'pre'])
+
+function isGeneratedFootnotesSection(node: Element): boolean {
+  return node.tagName === 'section' && node.properties.dataFootnotes !== undefined
+}
 
 function stripDataLine(node: Element): void {
   if (node.properties.dataLine !== undefined) {
@@ -61,6 +76,7 @@ function tagOwned(node: Element): void {
 function tagDescendants(node: Element, hasContainerAncestor: boolean): void {
   for (const child of node.children) {
     if (child.type !== 'element') continue
+    if (isGeneratedFootnotesSection(child)) continue
 
     if (child.tagName === 'li' || child.tagName === 'tr') {
       tagOwned(child)
@@ -79,6 +95,7 @@ export const rehypeDataLine: Plugin<[], Root> = () => (tree) => {
 
   for (const child of tree.children) {
     if (child.type !== 'element') continue
+    if (isGeneratedFootnotesSection(child)) continue
 
     tagOwned(child)
     tagDescendants(child, CONTAINER_TAGS.has(child.tagName))

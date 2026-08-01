@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useUnit } from 'effector-vue/composition'
 
 import { ink } from '@/shared/lib/ink'
 
 import { $html } from '../model/preview'
+import { previewScrollHandleMounted, previewScrollHandleUnmounted } from '../model/scrollHandle'
 
 defineProps<{
   /** Constrains and centres the prose column to a comfortable reading
@@ -13,6 +15,29 @@ defineProps<{
 }>()
 
 const html = useUnit($html)
+
+// This component (not `layout/ui/PreviewPane.vue`) owns the scroll
+// container — mirrors the editor feature, where `.cm-scroller` is
+// internal to `editor` too. That symmetry is what lets `scroll-sync`
+// depend on the same small handle shape for both panes without either
+// one leaking DOM structure to `layout`.
+const scroller = ref<HTMLDivElement | null>(null)
+const content = ref<HTMLDivElement | null>(null)
+
+onMounted(() => {
+  const scrollerEl = scroller.value
+  const contentEl = content.value
+  if (!scrollerEl || !contentEl) return
+
+  previewScrollHandleMounted({
+    getScroller: () => scrollerEl,
+    getContentRoot: () => contentEl,
+  })
+})
+
+onUnmounted(() => {
+  previewScrollHandleUnmounted()
+})
 
 // Bound into the scoped <style> below via `v-bind()` so the ratio behind
 // every one of these colours lives in exactly one place: `shared/lib/ink`.
@@ -27,11 +52,14 @@ const deletionColor = ink('--color-error')
 </script>
 
 <template>
-  <div
-    class="markdown-preview prose prose-sm p-4"
-    :class="centered ? 'mx-auto max-w-[75ch]' : 'max-w-none'"
-    v-html="html"
-  />
+  <div ref="scroller" class="h-full overflow-y-auto">
+    <div
+      ref="content"
+      class="markdown-preview prose prose-sm p-4"
+      :class="centered ? 'mx-auto max-w-[75ch]' : 'max-w-none'"
+      v-html="html"
+    />
+  </div>
 </template>
 
 <style scoped>
