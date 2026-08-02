@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useUnit } from 'effector-vue/composition'
-import { PlusIcon, XMarkIcon, FolderPlusIcon } from '@heroicons/vue/24/outline'
+import { PlusIcon, FolderPlusIcon } from '@heroicons/vue/24/outline'
 
 import { useDialogFocusTrap } from '@/shared/lib/useDialog'
 import { ink } from '@/shared/lib/ink'
@@ -197,50 +197,33 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
       :inert="!open"
       aria-label="Documents"
     >
-      <!-- Mirrors with `side`: the button cluster sits nearest the app
-           content (the side facing away from the viewport edge) rather
-           than always in the same corner, so it visibly matches whichever
-           side the drawer itself is docked on. `justify-between` still
-           spreads exactly the heading and the button cluster to the two
-           ends — as before — swapping their `order` is what relocates
-           them, so the two never collide regardless of `side`. -->
-      <header
-        class="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-base-300 px-3"
-      >
-        <span
-          class="text-sm font-semibold text-base-content"
-          :class="side === 'right' ? 'order-2' : 'order-1'"
+      <!-- No heading text and no close button — the drawer is opened and
+           closed from the toolbar's toggle (and, on mobile, the backdrop),
+           not from a control in here (see `DrawerToggleButton.vue`). The
+           accessible name for the region now lives solely on the `<aside>`
+           below via `aria-label="Documents"`; it must stay there since
+           there's no visible heading to fall back on. Fixed left-aligned
+           layout — this header no longer mirrors with `side`, matching the
+           toolbar above it. -->
+      <header class="flex h-12 shrink-0 items-center gap-1 border-b border-base-300 px-3">
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm btn-square"
+          aria-label="New folder"
+          :title="showTooltips ? 'New folder' : undefined"
+          @click="startCreateFolder"
         >
-          Documents
-        </span>
-        <div class="flex items-center gap-1" :class="side === 'right' ? 'order-1' : 'order-2'">
-          <button
-            type="button"
-            class="btn btn-ghost btn-sm btn-square"
-            aria-label="New folder"
-            :title="showTooltips ? 'New folder' : undefined"
-            @click="startCreateFolder"
-          >
-            <FolderPlusIcon class="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            class="btn btn-primary btn-sm gap-1"
-            aria-label="New document"
-            @click="documentCreated()"
-          >
-            <PlusIcon class="h-4 w-4" />
-            New
-          </button>
-          <button
-            type="button"
-            class="btn btn-ghost btn-sm btn-square"
-            aria-label="Close documents"
-            @click="drawerClosed()"
-          >
-            <XMarkIcon class="h-4 w-4" />
-          </button>
-        </div>
+          <FolderPlusIcon class="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary btn-sm gap-1"
+          aria-label="New document"
+          @click="documentCreated()"
+        >
+          <PlusIcon class="h-4 w-4" />
+          New
+        </button>
       </header>
 
       <!-- Blocked-upgrade notice: see `db.subscribeToDatabaseBlocked` /

@@ -19,11 +19,12 @@ import { ImportButton, ExportMenu } from '@/features/transfer'
 import { $viewMode, viewModeChanged } from '../model/layout'
 import type { ViewMode } from '../model/layout'
 
-// The drawer side ('left' | 'right') comes in as a prop rather than a
-// direct `@/features/settings` import — `layout` already reads
-// `$drawerSide` in `AppShell.vue` (the single mounting site) to thread it
-// to `DocumentDrawer.vue`, so it's threaded here the same way rather than
-// having two independent reads of the same store.
+// The drawer side ('left' | 'right') still comes in as a prop — `layout`
+// already reads `$drawerSide` in `AppShell.vue` (the single mounting site)
+// to thread it to `DocumentDrawer.vue`, so it's threaded here the same way
+// — but the header itself no longer reacts to it (see template comment
+// below). The prop stays so the drawer can still be told which side it
+// docks on without a second independent read of the same store.
 withDefaults(defineProps<{ side?: 'left' | 'right' }>(), { side: 'right' })
 
 const viewMode = useUnit($viewMode)
@@ -57,31 +58,29 @@ const viewModeOptions: ViewModeOption[] = [
 </script>
 
 <template>
-  <!-- The drawer-toggle/title group tracks whichever side the drawer is
-       docked on (`side`), rather than always sitting at the toolbar's left
-       end — otherwise it visually points at empty space when the drawer is
-       on the right. `justify-between` still spreads exactly two groups to
-       the two ends; swapping which group is in DOM/visual `order` first is
-       what actually relocates them, so `side="right"` clusters both groups
-       at the right end (via `justify-end`) with the drawer group last —
-       "right of the other right-hand controls" — while `side="left"` keeps
-       the original spread-apart layout. -->
+  <!-- Static layout: the document name always sits at the left end and
+       every instrument icon (drawer toggle, view-mode switcher, import,
+       export, shortcuts, settings, theme) always sits at the right end,
+       regardless of which side the drawer (`side`) actually docks on. This
+       used to mirror with `side` — the user asked for that removed, since
+       a toolbar that rearranges itself based on a setting read poorly.
+       `justify-between` spreads the two fixed groups to the two ends. -->
   <header
-    class="flex h-12 shrink-0 items-center gap-3 border-b border-base-300 bg-base-200 px-4 print:hidden"
-    :class="side === 'right' ? 'justify-end' : 'justify-between'"
+    class="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-base-300 bg-base-200 px-4 print:hidden"
   >
-    <div class="flex min-w-0 items-center gap-1" :class="side === 'right' ? 'order-2' : 'order-1'">
-      <DrawerToggleButton :show-tooltips="showTooltips" />
+    <div class="flex min-w-0 items-center gap-1">
       <DocumentTitle :show-tooltips="showTooltips" />
     </div>
 
-    <div class="flex items-center gap-1.5" :class="side === 'right' ? 'order-1' : 'order-2'">
+    <div class="flex items-center gap-1">
+      <DrawerToggleButton :show-tooltips="showTooltips" />
+
       <div class="join hidden md:flex" aria-label="View mode">
         <button
           v-for="option in viewModeOptions"
           :key="option.value"
           type="button"
-          class="btn join-item btn-sm"
+          class="btn join-item btn-xs"
           :class="{ 'btn-active': viewMode === option.value }"
           :aria-pressed="viewMode === option.value"
           :aria-label="option.label"
@@ -90,7 +89,7 @@ const viewModeOptions: ViewModeOption[] = [
         >
           <component
             :is="viewMode === option.value ? option.iconSolid : option.iconOutline"
-            class="h-4 w-4"
+            class="h-3.5 w-3.5"
           />
         </button>
       </div>

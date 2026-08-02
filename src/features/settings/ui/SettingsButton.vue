@@ -11,11 +11,11 @@ const showTooltips = useUnit($showTooltips)
 <template>
   <button
     type="button"
-    class="btn btn-ghost btn-circle btn-sm"
+    class="btn btn-ghost btn-circle btn-xs"
     aria-label="Open settings"
     :title="showTooltips ? 'Settings' : undefined"
     @click="settingsOpened()"
   >
-    <Cog6ToothIcon class="h-5 w-5" />
+    <Cog6ToothIcon class="h-3.5 w-3.5" />
   </button>
 </template>

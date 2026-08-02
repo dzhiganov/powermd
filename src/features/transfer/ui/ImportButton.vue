@@ -28,12 +28,12 @@ function handleChange(event: Event): void {
 <template>
   <button
     type="button"
-    class="btn btn-ghost btn-sm btn-square print:hidden"
+    class="btn btn-ghost btn-xs btn-square print:hidden"
     aria-label="Import document"
     :title="showTooltips ? `Import (${ACCEPTED_EXTENSIONS_LIST})` : undefined"
     @click="openPicker"
   >
-    <ArrowUpTrayIcon class="h-4 w-4" />
+    <ArrowUpTrayIcon class="h-3.5 w-3.5" />
   </button>
   <input
     ref="input"

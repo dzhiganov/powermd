@@ -21,12 +21,12 @@ const open = useUnit($drawerOpen)
        rename without also toggling the drawer. -->
   <button
     type="button"
-    class="btn btn-ghost btn-sm btn-square shrink-0"
+    class="btn btn-ghost btn-xs btn-square shrink-0"
     :aria-label="open ? 'Close documents' : 'Open documents'"
     :aria-pressed="open"
     :title="showTooltips ? (open ? 'Close documents' : 'Open documents') : undefined"
     @click="drawerToggled()"
   >
-    <Bars3Icon class="h-4 w-4" />
+    <Bars3Icon class="h-3.5 w-3.5" />
   </button>
 </template>

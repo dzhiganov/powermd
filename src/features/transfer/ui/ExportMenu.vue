@@ -56,11 +56,11 @@ function handleCopyHtml(): void {
     <button
       type="button"
       tabindex="0"
-      class="btn btn-ghost btn-sm btn-square"
+      class="btn btn-ghost btn-xs btn-square"
       aria-label="Export document"
       :title="showTooltips ? 'Export' : undefined"
     >
-      <ArrowDownTrayIcon class="h-4 w-4" />
+      <ArrowDownTrayIcon class="h-3.5 w-3.5" />
     </button>
     <ul
       tabindex="0"

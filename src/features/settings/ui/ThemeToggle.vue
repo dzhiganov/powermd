@@ -17,11 +17,11 @@ function handleToggle() {
 <template>
   <button
     type="button"
-    class="btn btn-ghost btn-circle btn-sm"
+    class="btn btn-ghost btn-circle btn-xs"
     :aria-label="isDark ? 'Switch to light theme' : 'Switch to dark theme'"
     @click="handleToggle"
   >
-    <SunIcon v-if="isDark" class="h-5 w-5" />
-    <MoonIcon v-else class="h-5 w-5" />
+    <SunIcon v-if="isDark" class="h-3.5 w-3.5" />
+    <MoonIcon v-else class="h-3.5 w-3.5" />
   </button>
 </template>
