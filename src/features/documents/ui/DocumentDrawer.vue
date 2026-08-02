@@ -24,6 +24,15 @@ import {
   drawerClosed,
 } from '../model/documents'
 
+// `showTooltips` and `side` come in as props rather than a direct
+// `@/features/settings` import — `documents` and `settings` never import
+// each other's internals (see ARCHITECTURE.md / eslint boundaries). The
+// single mounting site, `AppShell.vue` (in the `layout` feature), already
+// imports `settings` directly and threads both values down.
+withDefaults(defineProps<{ showTooltips?: boolean; side?: 'left' | 'right' }>(), {
+  side: 'right',
+})
+
 const documents = useUnit($documentList)
 const activeId = useUnit($activeId)
 const open = useUnit($drawerOpen)
@@ -39,12 +48,45 @@ function startRename(id: string, currentTitle: string) {
   renameValue.value = currentTitle
 }
 
-// Function ref: focuses + selects the rename input the moment it mounts.
-// Avoids `ref`-in-`v-for` returning an array, and needs no `nextTick`.
+// Clicking a document's title: if it's already the active document, that's
+// an unambiguous request to rename it (there's nothing left to "select").
+// Otherwise it's a normal switch. This is what lets clicking the title do
+// double duty without ever making plain document-switching feel broken —
+// the very first click on any other row always just selects it.
+function handleTitleClick(id: string, title: string) {
+  if (id === activeId.value) {
+    startRename(id, title)
+  } else {
+    documentSelected(id)
+  }
+}
+
+// Function ref rather than a plain `ref="..."`: this input sits inside a
+// `v-for`, and a plain ref bound inside a `v-for` block is collected into an
+// array by Vue (regardless of how many instances actually render at once),
+// which is useless here — see the original design note this replaced.
+//
+// The bug this used to have: a function ref's callback fires on *every*
+// re-render that includes the ref, not just on mount. Naively calling
+// `el.focus()` + `el.select()` unconditionally on each call meant every
+// keystroke (which re-renders this input via `v-model`) re-selected the
+// whole value, so the next keystroke replaced it instead of extending it.
+// The fix: only focus+select when the callback hands back a *different*
+// element than last time — the same DOM node persists across re-renders
+// while typing (only `v-if` flipping mounts/unmounts a new one), so the
+// guard below fires exactly once per rename session, on the element's first
+// appearance, and resets when the input is removed (`el` becomes `null`).
+let renameInputEl: HTMLInputElement | null = null
+
 function focusRenameInput(el: unknown) {
   if (el instanceof HTMLInputElement) {
-    el.focus()
-    el.select()
+    if (el !== renameInputEl) {
+      renameInputEl = el
+      el.focus()
+      el.select()
+    }
+  } else {
+    renameInputEl = null
   }
 }
 
@@ -111,19 +153,41 @@ function trapFocus(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div>
+  <!-- `contents`: this wrapper must not introduce a box of its own — the
+       `<aside>` below needs to participate directly as a flex item of
+       `AppShell.vue`'s docked-drawer row on desktop. The backdrop and the
+       delete dialog are both `fixed`, so they're unaffected by their
+       ancestor having no box (fixed positioning is relative to the
+       viewport regardless). -->
+  <div class="contents">
     <!-- Backdrop: click to close. `v-show` keeps the panel mounted so its
-         slide transition can run in both directions. -->
+         slide transition can run in both directions. Mobile-only — on
+         desktop the drawer is a docked sidebar with no backdrop, or an
+         open-by-default overlay would dim the whole app on first load. -->
     <div
       v-show="open"
-      class="fixed inset-0 z-40 bg-black/40 print:hidden"
+      class="fixed inset-0 z-40 bg-black/40 md:hidden print:hidden"
       aria-hidden="true"
       @click="drawerClosed()"
     />
 
+    <!-- Below `md`: a fixed overlay, sliding in from `side` with a backdrop
+         (unchanged from before). At `md` and up: a docked sidebar that
+         participates in `AppShell.vue`'s layout — `md:static` drops it out
+         of fixed positioning, and `md:w-80`/`md:w-0` (rather than a
+         transform) is what actually reclaims/cedes width for the
+         editor/preview panes as it opens/closes; a transform alone would
+         keep the reserved layout space even while slid off-screen. -->
     <aside
-      class="fixed inset-y-0 left-0 z-50 flex w-80 max-w-[85vw] flex-col border-r border-base-300 bg-base-200 shadow-xl transition-transform duration-200 ease-out print:hidden"
-      :class="open ? 'translate-x-0' : '-translate-x-full'"
+      class="fixed inset-y-0 z-50 flex w-80 max-w-[85vw] flex-col border-base-300 bg-base-200 shadow-xl transition-[width,transform] duration-200 ease-out print:hidden md:static md:z-auto md:max-w-none md:shrink-0 md:overflow-hidden md:shadow-none"
+      :class="[
+        side === 'right' ? 'right-0 order-2 border-l' : 'left-0 border-r',
+        open
+          ? 'translate-x-0 md:w-80'
+          : side === 'right'
+            ? 'translate-x-full md:w-0'
+            : '-translate-x-full md:w-0',
+      ]"
       :aria-hidden="!open"
       :inert="!open"
       aria-label="Documents"
@@ -181,8 +245,10 @@ function trapFocus(event: KeyboardEvent) {
               <button
                 type="button"
                 class="flex min-w-0 flex-1 items-center rounded-field px-3 py-2 text-left"
+                :class="doc.id === activeId ? 'cursor-text' : ''"
                 :aria-current="doc.id === activeId ? 'true' : undefined"
-                @click="documentSelected(doc.id)"
+                :title="showTooltips && doc.id === activeId ? 'Click to rename' : undefined"
+                @click="handleTitleClick(doc.id, doc.title)"
               >
                 <span class="truncate text-sm">{{ doc.title || 'Untitled' }}</span>
               </button>
@@ -191,7 +257,7 @@ function trapFocus(event: KeyboardEvent) {
                   type="button"
                   class="btn btn-ghost btn-xs btn-square"
                   :aria-label="`Rename ${doc.title || 'Untitled'}`"
-                  title="Rename"
+                  :title="showTooltips ? 'Rename' : undefined"
                   @click.stop="startRename(doc.id, doc.title)"
                 >
                   <PencilSquareIcon class="h-4 w-4" />
@@ -200,7 +266,7 @@ function trapFocus(event: KeyboardEvent) {
                   type="button"
                   class="btn btn-ghost btn-xs btn-square"
                   :aria-label="`Duplicate ${doc.title || 'Untitled'}`"
-                  title="Duplicate"
+                  :title="showTooltips ? 'Duplicate' : undefined"
                   @click.stop="documentDuplicated(doc.id)"
                 >
                   <DocumentDuplicateIcon class="h-4 w-4" />
@@ -209,7 +275,7 @@ function trapFocus(event: KeyboardEvent) {
                   type="button"
                   class="btn btn-ghost btn-xs btn-square text-error"
                   :aria-label="`Delete ${doc.title || 'Untitled'}`"
-                  title="Delete"
+                  :title="showTooltips ? 'Delete' : undefined"
                   @click.stop="requestDelete(doc.id, $event)"
                 >
                   <TrashIcon class="h-4 w-4" />

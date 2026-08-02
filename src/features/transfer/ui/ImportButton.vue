@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ArrowUpTrayIcon } from '@heroicons/vue/24/outline'
+import { useUnit } from 'effector-vue/composition'
+
+import { $showTooltips } from '@/features/settings'
 
 import { ACCEPTED_EXTENSIONS_LIST, ACCEPTED_INPUT_ATTR } from '../lib/fileValidation'
 import { filePickerFilesSelected } from '../model/transfer'
 
+const showTooltips = useUnit($showTooltips)
 const input = ref<HTMLInputElement | null>(null)
 
 function openPicker(): void {
@@ -26,7 +30,7 @@ function handleChange(event: Event): void {
     type="button"
     class="btn btn-ghost btn-sm btn-square print:hidden"
     aria-label="Import document"
-    :title="`Import (${ACCEPTED_EXTENSIONS_LIST})`"
+    :title="showTooltips ? `Import (${ACCEPTED_EXTENSIONS_LIST})` : undefined"
     @click="openPicker"
   >
     <ArrowUpTrayIcon class="h-4 w-4" />

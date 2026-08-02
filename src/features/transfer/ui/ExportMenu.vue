@@ -7,6 +7,9 @@ import {
   ClipboardDocumentIcon,
   ClipboardDocumentCheckIcon,
 } from '@heroicons/vue/24/outline'
+import { useUnit } from 'effector-vue/composition'
+
+import { $showTooltips } from '@/features/settings'
 
 import {
   exportMarkdownRequested,
@@ -15,6 +18,8 @@ import {
   copyMarkdownRequested,
   copyHtmlRequested,
 } from '../model/transfer'
+
+const showTooltips = useUnit($showTooltips)
 
 // daisyUI's dropdown is CSS-only (`:focus-within`), so the only JS needed
 // is closing it after a choice is made — blurring the currently-focused
@@ -53,7 +58,7 @@ function handleCopyHtml(): void {
       tabindex="0"
       class="btn btn-ghost btn-sm btn-square"
       aria-label="Export document"
-      title="Export"
+      :title="showTooltips ? 'Export' : undefined"
     >
       <ArrowDownTrayIcon class="h-4 w-4" />
     </button>

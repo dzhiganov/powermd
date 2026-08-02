@@ -4,7 +4,7 @@ import { useUnit } from 'effector-vue/composition'
 
 import { useMediaQuery } from '@/shared/lib/useMediaQuery'
 import { DocumentDrawer } from '@/features/documents'
-import { SettingsModal, ShortcutsModal } from '@/features/settings'
+import { SettingsModal, ShortcutsModal, $showTooltips, $drawerSide } from '@/features/settings'
 import { WordCount } from '@/features/editor'
 
 import Toolbar from './Toolbar.vue'
@@ -20,6 +20,11 @@ const splitRatio = useUnit($splitRatio)
 // persisted desktop preference) so tapping a tab in MobileTabs.vue can't
 // overwrite it — see `layout.ts`.
 const mobileTab = useUnit($mobileTab)
+// `DocumentDrawer` (in the `documents` feature) never imports `settings`
+// directly — see its own doc comment — so both preferences are read here,
+// the drawer's single mounting site, and passed down as props.
+const showTooltips = useUnit($showTooltips)
+const drawerSide = useUnit($drawerSide)
 
 // Tailwind's default `md` breakpoint (768px) — below it there isn't room
 // for a resizable split, so the layout switches to Editor|Preview tabs.
@@ -52,20 +57,31 @@ const singlePane = computed(() => !showSplitter.value)
   <div
     class="relative flex h-dvh flex-col overflow-hidden bg-base-100 print:block print:h-auto print:overflow-visible"
   >
-    <DocumentDrawer />
     <SettingsModal />
     <ShortcutsModal />
     <Toolbar />
     <MobileTabs v-show="!isDesktop" />
 
-    <main
-      class="flex min-h-0 flex-1 overflow-hidden print:block print:h-auto print:min-h-0 print:overflow-visible"
-      :style="{ '--split-ratio': splitRatio }"
+    <!-- Docked-drawer row: on desktop, `DocumentDrawer` is a real flex item
+         here (see its own `md:static`/`md:w-*` rework) that shares this row
+         with `<main>`, so opening/closing it actually resizes the
+         editor/preview panes rather than overlaying them. On mobile the
+         drawer is `fixed`, so it renders outside this row's flow — this
+         wrapper is only ever a single-child (`<main>`) box there. -->
+    <div
+      class="flex min-h-0 flex-1 overflow-hidden print:block print:h-auto print:overflow-visible"
     >
-      <EditorPane v-show="showEditor" :style="editorInlineStyle" :centered="singlePane" />
-      <Splitter v-show="showSplitter" />
-      <PreviewPane v-show="showPreview" :centered="singlePane" />
-    </main>
+      <DocumentDrawer :show-tooltips="showTooltips" :side="drawerSide" />
+
+      <main
+        class="flex min-h-0 flex-1 overflow-hidden print:block print:h-auto print:min-h-0 print:overflow-visible"
+        :style="{ '--split-ratio': splitRatio }"
+      >
+        <EditorPane v-show="showEditor" :style="editorInlineStyle" :centered="singlePane" />
+        <Splitter v-show="showSplitter" />
+        <PreviewPane v-show="showPreview" :centered="singlePane" />
+      </main>
+    </div>
 
     <footer
       class="flex h-6 shrink-0 items-center justify-end border-t border-base-300 bg-base-200 px-3 print:hidden"

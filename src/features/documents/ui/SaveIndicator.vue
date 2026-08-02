@@ -4,6 +4,10 @@ import { useUnit } from 'effector-vue/composition'
 
 import { $saveStatus } from '../model/documents'
 
+// See `DrawerToggleButton.vue` for why this is a prop rather than a direct
+// `@/features/settings` import.
+defineProps<{ showTooltips?: boolean }>()
+
 const status = useUnit($saveStatus)
 
 const label = computed(() => {
@@ -33,7 +37,7 @@ const hint = computed(() =>
       'text-error': status === 'error',
       'text-base-content/50': status !== 'error',
     }"
-    :title="hint"
+    :title="showTooltips ? hint : undefined"
     role="status"
     aria-live="polite"
   >

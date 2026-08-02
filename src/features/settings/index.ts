@@ -28,3 +28,11 @@ export {
   helpOpened,
   helpClosed,
 } from './model/dialogs'
+
+export {
+  $showTooltips,
+  showTooltipsToggled,
+  $drawerSide,
+  drawerSideChanged,
+} from './model/uiPreferences'
+export type { DrawerSide } from './model/uiPreferences'

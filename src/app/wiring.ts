@@ -23,13 +23,17 @@ import {
   activeDocumentEdited,
   activeDocumentLoaded,
   documentImported,
+  documentSelected,
+  documentCreated,
+  documentDuplicated,
+  drawerClosed,
   saveRequested,
   autosaveIntervalChanged,
   $activeId,
   $activeDocument,
 } from '@/features/documents'
 import { initTransfer, markdownFileImported, exportSourceChanged } from '@/features/transfer'
-import { $viewMode, viewModeChanged } from '@/features/layout'
+import { $viewMode, viewModeChanged, $isDesktop } from '@/features/layout'
 import type { ViewMode } from '@/features/layout'
 import {
   $lineWrapEnabled as $lineWrapPreference,
@@ -95,6 +99,22 @@ sample({
 sample({
   clock: activeDocumentLoaded,
   target: loadContent,
+})
+
+// --- documents <-> layout ----------------------------------------------------
+//
+// On the docked desktop sidebar, picking/creating/duplicating/importing a
+// document must NOT auto-close the drawer — that would fight the user's own
+// persisted open/closed choice (see `features/documents/ui/DocumentDrawer.vue`'s
+// docked/overlay rework). On mobile the drawer is still a full-screen
+// overlay, so the original "auto-close after picking a document" UX is kept.
+// `documents` has no notion of `layout`'s desktop/mobile breakpoint, so this
+// lives here rather than as a reducer inside `documents`' own model.
+sample({
+  clock: [documentSelected, documentCreated, documentDuplicated, documentImported],
+  source: $isDesktop,
+  filter: (isDesktop) => !isDesktop,
+  target: drawerClosed,
 })
 
 // --- documents <-> transfer -------------------------------------------------

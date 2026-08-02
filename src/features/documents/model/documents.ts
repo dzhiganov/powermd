@@ -1,6 +1,8 @@
 import { combine, createEffect, createEvent, createStore, sample } from 'effector'
 import { debounce } from 'patronum'
 
+import { readStorage, writeStorage } from '@/shared/lib/storage'
+
 import * as db from '../lib/db'
 import { createId } from '../lib/id'
 import { deriveTitle } from '../lib/title'
@@ -23,6 +25,10 @@ const AUTOSAVE_MS = 500
  * synchronous — so it is the safety net for "edited, then reloaded/closed
  * before the debounce (or the unload flush) landed". */
 const PENDING_SAVE_KEY = 'markdown-editor:pendingSave'
+
+/** localStorage key for the drawer's persisted open/closed state — see
+ * `$drawerOpen` below. */
+const DRAWER_OPEN_KEY = 'markdown-editor:drawer-open'
 
 // --- Public intents (fired from UI / wiring) -----------------------------
 
@@ -135,6 +141,15 @@ function mostRecent(docs: MarkdownDocument[]): MarkdownDocument {
   return docs.reduce((latest, doc) => (doc.updatedAt > latest.updatedAt ? doc : latest))
 }
 
+/** The drawer defaults to *open* (see `DocumentDrawer.vue`'s docked/overlay
+ * rework) — an unset key means "never closed it", not "closed". Once the
+ * user closes it, that choice persists across reloads. */
+function readInitialDrawerOpen(): boolean {
+  const stored = readStorage(DRAWER_OPEN_KEY)
+  if (stored === null) return true
+  return stored === 'true'
+}
+
 /** Reads the localStorage mirror of `$pendingSave`, if any. Defensive about
  * a missing/unavailable `localStorage` and about malformed JSON — this is a
  * best-effort recovery path, never a hard dependency. */
@@ -182,7 +197,7 @@ export const $documents = createStore<MarkdownDocument[]>([])
 export const $activeId = createStore<string | null>(null)
 /** Id awaiting delete confirmation, or null when no confirm is open. */
 export const $pendingDelete = createStore<string | null>(null)
-export const $drawerOpen = createStore(false)
+export const $drawerOpen = createStore(readInitialDrawerOpen())
 
 /**
  * The pending (not-yet-persisted) document snapshot, id captured at edit
@@ -584,8 +599,11 @@ $documents.on(documentBroadcastReceived, (docs, message) => {
 })
 
 // --- Selecting a document ------------------------------------------------
-
-$drawerOpen.on(documentSelected, () => false)
+//
+// On mobile, selecting/creating/duplicating/importing a document also closes
+// the (overlay) drawer — but that decision needs `layout`'s desktop/mobile
+// breakpoint, which this feature has no notion of, so it's wired in
+// `src/app/wiring.ts` instead of reduced here directly.
 
 // Resolve a selection against the *current* (pre-switch) state in one pure
 // step, then apply it downstream. `$activeId` is deliberately NOT reduced
@@ -659,7 +677,8 @@ sample({
 
 $documents.on(documentAdded, (docs, doc) => [doc, ...docs])
 $activeId.on(documentAdded, (_, doc) => doc.id)
-$drawerOpen.on(documentAdded, () => false)
+// Mobile-only auto-close on creation is wired in `src/app/wiring.ts` (see
+// the "Selecting a document" comment above) — not reduced here.
 // A brand-new id can't already have a record on disk, so there's no
 // meaningful "base" to protect against — 0 always satisfies the guard.
 sample({
@@ -679,9 +698,12 @@ sample({
   fn: (docs, { id, title }): MarkdownDocument => {
     const existing = docs.find((doc) => doc.id === id) as MarkdownDocument
     const trimmed = title.trim()
+    // An empty rename falls back to "Untitled", not the pre-rename title —
+    // silently keeping the old title would look like the rename was
+    // accepted while actually discarding it.
     return {
       ...existing,
-      title: trimmed === '' ? existing.title : trimmed,
+      title: trimmed === '' ? 'Untitled' : trimmed,
       updatedAt: Date.now(),
     }
   },
@@ -768,6 +790,12 @@ sample({
 // --- Drawer --------------------------------------------------------------
 
 $drawerOpen.on(drawerToggled, (open) => !open).on(drawerClosed, () => false)
+
+const persistDrawerOpenFx = createEffect((open: boolean) => {
+  writeStorage(DRAWER_OPEN_KEY, String(open))
+})
+
+sample({ clock: $drawerOpen, target: persistDrawerOpenFx })
 
 // --- Init ----------------------------------------------------------------
 

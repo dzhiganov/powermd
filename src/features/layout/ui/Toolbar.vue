@@ -12,14 +12,15 @@ import {
 } from '@heroicons/vue/24/solid'
 import type { Component } from 'vue'
 
-import { ThemeToggle, HelpButton, SettingsButton } from '@/features/settings'
-import { DocumentMenuButton, SaveIndicator } from '@/features/documents'
+import { ThemeToggle, HelpButton, SettingsButton, $showTooltips } from '@/features/settings'
+import { DrawerToggleButton, DocumentTitle, SaveIndicator } from '@/features/documents'
 import { ImportButton, ExportMenu } from '@/features/transfer'
 
 import { $viewMode, viewModeChanged } from '../model/layout'
 import type { ViewMode } from '../model/layout'
 
 const viewMode = useUnit($viewMode)
+const showTooltips = useUnit($showTooltips)
 
 interface ViewModeOption {
   value: ViewMode
@@ -52,9 +53,10 @@ const viewModeOptions: ViewModeOption[] = [
   <header
     class="flex h-12 shrink-0 items-center justify-between border-b border-base-300 bg-base-200 px-4 print:hidden"
   >
-    <div class="flex min-w-0 items-center gap-2">
-      <DocumentMenuButton />
-      <SaveIndicator class="hidden sm:flex" />
+    <div class="flex min-w-0 items-center gap-1">
+      <DrawerToggleButton :show-tooltips="showTooltips" />
+      <DocumentTitle :show-tooltips="showTooltips" />
+      <SaveIndicator class="hidden sm:flex" :show-tooltips="showTooltips" />
     </div>
 
     <div class="flex items-center gap-1.5">
@@ -67,7 +69,7 @@ const viewModeOptions: ViewModeOption[] = [
           :class="{ 'btn-active': viewMode === option.value }"
           :aria-pressed="viewMode === option.value"
           :aria-label="option.label"
-          :title="option.label"
+          :title="showTooltips ? option.label : undefined"
           @click="viewModeChanged(option.value)"
         >
           <component

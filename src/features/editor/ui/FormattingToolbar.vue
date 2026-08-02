@@ -16,6 +16,8 @@ import {
 import type { Component } from 'vue'
 import type { EditorView } from '@codemirror/view'
 
+import { $showTooltips } from '@/features/settings'
+
 import { $editorView } from '../model/view'
 import {
   toggleWrapInline,
@@ -36,6 +38,7 @@ import {
 // exposing it directly). `runAction` below reads the live instance
 // imperatively off the store instead, at the moment it's actually needed.
 const hasView = useUnit($editorView.map((view) => view !== null))
+const showTooltips = useUnit($showTooltips)
 
 interface ToolbarAction {
   id: string
@@ -132,7 +135,7 @@ function runAction(action: ToolbarAction, index: number) {
       class="btn btn-ghost btn-xs btn-square"
       :tabindex="focusedIndex === index ? 0 : -1"
       :aria-label="action.label"
-      :title="action.label"
+      :title="showTooltips ? action.label : undefined"
       :disabled="!hasView"
       @click="runAction(action, index)"
       @keydown="handleKeydown($event, index)"

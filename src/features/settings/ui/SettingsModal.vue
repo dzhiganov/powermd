@@ -25,6 +25,12 @@ import {
   READING_WIDTH_MAX,
 } from '../model/editorPreferences'
 import { $settingsOpen, settingsClosed } from '../model/dialogs'
+import {
+  $showTooltips,
+  showTooltipsToggled,
+  $drawerSide,
+  drawerSideChanged,
+} from '../model/uiPreferences'
 
 const open = useUnit($settingsOpen)
 const fontSize = useUnit($editorFontSize)
@@ -32,6 +38,8 @@ const fontFamily = useUnit($editorFontFamily)
 const lineWrap = useUnit($lineWrapEnabled)
 const autosaveMs = useUnit($autosaveDebounceMs)
 const readingWidth = useUnit($readingWidthCh)
+const showTooltips = useUnit($showTooltips)
+const drawerSide = useUnit($drawerSide)
 
 const dialogRef = ref<HTMLElement | null>(null)
 const firstControlRef = ref<HTMLElement | null>(null)
@@ -137,6 +145,17 @@ function handleReadingWidthInput(event: Event) {
           />
         </label>
 
+        <label class="flex items-center justify-between">
+          <span class="text-sm text-base-content">Show tooltips</span>
+          <input
+            type="checkbox"
+            class="toggle toggle-sm"
+            :checked="showTooltips"
+            aria-label="Show tooltips"
+            @change="showTooltipsToggled()"
+          />
+        </label>
+
         <label class="flex flex-col gap-1">
           <span class="text-sm text-base-content">Autosave delay — {{ autosaveMs }}ms</span>
           <input
@@ -163,6 +182,32 @@ function handleReadingWidthInput(event: Event) {
             @input="handleReadingWidthInput"
           />
         </label>
+
+        <div class="flex flex-col gap-1">
+          <span id="settings-drawer-side-label" class="text-sm text-base-content"
+            >Documents panel side</span
+          >
+          <div class="join" role="group" aria-labelledby="settings-drawer-side-label">
+            <button
+              type="button"
+              class="btn join-item btn-sm"
+              :class="{ 'btn-active': drawerSide === 'left' }"
+              :aria-pressed="drawerSide === 'left'"
+              @click="drawerSideChanged('left')"
+            >
+              Left
+            </button>
+            <button
+              type="button"
+              class="btn join-item btn-sm"
+              :class="{ 'btn-active': drawerSide === 'right' }"
+              :aria-pressed="drawerSide === 'right'"
+              @click="drawerSideChanged('right')"
+            >
+              Right
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
