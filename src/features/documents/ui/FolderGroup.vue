@@ -60,7 +60,7 @@ watch(renaming, async (isRenaming) => {
 
 <template>
   <li>
-    <div class="group flex w-full items-center gap-1 py-0.5">
+    <div class="group folder-row flex w-full items-center gap-1 py-0.5">
       <button
         type="button"
         class="btn btn-ghost btn-xs btn-square shrink-0"
@@ -130,3 +130,14 @@ watch(renaming, async (isRenaming) => {
     </ul>
   </li>
 </template>
+
+<style scoped>
+/* Same daisyUI `.menu` `:active` defect as `DocumentRow.vue` — see that
+ * file's `<style>` comment for the root cause. This row wrapper is also a
+ * direct, non-`.btn` child of a `.menu`'s `<li>`, so it needs the same
+ * theme-adaptive override. */
+.folder-row:active {
+  background-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
+  color: var(--color-base-content);
+}
+</style>

@@ -1,15 +1,6 @@
 <script setup lang="ts">
 import { useUnit } from 'effector-vue/composition'
-import {
-  DocumentTextIcon as DocumentTextIconOutline,
-  EyeIcon as EyeIconOutline,
-  ViewColumnsIcon as ViewColumnsIconOutline,
-} from '@heroicons/vue/24/outline'
-import {
-  DocumentTextIcon as DocumentTextIconSolid,
-  EyeIcon as EyeIconSolid,
-  ViewColumnsIcon as ViewColumnsIconSolid,
-} from '@heroicons/vue/24/solid'
+import { DocumentTextIcon, EyeIcon, ViewColumnsIcon } from '@heroicons/vue/24/outline'
 import type { Component } from 'vue'
 
 import { ThemeToggle, HelpButton, SettingsButton, $showTooltips } from '@/features/settings'
@@ -33,27 +24,19 @@ const showTooltips = useUnit($showTooltips)
 interface ViewModeOption {
   value: ViewMode
   label: string
-  iconOutline: Component
-  iconSolid: Component
+  icon: Component
 }
 
 // Order matches how the switcher reads left to right: editor | both | view.
-// The active segment swaps to the filled icon variant so the pressed state
-// reads from icon shape, not just background/border tint (see toolbar spec).
+// All three segments stay on the outline icon variant in both states (the
+// user doesn't want the icon shape to change) — the active segment is
+// instead distinguished with a `btn-primary` fill, which reads as a much
+// stronger, unambiguous background change than daisyUI's own subtle
+// `btn-active` (base-200 mixed with 5% black) would on its own.
 const viewModeOptions: ViewModeOption[] = [
-  {
-    value: 'editor',
-    label: 'Only editor',
-    iconOutline: DocumentTextIconOutline,
-    iconSolid: DocumentTextIconSolid,
-  },
-  {
-    value: 'split',
-    label: 'Both',
-    iconOutline: ViewColumnsIconOutline,
-    iconSolid: ViewColumnsIconSolid,
-  },
-  { value: 'preview', label: 'Only view', iconOutline: EyeIconOutline, iconSolid: EyeIconSolid },
+  { value: 'editor', label: 'Only editor', icon: DocumentTextIcon },
+  { value: 'split', label: 'Both', icon: ViewColumnsIcon },
+  { value: 'preview', label: 'Only view', icon: EyeIcon },
 ]
 </script>
 
@@ -81,16 +64,13 @@ const viewModeOptions: ViewModeOption[] = [
           :key="option.value"
           type="button"
           class="btn join-item btn-xs"
-          :class="{ 'btn-active': viewMode === option.value }"
+          :class="{ 'btn-primary': viewMode === option.value }"
           :aria-pressed="viewMode === option.value"
           :aria-label="option.label"
           :title="showTooltips ? option.label : undefined"
           @click="viewModeChanged(option.value)"
         >
-          <component
-            :is="viewMode === option.value ? option.iconSolid : option.iconOutline"
-            class="h-3.5 w-3.5"
-          />
+          <component :is="option.icon" class="h-3.5 w-3.5" />
         </button>
       </div>
 

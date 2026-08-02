@@ -114,7 +114,10 @@ function handleMoveMenuKeydown(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="group flex w-full items-center gap-1 p-0" :class="active ? 'bg-primary/15' : ''">
+  <div
+    class="group doc-row flex w-full items-center gap-1 p-0"
+    :class="active ? 'bg-primary/15' : ''"
+  >
     <input
       v-if="renaming"
       ref="renameInputRef"
@@ -193,7 +196,7 @@ function handleMoveMenuKeydown(event: KeyboardEvent) {
             <button
               type="button"
               role="menuitem"
-              class="text-sm"
+              class="move-menu-item text-sm"
               :disabled="doc.folderId === null"
               @click.stop="moveTo(null)"
             >
@@ -204,7 +207,7 @@ function handleMoveMenuKeydown(event: KeyboardEvent) {
             <button
               type="button"
               role="menuitem"
-              class="truncate text-sm"
+              class="move-menu-item truncate text-sm"
               :disabled="doc.folderId === folder.id"
               @click.stop="moveTo(folder.id)"
             >
@@ -216,3 +219,33 @@ function handleMoveMenuKeydown(event: KeyboardEvent) {
     </template>
   </div>
 </template>
+
+<style scoped>
+/*
+ * BUG (5th occurrence of this class in the project): both `.doc-row` and
+ * `.move-menu-item` are direct children of a daisyUI `<li>` inside a
+ * `<ul class="menu">`, and neither carries a `.btn` class. daisyUI's menu
+ * component styles that shape on `:active` with `--menu-active-bg:
+ * var(--color-neutral)` / `--menu-active-fg: var(--color-neutral-content)`
+ * — both near-black/near-white and *identical in the light and dark themes*
+ * (see `node_modules/daisyui/theme/{light,dark}.css`). `:active` also
+ * applies to ancestors of whatever descendant is actually pressed (e.g. the
+ * title button, which isn't `.btn` either), so pressing anywhere in the row
+ * triggered daisyUI's dark/light-inverted flash regardless of the app's
+ * theme.
+ *
+ * Fix: an explicit, theme-adaptive `:active` rule per the shared `ink()`/
+ * `Splitter.vue` convention (raw `var(--color-*)`, un-`@layer`-ed scoped
+ * CSS, which — per the CSS cascade-layers spec — always wins over daisyUI's
+ * layered rule regardless of layer order or selector specificity). The
+ * alpha-blend formula matches Tailwind's own `bg-primary/15` (used for the
+ * resting *selected* row) at double the strength, so pressed reads as a
+ * stronger, clearly distinct step up from both resting-selected (15%) and
+ * daisyUI's hover tint (10% base-content, untouched here) in both themes.
+ */
+.doc-row:active,
+.move-menu-item:active {
+  background-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
+  color: var(--color-base-content);
+}
+</style>
