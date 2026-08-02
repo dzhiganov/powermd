@@ -179,110 +179,129 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
     <!-- Below `md`: a fixed overlay, sliding in from `side` with a backdrop
          (unchanged from before). At `md` and up: a docked sidebar that
          participates in `AppShell.vue`'s layout — `md:static` drops it out
-         of fixed positioning, and `md:w-80`/`md:w-0` (rather than a
-         transform) is what actually reclaims/cedes width for the
-         editor/preview panes as it opens/closes; a transform alone would
-         keep the reserved layout space even while slid off-screen. -->
+         of fixed positioning.
+
+         This element is a pure *space-reclaiming clip box* — it owns the
+         width that grows/shrinks (`md:w-80`/`md:w-0`) so the editor/preview
+         panes actually resize as the drawer opens/closes, and
+         `md:overflow-hidden` clips the panel while that width animates. It
+         deliberately owns NO visual chrome and NO movement of its own: the
+         inner panel below is what slides and what renders the content, so
+         nothing here ever changes the panel's own box and nothing here
+         forces the panel's children to reflow. On mobile this element's
+         width never changes (only the `md:w-*` pair does), so there's no
+         width animation to reclaim space from at all — the overlay is
+         `fixed` and out of flow already. -->
     <aside
-      class="fixed inset-y-0 z-50 flex w-80 max-w-[85vw] flex-col border-base-300 bg-base-200 shadow-xl transition-[width,transform] duration-200 ease-out print:hidden md:static md:z-auto md:max-w-none md:shrink-0 md:overflow-hidden md:shadow-none"
-      :class="[
-        side === 'right' ? 'right-0 order-2 border-l' : 'left-0 border-r',
-        open
-          ? 'translate-x-0 md:w-80'
-          : side === 'right'
-            ? 'translate-x-full md:w-0'
-            : '-translate-x-full md:w-0',
-      ]"
+      class="fixed inset-y-0 z-50 w-80 max-w-[85vw] transition-none print:hidden md:static md:z-auto md:max-w-none md:shrink-0 md:overflow-hidden md:transition-[width] md:duration-300 md:ease-out motion-reduce:md:transition-none"
+      :class="[side === 'right' ? 'right-0 order-2' : 'left-0', open ? 'md:w-80' : 'md:w-0']"
       :aria-hidden="!open"
       :inert="!open"
       aria-label="Documents"
     >
-      <!-- No heading text and no close button — the drawer is opened and
-           closed from the toolbar's toggle (and, on mobile, the backdrop),
-           not from a control in here (see `DrawerToggleButton.vue`). The
-           accessible name for the region now lives solely on the `<aside>`
-           below via `aria-label="Documents"`; it must stay there since
-           there's no visible heading to fall back on. Fixed left-aligned
-           layout — this header no longer mirrors with `side`, matching the
-           toolbar above it. -->
-      <header class="flex h-12 shrink-0 items-center gap-1 border-b border-base-300 px-3">
-        <button
-          type="button"
-          class="btn btn-ghost btn-sm btn-square"
-          aria-label="New folder"
-          :title="showTooltips ? 'New folder' : undefined"
-          @click="startCreateFolder"
-        >
-          <FolderPlusIcon class="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          class="btn btn-primary btn-sm gap-1"
-          aria-label="New document"
-          @click="documentCreated()"
-        >
-          <PlusIcon class="h-4 w-4" />
-          New
-        </button>
-      </header>
-
-      <!-- Blocked-upgrade notice: see `db.subscribeToDatabaseBlocked` /
-           `$dbBlocked`'s doc comment. Deliberately visible and specific
-           (not folded into the generic "storage unavailable" state) —
-           this is the recoverable case where closing another tab fixes
-           it. -->
+      <!-- The actual panel: a *constant* width (`w-80 max-w-[85vw]`, never
+           overridden per breakpoint or open state) so its children never
+           reflow — it is effectively pre-rendered off-screen and only ever
+           moves. Movement is `transform: translateX(...)` only (composited,
+           no layout impact), on the same duration/easing as the wrapper's
+           width transition above so the slide and the space reclamation
+           stay in sync. All visual chrome (border, shadow, background)
+           lives here rather than on the clip box, since this is the box
+           that's actually visible. -->
       <div
-        v-if="dbBlocked"
-        class="border-b border-warning/40 bg-warning/10 px-3 py-2 text-xs"
-        :style="{ color: ink('--color-warning') }"
-        role="status"
-        aria-live="polite"
+        class="flex h-full w-80 max-w-[85vw] flex-col border-base-300 bg-base-200 shadow-xl transition-transform duration-300 ease-out motion-reduce:transition-none md:max-w-none md:shadow-none"
+        :class="[
+          side === 'right' ? 'border-l' : 'border-r',
+          open ? 'translate-x-0' : side === 'right' ? 'translate-x-full' : '-translate-x-full',
+        ]"
       >
-        Another tab has this app open with an older version, so your documents couldn't load. Close
-        that tab, then reload this page.
-      </div>
+        <!-- No heading text and no close button — the drawer is opened and
+             closed from the toolbar's toggle (and, on mobile, the backdrop),
+             not from a control in here (see `DrawerToggleButton.vue`). The
+             accessible name for the region now lives solely on the `<aside>`
+             above via `aria-label="Documents"`; it must stay there since
+             there's no visible heading to fall back on. Fixed left-aligned
+             layout — this header no longer mirrors with `side`, matching the
+             toolbar above it. -->
+        <header class="flex h-12 shrink-0 items-center gap-1 border-b border-base-300 px-3">
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm btn-square"
+            aria-label="New folder"
+            :title="showTooltips ? 'New folder' : undefined"
+            @click="startCreateFolder"
+          >
+            <FolderPlusIcon class="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm gap-1"
+            aria-label="New document"
+            @click="documentCreated()"
+          >
+            <PlusIcon class="h-4 w-4" />
+            New
+          </button>
+        </header>
 
-      <!-- `w-full` overrides daisyUI's `.menu { width: fit-content }`, which
-           otherwise shrinks the list to its longest title instead of filling
-           the drawer. -->
-      <ul class="menu min-h-0 w-full flex-1 flex-nowrap gap-1 overflow-y-auto p-2">
-        <li v-if="creatingFolder">
-          <input
-            ref="newFolderInputRef"
-            v-model="newFolderName"
-            type="text"
-            class="input input-sm w-full"
-            placeholder="Folder name"
-            aria-label="New folder name"
-            @keydown.enter.prevent="commitCreateFolder"
-            @keydown.esc.prevent="cancelCreateFolder"
-            @blur="commitCreateFolder"
-          />
-        </li>
+        <!-- Blocked-upgrade notice: see `db.subscribeToDatabaseBlocked` /
+             `$dbBlocked`'s doc comment. Deliberately visible and specific
+             (not folded into the generic "storage unavailable" state) —
+             this is the recoverable case where closing another tab fixes
+             it. -->
+        <div
+          v-if="dbBlocked"
+          class="border-b border-warning/40 bg-warning/10 px-3 py-2 text-xs"
+          :style="{ color: ink('--color-warning') }"
+          role="status"
+          aria-live="polite"
+        >
+          Another tab has this app open with an older version, so your documents couldn't load.
+          Close that tab, then reload this page.
+        </div>
 
-        <FolderGroup
-          v-for="folder in sortedFolders"
-          :key="folder.id"
-          :folder="folder"
-          :documents="documentsInFolder(folder.id)"
-          :all-folders="folders"
-          :active-id="activeId"
-          :collapsed="isCollapsed(folder.id)"
-          :show-tooltips="showTooltips"
-          @delete-requested="folderDeleteRequested(folder.id)"
-          @document-delete-requested="requestDelete"
-        />
+        <!-- `w-full` overrides daisyUI's `.menu { width: fit-content }`, which
+             otherwise shrinks the list to its longest title instead of filling
+             the drawer. -->
+        <ul class="menu min-h-0 w-full flex-1 flex-nowrap gap-1 overflow-y-auto p-2">
+          <li v-if="creatingFolder">
+            <input
+              ref="newFolderInputRef"
+              v-model="newFolderName"
+              type="text"
+              class="input input-sm w-full"
+              placeholder="Folder name"
+              aria-label="New folder name"
+              @keydown.enter.prevent="commitCreateFolder"
+              @keydown.esc.prevent="cancelCreateFolder"
+              @blur="commitCreateFolder"
+            />
+          </li>
 
-        <li v-for="doc in rootDocuments" :key="doc.id">
-          <DocumentRow
-            :doc="doc"
-            :active="doc.id === activeId"
-            :folders="folders"
+          <FolderGroup
+            v-for="folder in sortedFolders"
+            :key="folder.id"
+            :folder="folder"
+            :documents="documentsInFolder(folder.id)"
+            :all-folders="folders"
+            :active-id="activeId"
+            :collapsed="isCollapsed(folder.id)"
             :show-tooltips="showTooltips"
-            @delete-requested="(event) => requestDelete(doc.id, event)"
+            @delete-requested="folderDeleteRequested(folder.id)"
+            @document-delete-requested="requestDelete"
           />
-        </li>
-      </ul>
+
+          <li v-for="doc in rootDocuments" :key="doc.id">
+            <DocumentRow
+              :doc="doc"
+              :active="doc.id === activeId"
+              :folders="folders"
+              :show-tooltips="showTooltips"
+              @delete-requested="(event) => requestDelete(doc.id, event)"
+            />
+          </li>
+        </ul>
+      </div>
     </aside>
 
     <!-- Delete confirmation (document). Deletion is irreversible, so it
