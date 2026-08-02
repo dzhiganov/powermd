@@ -16,7 +16,7 @@ import {
 import type { Component } from 'vue'
 import type { EditorView } from '@codemirror/view'
 
-import { $showTooltips } from '@/features/settings'
+import { $showTooltips, $showFormattingToolbar } from '@/features/settings'
 
 import { $editorView } from '../model/view'
 import {
@@ -39,6 +39,12 @@ import {
 // imperatively off the store instead, at the moment it's actually needed.
 const hasView = useUnit($editorView.map((view) => view !== null))
 const showTooltips = useUnit($showTooltips)
+// `v-show`, not `v-if`, on the root below — hiding this toolbar must never
+// unmount it. The formatting keyboard shortcuts (Mod-b, Mod-i, ...) are
+// registered on the CodeMirror keymap in `lib/shortcuts.ts`, entirely
+// independent of this component, so they keep working either way; this
+// only controls the visible button row.
+const showToolbar = useUnit($showFormattingToolbar)
 
 interface ToolbarAction {
   id: string
@@ -123,6 +129,7 @@ function runAction(action: ToolbarAction, index: number) {
 
 <template>
   <div
+    v-show="showToolbar"
     class="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-base-300 bg-base-200 px-2 py-1 print:hidden"
     role="toolbar"
     aria-label="Formatting"

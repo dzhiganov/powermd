@@ -34,5 +34,7 @@ export {
   showTooltipsToggled,
   $drawerSide,
   drawerSideChanged,
+  $showFormattingToolbar,
+  showFormattingToolbarToggled,
 } from './model/uiPreferences'
 export type { DrawerSide } from './model/uiPreferences'

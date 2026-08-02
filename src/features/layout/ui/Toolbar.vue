@@ -13,11 +13,18 @@ import {
 import type { Component } from 'vue'
 
 import { ThemeToggle, HelpButton, SettingsButton, $showTooltips } from '@/features/settings'
-import { DrawerToggleButton, DocumentTitle, SaveIndicator } from '@/features/documents'
+import { DrawerToggleButton, DocumentTitle } from '@/features/documents'
 import { ImportButton, ExportMenu } from '@/features/transfer'
 
 import { $viewMode, viewModeChanged } from '../model/layout'
 import type { ViewMode } from '../model/layout'
+
+// The drawer side ('left' | 'right') comes in as a prop rather than a
+// direct `@/features/settings` import — `layout` already reads
+// `$drawerSide` in `AppShell.vue` (the single mounting site) to thread it
+// to `DocumentDrawer.vue`, so it's threaded here the same way rather than
+// having two independent reads of the same store.
+withDefaults(defineProps<{ side?: 'left' | 'right' }>(), { side: 'right' })
 
 const viewMode = useUnit($viewMode)
 const showTooltips = useUnit($showTooltips)
@@ -50,16 +57,25 @@ const viewModeOptions: ViewModeOption[] = [
 </script>
 
 <template>
+  <!-- The drawer-toggle/title group tracks whichever side the drawer is
+       docked on (`side`), rather than always sitting at the toolbar's left
+       end — otherwise it visually points at empty space when the drawer is
+       on the right. `justify-between` still spreads exactly two groups to
+       the two ends; swapping which group is in DOM/visual `order` first is
+       what actually relocates them, so `side="right"` clusters both groups
+       at the right end (via `justify-end`) with the drawer group last —
+       "right of the other right-hand controls" — while `side="left"` keeps
+       the original spread-apart layout. -->
   <header
-    class="flex h-12 shrink-0 items-center justify-between border-b border-base-300 bg-base-200 px-4 print:hidden"
+    class="flex h-12 shrink-0 items-center gap-3 border-b border-base-300 bg-base-200 px-4 print:hidden"
+    :class="side === 'right' ? 'justify-end' : 'justify-between'"
   >
-    <div class="flex min-w-0 items-center gap-1">
+    <div class="flex min-w-0 items-center gap-1" :class="side === 'right' ? 'order-2' : 'order-1'">
       <DrawerToggleButton :show-tooltips="showTooltips" />
       <DocumentTitle :show-tooltips="showTooltips" />
-      <SaveIndicator class="hidden sm:flex" :show-tooltips="showTooltips" />
     </div>
 
-    <div class="flex items-center gap-1.5">
+    <div class="flex items-center gap-1.5" :class="side === 'right' ? 'order-1' : 'order-2'">
       <div class="join hidden md:flex" aria-label="View mode">
         <button
           v-for="option in viewModeOptions"

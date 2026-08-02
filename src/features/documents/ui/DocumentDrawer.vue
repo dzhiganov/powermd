@@ -197,9 +197,23 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
       :inert="!open"
       aria-label="Documents"
     >
-      <header class="flex h-12 shrink-0 items-center justify-between border-b border-base-300 px-3">
-        <span class="text-sm font-semibold text-base-content">Documents</span>
-        <div class="flex items-center gap-1">
+      <!-- Mirrors with `side`: the button cluster sits nearest the app
+           content (the side facing away from the viewport edge) rather
+           than always in the same corner, so it visibly matches whichever
+           side the drawer itself is docked on. `justify-between` still
+           spreads exactly the heading and the button cluster to the two
+           ends — as before — swapping their `order` is what relocates
+           them, so the two never collide regardless of `side`. -->
+      <header
+        class="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-base-300 px-3"
+      >
+        <span
+          class="text-sm font-semibold text-base-content"
+          :class="side === 'right' ? 'order-2' : 'order-1'"
+        >
+          Documents
+        </span>
+        <div class="flex items-center gap-1" :class="side === 'right' ? 'order-1' : 'order-2'">
           <button
             type="button"
             class="btn btn-ghost btn-sm btn-square"

@@ -30,6 +30,8 @@ import {
   showTooltipsToggled,
   $drawerSide,
   drawerSideChanged,
+  $showFormattingToolbar,
+  showFormattingToolbarToggled,
 } from '../model/uiPreferences'
 
 const open = useUnit($settingsOpen)
@@ -40,6 +42,7 @@ const autosaveMs = useUnit($autosaveDebounceMs)
 const readingWidth = useUnit($readingWidthCh)
 const showTooltips = useUnit($showTooltips)
 const drawerSide = useUnit($drawerSide)
+const showFormattingToolbar = useUnit($showFormattingToolbar)
 
 const dialogRef = ref<HTMLElement | null>(null)
 const firstControlRef = ref<HTMLElement | null>(null)
@@ -153,6 +156,17 @@ function handleReadingWidthInput(event: Event) {
             :checked="showTooltips"
             aria-label="Show tooltips"
             @change="showTooltipsToggled()"
+          />
+        </label>
+
+        <label class="flex items-center justify-between">
+          <span class="text-sm text-base-content">Show formatting toolbar</span>
+          <input
+            type="checkbox"
+            class="toggle toggle-sm"
+            :checked="showFormattingToolbar"
+            aria-label="Show formatting toolbar"
+            @change="showFormattingToolbarToggled()"
           />
         </label>
 

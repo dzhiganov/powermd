@@ -4,6 +4,7 @@ import { readStorage, writeStorage } from '@/shared/lib/storage'
 
 const SHOW_TOOLTIPS_KEY = 'markdown-editor:show-tooltips'
 const DRAWER_SIDE_KEY = 'markdown-editor:drawer-side'
+const SHOW_FORMATTING_TOOLBAR_KEY = 'markdown-editor:show-formatting-toolbar'
 
 export type DrawerSide = 'left' | 'right'
 
@@ -68,5 +69,27 @@ export const $drawerSide = createStore<DrawerSide>(readDrawerSide()).on(
 sample({
   clock: $drawerSide,
   fn: (side) => ({ key: DRAWER_SIDE_KEY, value: side }),
+  target: persistFx,
+})
+
+// --- Formatting toolbar ------------------------------------------------
+//
+// Disabled by default (per direct user feedback — the strip was always on
+// with no way to hide it). Consumed by `features/editor/ui/FormattingToolbar.vue`,
+// which imports this feature directly (same as `$showTooltips` above) — the
+// "no direct settings import" restriction only applies to `documents`, not
+// `editor`. Hidden with `v-show`, not `v-if`, so the CodeMirror `EditorView`
+// instance is never affected — its keymap-registered shortcuts (see
+// `features/editor/lib/shortcuts.ts`) keep working regardless of this
+// setting.
+
+export const showFormattingToolbarToggled = createEvent()
+export const $showFormattingToolbar = createStore<boolean>(
+  readBoolean(SHOW_FORMATTING_TOOLBAR_KEY, false),
+).on(showFormattingToolbarToggled, (enabled) => !enabled)
+
+sample({
+  clock: $showFormattingToolbar,
+  fn: (enabled) => ({ key: SHOW_FORMATTING_TOOLBAR_KEY, value: String(enabled) }),
   target: persistFx,
 })

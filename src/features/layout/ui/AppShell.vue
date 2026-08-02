@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useUnit } from 'effector-vue/composition'
 
 import { useMediaQuery } from '@/shared/lib/useMediaQuery'
-import { DocumentDrawer } from '@/features/documents'
+import { DocumentDrawer, SaveIndicator } from '@/features/documents'
 import { SettingsModal, ShortcutsModal, $showTooltips, $drawerSide } from '@/features/settings'
 import { WordCount } from '@/features/editor'
 
@@ -59,8 +59,14 @@ const singlePane = computed(() => !showSplitter.value)
   >
     <SettingsModal />
     <ShortcutsModal />
-    <Toolbar />
+    <Toolbar :side="drawerSide" />
     <MobileTabs v-show="!isDesktop" />
+    <!-- Fixed corner status indicator (see `SaveIndicator.vue`) — mounted
+         once here, not inside `Toolbar.vue`, since it's a viewport-corner
+         overlay rather than a toolbar-flow element. Anchored to the corner
+         opposite the docked drawer so it can never render over the
+         drawer's own controls, on either side. -->
+    <SaveIndicator :side="drawerSide" />
 
     <!-- Docked-drawer row: on desktop, `DocumentDrawer` is a real flex item
          here (see its own `md:static`/`md:w-*` rework) that shares this row
