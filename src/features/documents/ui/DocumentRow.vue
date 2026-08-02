@@ -137,7 +137,9 @@ function handleMoveMenuKeydown(event: KeyboardEvent) {
       >
         <span class="truncate text-sm">{{ doc.title || 'Untitled' }}</span>
       </button>
-      <span class="relative flex shrink-0 items-center pr-1">
+      <span
+        class="relative flex shrink-0 items-center pr-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 [@media(hover:none)]:opacity-100"
+      >
         <button
           type="button"
           class="btn btn-ghost btn-xs btn-square"
@@ -145,7 +147,7 @@ function handleMoveMenuKeydown(event: KeyboardEvent) {
           :title="showTooltips ? 'Rename' : undefined"
           @click.stop="startRename"
         >
-          <PencilSquareIcon class="h-4 w-4" />
+          <PencilSquareIcon class="h-3.5 w-3.5" />
         </button>
         <button
           type="button"
@@ -154,7 +156,7 @@ function handleMoveMenuKeydown(event: KeyboardEvent) {
           :title="showTooltips ? 'Duplicate' : undefined"
           @click.stop="documentDuplicated(doc.id)"
         >
-          <DocumentDuplicateIcon class="h-4 w-4" />
+          <DocumentDuplicateIcon class="h-3.5 w-3.5" />
         </button>
         <button
           ref="moveTriggerRef"
@@ -167,7 +169,7 @@ function handleMoveMenuKeydown(event: KeyboardEvent) {
           @click.stop="toggleMoveMenu"
           @keydown="handleMoveMenuKeydown"
         >
-          <FolderArrowDownIcon class="h-4 w-4" />
+          <FolderArrowDownIcon class="h-3.5 w-3.5" />
         </button>
         <button
           type="button"
@@ -176,7 +178,7 @@ function handleMoveMenuKeydown(event: KeyboardEvent) {
           :title="showTooltips ? 'Delete' : undefined"
           @click.stop="emit('delete-requested', $event)"
         >
-          <TrashIcon class="h-4 w-4" />
+          <TrashIcon class="h-3.5 w-3.5" />
         </button>
 
         <ul

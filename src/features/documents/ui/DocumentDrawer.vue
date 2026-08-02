@@ -226,20 +226,20 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
         <header class="flex h-12 shrink-0 items-center gap-1 border-b border-base-300 px-3">
           <button
             type="button"
-            class="btn btn-ghost btn-sm btn-square"
+            class="btn btn-ghost btn-xs btn-square"
             aria-label="New folder"
             :title="showTooltips ? 'New folder' : undefined"
             @click="startCreateFolder"
           >
-            <FolderPlusIcon class="h-4 w-4" />
+            <FolderPlusIcon class="h-3.5 w-3.5" />
           </button>
           <button
             type="button"
-            class="btn btn-primary btn-sm gap-1"
+            class="btn btn-primary btn-xs gap-1"
             aria-label="New document"
             @click="documentCreated()"
           >
-            <PlusIcon class="h-4 w-4" />
+            <PlusIcon class="h-3.5 w-3.5" />
             New
           </button>
         </header>

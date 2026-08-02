@@ -69,10 +69,10 @@ watch(renaming, async (isRenaming) => {
         :title="showTooltips ? (collapsed ? 'Expand folder' : 'Collapse folder') : undefined"
         @click="folderCollapseToggled(folder.id)"
       >
-        <ChevronRightIcon v-if="collapsed" class="h-4 w-4" />
-        <ChevronDownIcon v-else class="h-4 w-4" />
+        <ChevronRightIcon v-if="collapsed" class="h-3.5 w-3.5" />
+        <ChevronDownIcon v-else class="h-3.5 w-3.5" />
       </button>
-      <FolderIcon class="h-4 w-4 shrink-0 text-base-content/60" aria-hidden="true" />
+      <FolderIcon class="h-3.5 w-3.5 shrink-0 text-base-content/60" aria-hidden="true" />
       <input
         v-if="renaming"
         ref="renameInputRef"
@@ -92,7 +92,9 @@ watch(renaming, async (isRenaming) => {
       >
         {{ folder.name }}
       </button>
-      <span class="flex shrink-0 items-center pr-1">
+      <span
+        class="flex shrink-0 items-center pr-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 [@media(hover:none)]:opacity-100"
+      >
         <button
           type="button"
           class="btn btn-ghost btn-xs btn-square"
@@ -100,7 +102,7 @@ watch(renaming, async (isRenaming) => {
           :title="showTooltips ? 'Rename folder' : undefined"
           @click.stop="startRename"
         >
-          <PencilSquareIcon class="h-4 w-4" />
+          <PencilSquareIcon class="h-3.5 w-3.5" />
         </button>
         <button
           type="button"
@@ -109,7 +111,7 @@ watch(renaming, async (isRenaming) => {
           :title="showTooltips ? 'Delete folder' : undefined"
           @click.stop="emit('delete-requested', $event)"
         >
-          <TrashIcon class="h-4 w-4" />
+          <TrashIcon class="h-3.5 w-3.5" />
         </button>
       </span>
     </div>
