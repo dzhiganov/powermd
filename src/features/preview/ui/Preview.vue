@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useUnit } from 'effector-vue/composition'
 
 import { ink } from '@/shared/lib/ink'
 
 import { $html } from '../model/preview'
 import { previewScrollHandleMounted, previewScrollHandleUnmounted } from '../model/scrollHandle'
+import { renderMermaidDiagrams } from '../lib/mermaidRenderer'
 
 defineProps<{
   /** Constrains and centres the prose column to a comfortable reading
@@ -24,6 +25,40 @@ const html = useUnit($html)
 const scroller = ref<HTMLDivElement | null>(null)
 const content = ref<HTMLDivElement | null>(null)
 
+// Mermaid diagrams render on the main thread, after the fact — `$html`
+// is already sanitized, worker-rendered markup by the time it lands in
+// `v-html` below (see `lib/mermaidRenderer.ts` for why: the worker has
+// no DOM, mermaid needs one). `flush: 'post'` is what makes this safe to
+// read `content.value`'s *new* DOM from: it runs after Vue has actually
+// patched the `v-html` binding, not just after `html` changed in
+// Effector. Replacing a `pre` with a diagram (or an error box) inside
+// `content.value` is itself a DOM mutation under it, which the scroll-sync
+// feature's own `MutationObserver` (`scroll-sync/lib/syncSession.ts`,
+// observing `contentRoot` for `childList`/`subtree`/`characterData`)
+// already picks up — no separate anchor-invalidation wiring needed here,
+// the same way an `<img>` finishing loading already invalidates it today.
+watch(
+  html,
+  () => {
+    if (content.value) renderMermaidDiagrams(content.value)
+  },
+  { flush: 'post' },
+)
+
+// A markdown edit changes `$html` (handled above); a theme toggle alone
+// does not — `$html` only depends on the markdown source, not on
+// `data-theme`. Diagrams already rendered need re-rendering in the new
+// theme's resolved colours regardless (mermaid bakes seed colours into
+// the SVG at render time — see `mermaidTheme.ts` — rather than emitting
+// `var(...)` references a theme change could repaint for free), so this
+// watches the one thing that actually changes: the attribute
+// `features/settings/model/theme.ts` writes to `<html>`. A
+// `MutationObserver` here rather than importing `@/features/settings`'s
+// `$theme` store keeps this feature's theme-reactivity consistent with
+// how `ink.ts`/CodeMirror's own theming already work — off the DOM
+// attribute, not a cross-feature store dependency.
+let themeObserver: MutationObserver | null = null
+
 onMounted(() => {
   const scrollerEl = scroller.value
   const contentEl = content.value
@@ -33,10 +68,20 @@ onMounted(() => {
     getScroller: () => scrollerEl,
     getContentRoot: () => contentEl,
   })
+
+  themeObserver = new MutationObserver(() => {
+    if (content.value) renderMermaidDiagrams(content.value)
+  })
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme'],
+  })
 })
 
 onUnmounted(() => {
   previewScrollHandleUnmounted()
+  themeObserver?.disconnect()
+  themeObserver = null
 })
 
 // Bound into the scoped <style> below via `v-bind()` so the ratio behind
@@ -49,6 +94,10 @@ const titleColor = ink('--color-info')
 const numberColor = ink('--color-secondary')
 const attributeColor = ink('--color-warning')
 const deletionColor = ink('--color-error')
+// Reused below for the mermaid error box's heading — same semantic role
+// (`hljs-deletion` and "diagram failed to render" are both an error
+// accent), so this shares `deletionColor` rather than adding a second
+// `ink('--color-error')` binding for the same colour.
 </script>
 
 <template>
@@ -151,6 +200,70 @@ const deletionColor = ink('--color-error')
     white-space: pre-wrap;
     word-break: break-word;
   }
+
+  .markdown-preview :deep(.mermaid-diagram) {
+    overflow-x: visible;
+  }
+}
+
+/* Mermaid diagrams (`lib/mermaidRenderer.ts`) — rendered post-insertion,
+ * so this component never sees the actual `<svg>` markup at author time,
+ * only the two classNames that module hands out. `not-prose` (applied by
+ * the renderer itself, see that file) already keeps `prose`'s own
+ * element-tag selectors from reaching in here, so every rule needed for
+ * this content lives in this one block instead of being scattered across
+ * `prose` overrides above.
+ *
+ * `overflow-x: auto`, `display: block`: the same wide-content treatment
+ * `table`/`pre` already get above — a diagram can be considerably wider
+ * than the pane, and this is what keeps that scroll contained to the
+ * diagram itself rather than dragging the whole preview pane sideways
+ * (see the `table` rule's comment for why `display: block` is what makes
+ * `overflow-x` apply at all here). Margin matches `prose`'s own rhythm
+ * between block-level children so a diagram doesn't visually collide with
+ * the text around it despite opting out of `prose` itself. */
+.markdown-preview :deep(.mermaid-diagram) {
+  display: block;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.markdown-preview :deep(.mermaid-diagram__output svg) {
+  max-width: none;
+  height: auto;
+}
+
+/* Invalid/half-typed mermaid syntax (`renderErrorInto` in
+ * `lib/mermaidRenderer.ts`) — every piece of text here was built with
+ * `textContent`, not `innerHTML`, by that function, specifically because
+ * it can contain the untrusted, still-being-typed diagram source; this
+ * block is purely presentational. */
+.markdown-preview :deep(.mermaid-diagram__error) {
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-box, 0.5rem);
+  background: var(--color-base-200);
+  padding: 0.75em 1em;
+}
+
+.markdown-preview :deep(.mermaid-diagram__error-heading) {
+  margin: 0;
+  font-weight: 600;
+  color: v-bind(deletionColor);
+}
+
+.markdown-preview :deep(.mermaid-diagram__error-detail) {
+  margin: 0.35em 0 0;
+  font-size: 0.875em;
+  color: var(--color-base-content);
+}
+
+.markdown-preview :deep(.mermaid-diagram__error-source) {
+  margin: 0.6em 0 0;
+  overflow-x: auto;
+  border-radius: var(--radius-field, 0.375rem);
+  background: var(--color-base-300);
+  padding: 0.6em 0.8em;
+  font-size: 0.85em;
 }
 
 /* Fenced code blocks: same DaisyUI-mapped palette as the editor's

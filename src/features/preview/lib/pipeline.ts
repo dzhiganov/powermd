@@ -57,6 +57,23 @@ import { previewSchema } from './sanitizeSchema'
  *    the sanitizer, so they're never at risk of being stripped — without
  *    having to widen the schema to allow-list every highlight.js
  *    classname `lowlight`'s grammars can produce.
+ *
+ *    `plainText: ['mermaid']` opts a ```mermaid fence out of this step:
+ *    highlight.js has no "mermaid" grammar (it would just log an
+ *    unregistered-language message and leave the text alone), but more
+ *    importantly this pipeline never renders mermaid diagrams itself —
+ *    the worker has no DOM, and mermaid needs one to lay out and measure
+ *    text. This stage's whole job for a mermaid fence is to leave
+ *    `<pre><code class="language-mermaid">` standing with the raw
+ *    diagram source as its one text child — already true of the
+ *    `remark-rehype` output above, `language-mermaid` already survives
+ *    `rehype-sanitize` unchanged (it matches the same `/^language-./`
+ *    allowance every other fenced-code language relies on) — so the only
+ *    thing left to opt out of is highlight.js touching it. The main
+ *    thread finds that inert markup by the same selector
+ *    (`pre > code.language-mermaid`) after `v-html` inserts it and
+ *    renders the diagram from there — see
+ *    `features/preview/lib/mermaidRenderer.ts`.
  * 8. `rehypeStringify` — hast -> HTML string, fed into `v-html`.
  */
 const processor = unified()
@@ -67,7 +84,7 @@ const processor = unified()
   .use(rehypeStripStrayWhitespace)
   .use(rehypeDataLine)
   .use(rehypeSanitize, previewSchema)
-  .use(rehypeHighlight)
+  .use(rehypeHighlight, { plainText: ['mermaid'] })
   .use(rehypeStringify)
 
 /** Renders markdown source to sanitized, highlighted HTML. Synchronous —
