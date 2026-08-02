@@ -1,9 +1,26 @@
+/** Where a document was opened from, if it was pulled in from an external
+ * source rather than created locally. The only current source is GitHub. */
+export interface GitHubOrigin {
+  owner: string
+  repo: string
+  branch: string
+  path: string
+  /** The blob sha this document's content matched on GitHub as of the last
+   * open or successful commit — the optimistic-concurrency token the
+   * contents API's write endpoint requires. */
+  sha: string
+}
+
 /** A single markdown document owned by the documents feature. `content` is
  * the full source text; `title` is user-editable and independent of the
  * content. Timestamps are epoch milliseconds. `folderId` is `null` for a
  * root-level document, or the id of the (flat, non-nested) folder it lives
  * in — a value that doesn't resolve to a `Folder` in `$folders` is treated
- * as root by every reader, see `model/documents.ts`. */
+ * as root by every reader, see `model/documents.ts`. `origin` is `null` for a
+ * local-only document, or the GitHub location it was opened from (and can be
+ * committed back to) — a malformed/future-shaped value is treated as no
+ * origin by every reader, same defensiveness as `folderId`, see
+ * `lib/db.ts`'s `normalizeDocument`. */
 export interface MarkdownDocument {
   id: string
   title: string
@@ -11,6 +28,7 @@ export interface MarkdownDocument {
   createdAt: number
   updatedAt: number
   folderId: string | null
+  origin: GitHubOrigin | null
 }
 
 /** A flat (non-nested) grouping for documents. `createdAt` is epoch

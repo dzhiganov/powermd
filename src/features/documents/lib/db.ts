@@ -1,4 +1,4 @@
-import type { Folder, MarkdownDocument } from '../model/types'
+import type { Folder, GitHubOrigin, MarkdownDocument } from '../model/types'
 
 /**
  * Thin promise wrapper over raw IndexedDB. Chosen over the `idb` package on
@@ -18,8 +18,15 @@ const DB_NAME = 'markdown-editor'
  * existing document record is walked and given an explicit
  * `folderId: null`, not just left for `normalizeDocument` to paper over on
  * read forever).
+ *
+ * v2 -> v3: added an `origin` field on every document (`null` = a local-only
+ * document, or a `GitHubOrigin` for a document opened from GitHub). Same
+ * cursor-walk backfill as v2 (see `onupgradeneeded` below): every existing
+ * record is walked and given an explicit `origin: null`. A record still at
+ * v1 when a v3 install first opens it is backfilled with *both* `folderId:
+ * null` and `origin: null` in the same single pass.
  */
-const DB_VERSION = 2
+const DB_VERSION = 3
 const DOC_STORE = 'documents'
 const META_STORE = 'meta'
 const FOLDER_STORE = 'folders'
@@ -138,12 +145,12 @@ function openDatabase(): Promise<IDBDatabase> {
       return
     }
 
-    // Real v1 -> v2 migration. `event.oldVersion` is 0 for a brand-new
-    // database (nothing to migrate — the cursor walk below just iterates
-    // zero rows) and 1 for an existing installation. Every store-creation
-    // step stays guarded by `contains` so re-running this against a
-    // partially-created database (a previous open that failed mid-upgrade)
-    // is still safe.
+    // Real v1 -> v2 -> v3 migration. `event.oldVersion` is 0 for a
+    // brand-new database (nothing to migrate — the cursor walk below just
+    // iterates zero rows), 1 or 2 for an existing installation. Every
+    // store-creation step stays guarded by `contains` so re-running this
+    // against a partially-created database (a previous open that failed
+    // mid-upgrade) is still safe.
     request.onupgradeneeded = (event) => {
       const db = request.result
       const tx = request.transaction
@@ -159,22 +166,38 @@ function openDatabase(): Promise<IDBDatabase> {
         db.createObjectStore(FOLDER_STORE, { keyPath: 'id' })
       }
 
-      // Give every pre-existing document record an explicit `folderId:
-      // null` (root) on disk — content, title, and both timestamps are
-      // left completely untouched, only the new field is added. `tx` is
-      // the versionchange transaction driving this whole upgrade; it's
-      // still open here, so this cursor walk is part of the same atomic
-      // upgrade as the store creation above (either all of it lands, or
-      // none of it does).
-      if (oldVersion < 2 && tx !== null) {
+      // Backfill new per-document fields on disk in a single cursor walk —
+      // content, title, and both timestamps are left completely untouched,
+      // only missing fields are added. `tx` is the versionchange
+      // transaction driving this whole upgrade; it's still open here, so
+      // this walk is part of the same atomic upgrade as the store creation
+      // above (either all of it lands, or none of it does).
+      //
+      // The walk runs whenever *any* new field could be missing (`oldVersion
+      // < 3` covers both the v1->v3 and v2->v3 jumps) and backfills whichever
+      // fields a given record actually lacks: a record created under v1 and
+      // opened for the first time under v3 gets *both* `folderId: null` (v2's
+      // field) and `origin: null` (v3's) in one pass, while a record already
+      // migrated to v2 only gains `origin: null`.
+      if (oldVersion < 3 && tx !== null) {
         const store = tx.objectStore(DOC_STORE)
         const cursorRequest = store.openCursor()
         cursorRequest.onsuccess = () => {
           const cursor = cursorRequest.result
           if (!cursor) return
           const record = cursor.value as Record<string, unknown>
-          if (typeof record.folderId === 'undefined') {
-            cursor.update({ ...record, folderId: null })
+          const patched = { ...record }
+          let changed = false
+          if (typeof patched.folderId === 'undefined') {
+            patched.folderId = null
+            changed = true
+          }
+          if (typeof patched.origin === 'undefined') {
+            patched.origin = null
+            changed = true
+          }
+          if (changed) {
+            cursor.update(patched)
           }
           cursor.continue()
         }
@@ -273,6 +296,28 @@ function transactionDone(tx: IDBTransaction): Promise<void> {
   })
 }
 
+/** Returns a well-formed `GitHubOrigin` only when the raw value is an object
+ * with `owner`, `repo`, `branch`, `path`, and `sha` all present as non-empty
+ * strings; otherwise `null` (no origin). Same "drop anything malformed or
+ * future-shaped rather than throw" philosophy as every other field in
+ * `normalizeDocument` — a document with a broken origin is treated as
+ * local-only, never surfaced with a half-populated origin. */
+function normalizeOrigin(value: unknown): GitHubOrigin | null {
+  if (typeof value !== 'object' || value === null) return null
+  const raw = value as Record<string, unknown>
+  const fields = ['owner', 'repo', 'branch', 'path', 'sha'] as const
+  for (const field of fields) {
+    if (typeof raw[field] !== 'string' || raw[field] === '') return null
+  }
+  return {
+    owner: raw.owner as string,
+    repo: raw.repo as string,
+    branch: raw.branch as string,
+    path: raw.path as string,
+    sha: raw.sha as string,
+  }
+}
+
 /** Normalizes one raw `getAll()` entry into a well-formed `MarkdownDocument`,
  * repairing missing/malformed non-identifying fields with safe defaults and
  * dropping (returning `null` for) records that don't even have a usable
@@ -297,6 +342,11 @@ function normalizeDocument(value: unknown): MarkdownDocument | null {
     // other field here. A non-string, non-null value is treated as root
     // too, rather than trusting a corrupt/future-shaped value through.
     folderId: typeof raw.folderId === 'string' ? raw.folderId : null,
+    // A record with no `origin` predates the v3 migration and should
+    // already have been backfilled to `null` by `onupgradeneeded` — this is
+    // the second line of defense. Anything not matching the full origin
+    // shape (partial, malformed, future-shaped) is treated as local-only.
+    origin: normalizeOrigin(raw.origin),
   }
 }
 

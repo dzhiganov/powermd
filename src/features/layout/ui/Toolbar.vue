@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { useUnit } from 'effector-vue/composition'
-import { DocumentTextIcon, EyeIcon, ViewColumnsIcon } from '@heroicons/vue/24/outline'
+import {
+  DocumentTextIcon,
+  EyeIcon,
+  ViewColumnsIcon,
+  CloudArrowUpIcon,
+} from '@heroicons/vue/24/outline'
 import type { Component } from 'vue'
 
 import { ThemeToggle, HelpButton, SettingsButton, $showTooltips } from '@/features/settings'
 import { DrawerToggleButton, DocumentTitle } from '@/features/documents'
 import { ImportButton, ExportMenu } from '@/features/transfer'
+import { GitHubButton, $activeDocumentForCommit, commitDialogOpened } from '@/features/github'
 
 import { $viewMode, viewModeChanged } from '../model/layout'
 import type { ViewMode } from '../model/layout'
@@ -20,6 +26,10 @@ withDefaults(defineProps<{ side?: 'left' | 'right' }>(), { side: 'right' })
 
 const viewMode = useUnit($viewMode)
 const showTooltips = useUnit($showTooltips)
+// Non-null only when the active document was opened from GitHub — drives the
+// "Commit to GitHub" control's visibility (read directly here, the same way
+// this toolbar already reads several features' public stores).
+const activeDocumentForCommit = useUnit($activeDocumentForCommit)
 
 interface ViewModeOption {
   value: ViewMode
@@ -76,6 +86,18 @@ const viewModeOptions: ViewModeOption[] = [
 
       <ImportButton />
       <ExportMenu />
+      <!-- Only shown when the active document was opened from GitHub. -->
+      <button
+        v-if="activeDocumentForCommit !== null"
+        type="button"
+        class="btn btn-ghost btn-circle btn-xs"
+        aria-label="Commit to GitHub"
+        :title="showTooltips ? 'Commit to GitHub' : undefined"
+        @click="commitDialogOpened()"
+      >
+        <CloudArrowUpIcon class="h-4 w-4" />
+      </button>
+      <GitHubButton :show-tooltips="showTooltips" />
       <HelpButton />
       <SettingsButton />
       <ThemeToggle />

@@ -6,7 +6,7 @@ import { readStorage, writeStorage } from '@/shared/lib/storage'
 import * as db from '../lib/db'
 import { createId } from '../lib/id'
 import { deriveTitle } from '../lib/title'
-import type { Folder, MarkdownDocument, SaveStatus } from './types'
+import type { Folder, GitHubOrigin, MarkdownDocument, SaveStatus } from './types'
 
 /** Autosave debounce default: writes land ~500ms after typing pauses,
  * never on every keystroke. A document switch flushes any still-pending
@@ -54,6 +54,48 @@ export const documentDuplicated = createEvent<string>()
  * work must never silently discard it.
  */
 export const documentImported = createEvent<{ title: string; content: string }>()
+/**
+ * Open an externally-sourced file (currently only GitHub — see
+ * `features/github`) as a brand-new document and make it active. Same
+ * "always additive, never overwrites the active document" rule as
+ * `documentImported` above, and reuses the same internal `documentAdded`
+ * pipeline (prepend + activate + persist + load into editor) — it just
+ * carries the file's `origin` through instead of always `null`, and lands at
+ * root (`folderId: null`) for the same reason imports do: an externally
+ * opened file has no "current folder" to inherit from. Fired from
+ * `src/app/wiring.ts` off `features/github`'s `fileOpened`.
+ */
+export const documentOpenedFromOrigin = createEvent<{
+  title: string
+  content: string
+  origin: GitHubOrigin
+}>()
+/**
+ * After a successful commit back to GitHub, catch this document's recorded
+ * origin up to the new blob sha in place. Metadata only — deliberately does
+ * *not* bump `updatedAt` (same reasoning as `documentMoveRequested`: the
+ * content didn't change, so the most-recently-updated sort order must not
+ * reshuffle) and never touches the editor or the active document. Fired from
+ * `src/app/wiring.ts` off `features/github`'s `commitSucceeded`.
+ */
+export const documentGithubSynced = createEvent<{ id: string; origin: GitHubOrigin }>()
+/**
+ * The "reload remote, discard local edits" conflict-resolution choice —
+ * overwrite this document's `content` and `origin` with the freshly-fetched
+ * remote version. This is a deliberate, explicit content replacement (the
+ * user picked it in the conflict dialog), so it bypasses the pending-save/
+ * autosave debounce entirely, persists immediately, bumps `updatedAt` (the
+ * content genuinely changed), reloads the editor if this is the active
+ * document, and clears any pending save for this id — the one place
+ * discarding a pending local edit is correct, because it's an explicit user
+ * choice, never automatic. Fired from `src/app/wiring.ts` off
+ * `features/github`'s `remoteReloadRequested`.
+ */
+export const documentRemoteApplied = createEvent<{
+  id: string
+  content: string
+  origin: GitHubOrigin
+}>()
 /** Ask to delete a document — opens the confirmation step, deletes nothing
  * yet (deletion is irreversible, so it always requires confirmation). */
 export const documentDeleteRequested = createEvent<string>()
@@ -139,6 +181,17 @@ const folderRenameApplied = createEvent<Folder>()
 // `updatedAt` is deliberately *not* bumped, see `documentMoveRequested`'s
 // sample below). Same "resolve then apply" shape as `documentRenameApplied`.
 const documentMoveApplied = createEvent<MarkdownDocument>()
+// A GitHub-sync origin update applied as a full document snapshot (only
+// `origin` changes — `updatedAt` is deliberately *not* bumped, same as
+// `documentMoveApplied`). Same "resolve then apply" shape as
+// `documentRenameApplied`.
+const documentOriginApplied = createEvent<MarkdownDocument>()
+// A remote-reload applied as a full document snapshot (`content` + `origin`
+// replaced, `updatedAt` bumped since the content genuinely changed). Same
+// "resolve then apply" shape, but unlike a move/rename this one also clears
+// the pending save and reloads the editor when active — see
+// `documentRemoteApplied`'s doc comment.
+const documentRemoteContentApplied = createEvent<MarkdownDocument>()
 
 interface AfterDelete {
   documents: MarkdownDocument[]
@@ -164,6 +217,7 @@ function makeWelcome(content: string): MarkdownDocument {
     createdAt: now,
     updatedAt: now,
     folderId: null,
+    origin: null,
   }
 }
 
@@ -183,6 +237,9 @@ function makeEmpty(folderId: string | null): MarkdownDocument {
     createdAt: now,
     updatedAt: now,
     folderId,
+    // A brand-new empty document is always local-only — nothing opened it
+    // from an external source.
+    origin: null,
   }
 }
 
@@ -243,15 +300,37 @@ function readPendingMirror(): MarkdownDocument | null {
       return null
     }
     const candidate = parsed as MarkdownDocument
-    // A mirror written before folders existed has no `folderId` at all —
-    // same normalization `db.ts`'s `normalizeDocument` applies on read,
-    // done here too since this path never goes through that function.
+    // A mirror written before folders/origins existed has no `folderId`/
+    // `origin` at all — same normalization `db.ts`'s `normalizeDocument`
+    // applies on read, done here too since this path never goes through that
+    // function.
     return {
       ...candidate,
       folderId: typeof candidate.folderId === 'string' ? candidate.folderId : null,
+      origin: coerceOrigin(candidate.origin),
     }
   } catch {
     return null
+  }
+}
+
+/** Second-line-of-defense origin validation for the localStorage recovery
+ * mirror (which never goes through `db.ts`'s `normalizeDocument`). Mirrors
+ * that function's `normalizeOrigin`: anything not matching the full origin
+ * shape — partial, malformed, future-shaped — is treated as local-only. */
+function coerceOrigin(value: unknown): GitHubOrigin | null {
+  if (typeof value !== 'object' || value === null) return null
+  const raw = value as Record<string, unknown>
+  const fields = ['owner', 'repo', 'branch', 'path', 'sha'] as const
+  for (const field of fields) {
+    if (typeof raw[field] !== 'string' || raw[field] === '') return null
+  }
+  return {
+    owner: raw.owner as string,
+    repo: raw.repo as string,
+    branch: raw.branch as string,
+    path: raw.path as string,
+    sha: raw.sha as string,
   }
 }
 
@@ -528,6 +607,10 @@ sample({
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
       folderId: existing?.folderId ?? null,
+      // Editing a GitHub-opened document keeps it linked to its origin — the
+      // recorded sha stays the base for the next commit; only committing
+      // back (or explicitly reloading remote) advances it.
+      origin: existing?.origin ?? null,
     }
   },
   target: documentTouched,
@@ -826,6 +909,12 @@ sample({
       // same reasoning as `documentCreated`'s placement rule above, just
       // keyed off the document being duplicated instead of the active one.
       folderId: source?.folderId ?? null,
+      // A duplicate is a *fresh local copy*, never a second handle to the
+      // same GitHub file — origin is deliberately dropped. Two documents
+      // sharing one origin (same path + sha) would fight over that remote
+      // file: committing one would strand the other with a stale sha. Only
+      // the original stays linked to GitHub.
+      origin: null,
     }
   },
   target: documentAdded,
@@ -846,6 +935,33 @@ sample({
       // folder" to inherit from (it can arrive via drag-drop anywhere in
       // the window), unlike `documentCreated`/`documentDuplicated` above.
       folderId: null,
+      // An imported file is a local document — it has no GitHub origin (that
+      // path is `documentOpenedFromOrigin`, below).
+      origin: null,
+    }
+  },
+  target: documentAdded,
+})
+
+// Opening a file from GitHub: same "build a brand-new document, then hand it
+// to the shared `documentAdded` pipeline (prepend + activate + persist +
+// load)" shape as `documentImported` above, but carrying the file's `origin`
+// through instead of always `null`, and titled from the given basename.
+sample({
+  clock: documentOpenedFromOrigin,
+  fn: ({ title, content, origin }): MarkdownDocument => {
+    const now = Date.now()
+    const trimmed = title.trim()
+    return {
+      id: createId(),
+      title: trimmed === '' ? 'Untitled' : trimmed,
+      content,
+      createdAt: now,
+      updatedAt: now,
+      // Externally opened files always land at root — no "current folder" to
+      // inherit from, same reasoning as `documentImported` above.
+      folderId: null,
+      origin,
     }
   },
   target: documentAdded,
@@ -1081,6 +1197,82 @@ sample({
 // The active document is never touched by any of the above — `$activeId`
 // has no reducer keyed on `documentMoveApplied` — so it stays active across
 // a move, whether or not it's the document being moved.
+
+// --- GitHub: origin sync after a successful commit ------------------------
+//
+// Same shape as a move: resolve against current state, apply as one full
+// snapshot, persist immediately and independently of the active document's
+// content autosave. `updatedAt` is deliberately left unchanged — advancing
+// the recorded sha is metadata catching up to reality (the content is
+// already what's on GitHub), not a user edit, so touching `updatedAt` would
+// wrongly reshuffle the most-recently-updated sort order. Ids that no longer
+// resolve to a document (deleted between commit and this) are filtered out.
+sample({
+  clock: documentGithubSynced,
+  source: $documents,
+  filter: (docs, { id }) => docs.some((doc) => doc.id === id),
+  fn: (docs, { id, origin }): MarkdownDocument => {
+    const existing = docs.find((doc) => doc.id === id) as MarkdownDocument
+    return { ...existing, origin }
+  },
+  target: documentOriginApplied,
+})
+
+$documents.on(documentOriginApplied, (docs, applied) =>
+  docs.map((doc) => (doc.id === applied.id ? applied : doc)),
+)
+sample({
+  clock: documentOriginApplied,
+  source: $knownDiskUpdatedAt,
+  fn: (known, applied): SavePayload => ({ doc: applied, base: known[applied.id] ?? 0 }),
+  target: saveDocumentFx,
+})
+
+// --- GitHub: reload remote, discard local edits ---------------------------
+//
+// The explicit "their version wins" conflict choice — see
+// `documentRemoteApplied`'s doc comment. Unlike a move/sync above, this
+// genuinely replaces content, so `updatedAt` *is* bumped. Ids that no longer
+// resolve to a document are filtered out.
+sample({
+  clock: documentRemoteApplied,
+  source: $documents,
+  filter: (docs, { id }) => docs.some((doc) => doc.id === id),
+  fn: (docs, { id, content, origin }): MarkdownDocument => {
+    const existing = docs.find((doc) => doc.id === id) as MarkdownDocument
+    return { ...existing, content, origin, updatedAt: Date.now() }
+  },
+  target: documentRemoteContentApplied,
+})
+
+$documents.on(documentRemoteContentApplied, (docs, applied) =>
+  docs.map((doc) => (doc.id === applied.id ? applied : doc)),
+)
+sample({
+  clock: documentRemoteContentApplied,
+  source: $knownDiskUpdatedAt,
+  fn: (known, applied): SavePayload => ({ doc: applied, base: known[applied.id] ?? 0 }),
+  target: saveDocumentFx,
+})
+// The user explicitly chose to discard local edits, so clear any pending
+// save for this id (the one place doing so is correct — a deliberate user
+// choice, never automatic). Leaves a pending save for any *other* document
+// untouched. When this document is the active one, the `activeDocumentLoaded`
+// below also runs, whose own `$pendingSave.reset` clears it regardless — this
+// covers the non-active case.
+$pendingSave.on(documentRemoteContentApplied, (pending, applied) =>
+  pending !== null && pending.id === applied.id ? null : pending,
+)
+// Reload the editor only when the replaced document is the active one — the
+// same content-replacing "rebuild CodeMirror state" path every other load
+// takes. A non-active document's replacement lands silently in `$documents`.
+sample({
+  clock: documentRemoteContentApplied,
+  source: $activeId,
+  filter: (activeId, applied) => activeId === applied.id,
+  fn: (_, applied) => applied.content,
+  target: activeDocumentLoaded,
+})
 
 // --- Folders: cross-tab sync -----------------------------------------------
 //

@@ -5,6 +5,7 @@ import { useUnit } from 'effector-vue/composition'
 import { useMediaQuery } from '@/shared/lib/useMediaQuery'
 import { DocumentDrawer, SaveIndicator } from '@/features/documents'
 import { SettingsModal, ShortcutsModal, $showTooltips, $drawerSide } from '@/features/settings'
+import { GitHubModal, CommitDialog } from '@/features/github'
 import { WordCount } from '@/features/editor'
 
 import Toolbar from './Toolbar.vue'
@@ -59,6 +60,8 @@ const singlePane = computed(() => !showSplitter.value)
   >
     <SettingsModal />
     <ShortcutsModal />
+    <GitHubModal />
+    <CommitDialog />
     <Toolbar :side="drawerSide" />
     <MobileTabs v-show="!isDesktop" />
     <!-- Fixed corner status indicator (see `SaveIndicator.vue`) — mounted

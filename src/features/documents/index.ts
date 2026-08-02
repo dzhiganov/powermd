@@ -8,6 +8,9 @@ export {
   activeDocumentEdited,
   activeDocumentLoaded,
   documentImported,
+  documentOpenedFromOrigin,
+  documentGithubSynced,
+  documentRemoteApplied,
   documentSelected,
   documentCreated,
   documentDuplicated,
@@ -27,4 +30,4 @@ export {
   $dbBlocked,
 } from './model/documents'
 
-export type { MarkdownDocument, SaveStatus, Folder } from './model/types'
+export type { MarkdownDocument, SaveStatus, Folder, GitHubOrigin } from './model/types'

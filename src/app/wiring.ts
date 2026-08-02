@@ -23,6 +23,9 @@ import {
   activeDocumentEdited,
   activeDocumentLoaded,
   documentImported,
+  documentOpenedFromOrigin,
+  documentGithubSynced,
+  documentRemoteApplied,
   documentSelected,
   documentCreated,
   documentDuplicated,
@@ -33,6 +36,13 @@ import {
   $activeDocument,
 } from '@/features/documents'
 import { initTransfer, markdownFileImported, exportSourceChanged } from '@/features/transfer'
+import {
+  initGithub,
+  fileOpened,
+  commitSucceeded,
+  remoteReloadRequested,
+  activeDocumentForCommitChanged,
+} from '@/features/github'
 import { $viewMode, viewModeChanged, $isDesktop } from '@/features/layout'
 import type { ViewMode } from '@/features/layout'
 import {
@@ -47,6 +57,7 @@ import '@/features/preview'
 import '@/features/documents'
 import '@/features/transfer'
 import '@/features/layout'
+import '@/features/github'
 
 // The preview feature never imports the editor feature (or vice versa) —
 // this is the one place that's allowed to know both exist, and connects
@@ -195,3 +206,40 @@ sample({
 // Mod-/ inside the editor opens the keyboard-shortcuts help modal, owned by
 // `features/settings`.
 sample({ clock: helpRequested, target: helpOpened })
+
+// --- documents <-> github ----------------------------------------------------
+//
+// `github` may import `@/features/documents`'s public API (one-directional,
+// for the `GitHubOrigin` type); `documents` never imports `github`. As with
+// every other pair in this file, this is the one place that knows both, and
+// connects them.
+
+// Re-validate any stored token on startup — same "plain function called once"
+// shape as `initDocuments`/`initTransfer` above.
+initGithub()
+
+// Opening a file from GitHub always becomes a brand-new document, never
+// overwrites the active one — same additive rule as an import.
+sample({ clock: fileOpened, target: documentOpenedFromOrigin })
+
+// A landed commit catches the document's recorded origin up to the new blob
+// sha (metadata only — `documentGithubSynced` deliberately doesn't bump
+// `updatedAt`).
+sample({ clock: commitSucceeded, target: documentGithubSynced })
+
+// The "reload remote, discard local edits" conflict choice replaces the
+// document's content + origin with the fetched remote version.
+sample({ clock: remoteReloadRequested, target: documentRemoteApplied })
+
+// Project the active document down into `github`'s commit model — just
+// `{ id, content, origin }`, and only when it actually has a GitHub origin
+// (otherwise `null`). Same shape as the `exportSourceChanged` projection
+// above.
+sample({
+  source: $activeDocument,
+  fn: (doc) =>
+    doc === null || doc.origin === null
+      ? null
+      : { id: doc.id, content: doc.content, origin: doc.origin },
+  target: activeDocumentForCommitChanged,
+})
