@@ -6,7 +6,7 @@ import { readStorage, writeStorage } from '@/shared/lib/storage'
 import * as db from '../lib/db'
 import { createId } from '../lib/id'
 import { deriveTitle } from '../lib/title'
-import type { MarkdownDocument, SaveStatus } from './types'
+import type { Folder, MarkdownDocument, SaveStatus } from './types'
 
 /** Autosave debounce default: writes land ~500ms after typing pauses,
  * never on every keystroke. A document switch flushes any still-pending
@@ -29,6 +29,10 @@ const PENDING_SAVE_KEY = 'markdown-editor:pendingSave'
 /** localStorage key for the drawer's persisted open/closed state — see
  * `$drawerOpen` below. */
 const DRAWER_OPEN_KEY = 'markdown-editor:drawer-open'
+
+/** localStorage key for the set of collapsed folder ids — see
+ * `$collapsedFolderIds` below. */
+const COLLAPSED_FOLDERS_KEY = 'markdown-editor:collapsed-folders'
 
 // --- Public intents (fired from UI / wiring) -----------------------------
 
@@ -60,6 +64,27 @@ export const documentDeleteCancelled = createEvent()
 
 export const drawerToggled = createEvent()
 export const drawerClosed = createEvent()
+
+// --- Folders (flat — a document is at root or in exactly one folder, no
+// nesting) -----------------------------------------------------------------
+
+/** Create a folder with this name (blank falls back to "Untitled folder",
+ * same shape as a blank rename — see `documentRenamed`). */
+export const folderCreated = createEvent<string>()
+/** Rename a folder. */
+export const folderRenamed = createEvent<{ id: string; name: string }>()
+/** Ask to delete a folder — opens the confirmation step; deletes nothing yet.
+ * Deleting a folder never deletes the documents inside it (they move to
+ * root), but it's still irreversible as a grouping, so it's confirmed the
+ * same way document deletion is. */
+export const folderDeleteRequested = createEvent<string>()
+export const folderDeleteConfirmed = createEvent()
+export const folderDeleteCancelled = createEvent()
+/** Toggle a folder's collapsed/expanded state in the sidebar. */
+export const folderCollapseToggled = createEvent<string>()
+/** Move a document to a folder, or to root when `folderId` is `null` — the
+ * drawer's per-row "Move to folder" action. */
+export const documentMoveRequested = createEvent<{ id: string; folderId: string | null }>()
 
 /** Save whatever is currently pending immediately, bypassing the autosave
  * debounce below. Fired from the editor feature's Mod-S binding
@@ -106,6 +131,15 @@ const documentAdded = createEvent<MarkdownDocument>()
 // actually changed the active document, and the content to load.
 const documentSwitchResolved = createEvent<{ id: string; changed: boolean; content: string }>()
 
+// A brand-new folder to append + persist.
+const folderAdded = createEvent<Folder>()
+// A rename applied as a full snapshot, same shape as `documentRenameApplied`.
+const folderRenameApplied = createEvent<Folder>()
+// A move applied as a full document snapshot (only `folderId` — and
+// `updatedAt` is deliberately *not* bumped, see `documentMoveRequested`'s
+// sample below). Same "resolve then apply" shape as `documentRenameApplied`.
+const documentMoveApplied = createEvent<MarkdownDocument>()
+
 interface AfterDelete {
   documents: MarkdownDocument[]
   activeId: string
@@ -129,12 +163,36 @@ function makeWelcome(content: string): MarkdownDocument {
     content,
     createdAt: now,
     updatedAt: now,
+    folderId: null,
   }
 }
 
-function makeEmpty(): MarkdownDocument {
+/**
+ * `folderId` is the folder a brand-new document should land in. Callers
+ * decide what that should be — see `documentCreated`'s sample below for the
+ * "new document" placement rule (follows the active document's folder), and
+ * the delete-flow's use of this for the "last document deleted" auto-create
+ * (always root — see that sample's own comment for why).
+ */
+function makeEmpty(folderId: string | null): MarkdownDocument {
   const now = Date.now()
-  return { id: createId(), title: 'Untitled', content: '', createdAt: now, updatedAt: now }
+  return {
+    id: createId(),
+    title: 'Untitled',
+    content: '',
+    createdAt: now,
+    updatedAt: now,
+    folderId,
+  }
+}
+
+function makeFolder(name: string): Folder {
+  const trimmed = name.trim()
+  return {
+    id: createId(),
+    name: trimmed === '' ? 'Untitled folder' : trimmed,
+    createdAt: Date.now(),
+  }
 }
 
 function mostRecent(docs: MarkdownDocument[]): MarkdownDocument {
@@ -148,6 +206,22 @@ function readInitialDrawerOpen(): boolean {
   const stored = readStorage(DRAWER_OPEN_KEY)
   if (stored === null) return true
   return stored === 'true'
+}
+
+/** Reads the persisted set of collapsed folder ids. Defensive about missing/
+ * malformed JSON — a corrupt value just means "nothing collapsed", never a
+ * thrown error. */
+function readInitialCollapsedFolderIds(): string[] {
+  const stored = readStorage(COLLAPSED_FOLDERS_KEY)
+  if (stored === null) return []
+  try {
+    const parsed: unknown = JSON.parse(stored)
+    return Array.isArray(parsed)
+      ? parsed.filter((entry): entry is string => typeof entry === 'string')
+      : []
+  } catch {
+    return []
+  }
 }
 
 /** Reads the localStorage mirror of `$pendingSave`, if any. Defensive about
@@ -168,7 +242,14 @@ function readPendingMirror(): MarkdownDocument | null {
     ) {
       return null
     }
-    return parsed as MarkdownDocument
+    const candidate = parsed as MarkdownDocument
+    // A mirror written before folders existed has no `folderId` at all —
+    // same normalization `db.ts`'s `normalizeDocument` applies on read,
+    // done here too since this path never goes through that function.
+    return {
+      ...candidate,
+      folderId: typeof candidate.folderId === 'string' ? candidate.folderId : null,
+    }
   } catch {
     return null
   }
@@ -198,6 +279,20 @@ export const $activeId = createStore<string | null>(null)
 /** Id awaiting delete confirmation, or null when no confirm is open. */
 export const $pendingDelete = createStore<string | null>(null)
 export const $drawerOpen = createStore(readInitialDrawerOpen())
+
+export const $folders = createStore<Folder[]>([])
+/** Folder id awaiting delete confirmation, or null when no confirm is
+ * open — same shape as `$pendingDelete` above. */
+export const $pendingFolderDelete = createStore<string | null>(null)
+/** Ids of folders currently collapsed in the sidebar, persisted across
+ * reloads. */
+export const $collapsedFolderIds = createStore<string[]>(readInitialCollapsedFolderIds())
+  .on(folderCollapseToggled, (ids, id) =>
+    ids.includes(id) ? ids.filter((collapsedId) => collapsedId !== id) : [...ids, id],
+  )
+  // Prune ids for folders that no longer exist, so a deleted folder's id
+  // doesn't linger in localStorage forever.
+  .on($folders, (ids, folders) => ids.filter((id) => folders.some((folder) => folder.id === id)))
 
 /**
  * The pending (not-yet-persisted) document snapshot, id captured at edit
@@ -242,6 +337,10 @@ export const $pendingDeleteDoc = combine($documents, $pendingDelete, (docs, id) 
   id === null ? null : (docs.find((doc) => doc.id === id) ?? null),
 )
 
+export const $pendingFolderDeleteDoc = combine($folders, $pendingFolderDelete, (folders, id) =>
+  id === null ? null : (folders.find((folder) => folder.id === id) ?? null),
+)
+
 /**
  * Derived so it can never disagree with reality: a non-null pending save
  * means "not on disk yet"; a persistence error overrides everything.
@@ -261,6 +360,13 @@ interface SavePayload {
 const saveDocumentFx = createEffect(({ doc, base }: SavePayload) => db.putDocument(doc, base))
 const deleteDocumentFx = createEffect((id: string) => db.deleteDocument(id))
 const persistActiveIdFx = createEffect((id: string) => db.setActiveId(id))
+const saveFolderFx = createEffect((folder: Folder) => db.putFolder(folder))
+// Returns the documents that were moved to root, so `$documents` can be
+// updated from the actual write result rather than re-deriving it — see the
+// `deleteFolderFx.done` handlers below.
+const deleteFolderFx = createEffect((folderId: string) =>
+  db.deleteFolderAndOrphanDocuments(folderId),
+)
 
 interface InitOptions {
   /** First-run welcome text — supplied by `wiring.ts` from the editor's
@@ -273,11 +379,20 @@ const loadFx = createEffect(
     welcomeContent,
   }: InitOptions): Promise<{
     documents: MarkdownDocument[]
+    folders: Folder[]
     activeId: string
     persistent: boolean
+    /** True when the load failed specifically because another tab is
+     * blocking the upgrade (see `db.DatabaseBlockedError`) — surfaced
+     * distinctly from a generic "storage unavailable" failure. */
+    blocked: boolean
   }> => {
     try {
-      const [docs, storedActiveId] = await Promise.all([db.getAllDocuments(), db.getActiveId()])
+      const [docs, folders, storedActiveId] = await Promise.all([
+        db.getAllDocuments(),
+        db.getAllFolders(),
+        db.getActiveId(),
+      ])
 
       // Recover a localStorage-mirrored edit that never made it to
       // IndexedDB (reload/close in the same tick as the edit, or before the
@@ -309,19 +424,35 @@ const loadFx = createEffect(
           storedActiveId !== null && documents.some((doc) => doc.id === storedActiveId)
             ? storedActiveId
             : mostRecent(documents).id
-        return { documents, activeId, persistent: true }
+        return { documents, folders, activeId, persistent: true, blocked: false }
       }
       // First run: seed and persist the welcome document.
       const welcome = makeWelcome(welcomeContent)
       await db.putDocument(welcome, welcome.updatedAt)
       await db.setActiveId(welcome.id)
-      return { documents: [welcome], activeId: welcome.id, persistent: true }
+      return {
+        documents: [welcome],
+        folders,
+        activeId: welcome.id,
+        persistent: true,
+        blocked: false,
+      }
     } catch (error) {
-      // IndexedDB unavailable/blocked: keep working in-memory rather than
-      // crashing, and surface the degraded (non-persistent) state.
-      console.error('[documents] IndexedDB unavailable — running in-memory only', error)
+      // A blocked upgrade is recoverable (close the other tab and reload)
+      // and must never be reported the same way as genuine unavailability
+      // — see `db.DatabaseBlockedError`'s doc comment. Both paths still
+      // fall back to an in-memory welcome document so the app is usable
+      // either way; only the surfaced message differs (see `$dbBlocked`
+      // below).
+      const blocked = error instanceof db.DatabaseBlockedError
+      console.error(
+        blocked
+          ? '[documents] IndexedDB open blocked by another tab — running in-memory until it closes'
+          : '[documents] IndexedDB unavailable — running in-memory only',
+        error,
+      )
       const welcome = makeWelcome(welcomeContent)
-      return { documents: [welcome], activeId: welcome.id, persistent: false }
+      return { documents: [welcome], folders: [], activeId: welcome.id, persistent: false, blocked }
     }
   },
 )
@@ -332,6 +463,23 @@ $persistError
   .on([saveDocumentFx.fail, deleteDocumentFx.fail, persistActiveIdFx.fail], () => true)
   .on([saveDocumentFx.done, deleteDocumentFx.done, persistActiveIdFx.done], () => false)
   .on(loadFx.doneData, (_, { persistent }) => !persistent)
+
+// True while the initial open is being held up by another tab still
+// running an older version (`db.DatabaseBlockedError`/`onblocked` — see
+// `lib/db.ts`). Flips true the moment the block is first reported, well
+// before `loadFx` itself settles (it waits out a grace period before
+// giving up), so the UI can show a specific, actionable message ("close
+// your other tab") from the first instant instead of looking hung. Stays
+// true if `loadFx` eventually gives up and falls back to in-memory (see its
+// `blocked` result) — that fallback must stay visibly explained, not
+// silent — and only clears once a load genuinely succeeds against real
+// storage.
+const databaseBlockedNotified = createEvent()
+db.subscribeToDatabaseBlocked(() => databaseBlockedNotified())
+
+export const $dbBlocked = createStore(false)
+  .on(databaseBlockedNotified, () => true)
+  .on(loadFx.doneData, (_, { persistent, blocked }) => (persistent ? false : blocked))
 
 // This tab's own confirmed-on-disk knowledge: seeded from the initial read,
 // then advanced only by this tab's own writes (see `$knownDiskUpdatedAt`'s
@@ -352,6 +500,7 @@ $knownDiskUpdatedAt
 
 $documents.on(loadFx.doneData, (_, { documents }) => documents)
 $activeId.on(loadFx.doneData, (_, { activeId }) => activeId)
+$folders.on(loadFx.doneData, (_, { folders }) => folders)
 
 // Push the restored/seeded active document into the editor once it's known.
 sample({
@@ -378,6 +527,7 @@ sample({
       content,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
+      folderId: existing?.folderId ?? null,
     }
   },
   target: documentTouched,
@@ -639,7 +789,25 @@ sample({ clock: documentSwitchResolved, fn: (resolved) => resolved.id, target: p
 
 // --- Creating / duplicating (both prepend + activate + load) -------------
 
-sample({ clock: documentCreated, fn: () => makeEmpty(), target: documentAdded })
+// New-document placement rule: a document created via "+ New" lands in
+// whichever folder the *active* document is currently in (root if the
+// active document is at root, or if there is no active document yet). The
+// active document is the closest thing this app has to "the folder you're
+// currently working in" — there's no separate folder-selection concept
+// (folders are just collapsible groups in the sidebar, and moving is a
+// per-document menu action, not drag-and-drop) — so continuing to create
+// alongside whatever you were just editing is the only rule that has
+// anything to key off of, and matches "new document" reading as "another
+// one like this" rather than "always back to the top level".
+sample({
+  clock: documentCreated,
+  source: { docs: $documents, activeId: $activeId },
+  fn: ({ docs, activeId }) => {
+    const active = activeId === null ? undefined : docs.find((doc) => doc.id === activeId)
+    return makeEmpty(active?.folderId ?? null)
+  },
+  target: documentAdded,
+})
 
 sample({
   clock: documentDuplicated,
@@ -654,6 +822,10 @@ sample({
       content: source?.content ?? '',
       createdAt: now,
       updatedAt: now,
+      // A duplicate is a copy of its source, so it stays alongside it —
+      // same reasoning as `documentCreated`'s placement rule above, just
+      // keyed off the document being duplicated instead of the active one.
+      folderId: source?.folderId ?? null,
     }
   },
   target: documentAdded,
@@ -670,6 +842,10 @@ sample({
       content,
       createdAt: now,
       updatedAt: now,
+      // Imported files always land at root — an import has no "current
+      // folder" to inherit from (it can arrive via drag-drop anywhere in
+      // the window), unlike `documentCreated`/`documentDuplicated` above.
+      folderId: null,
     }
   },
   target: documentAdded,
@@ -740,7 +916,11 @@ sample({
     const remaining = docs.filter((doc) => doc.id !== deletedId)
 
     if (remaining.length === 0) {
-      const fresh = makeEmpty()
+      // Root, not the deleted document's former folder — the folder itself
+      // may still exist (deleting a document doesn't delete its folder),
+      // but "every document is gone" has no more specific context left to
+      // inherit than root.
+      const fresh = makeEmpty(null)
       return {
         documents: [fresh],
         activeId: fresh.id,
@@ -796,6 +976,131 @@ const persistDrawerOpenFx = createEffect((open: boolean) => {
 })
 
 sample({ clock: $drawerOpen, target: persistDrawerOpenFx })
+
+const persistCollapsedFoldersFx = createEffect((ids: string[]) => {
+  writeStorage(COLLAPSED_FOLDERS_KEY, JSON.stringify(ids))
+})
+
+sample({ clock: $collapsedFolderIds, target: persistCollapsedFoldersFx })
+
+// --- Folders: creating / renaming -----------------------------------------
+
+sample({ clock: folderCreated, fn: (name) => makeFolder(name), target: folderAdded })
+
+$folders.on(folderAdded, (folders, folder) => [...folders, folder])
+sample({ clock: folderAdded, target: saveFolderFx })
+
+sample({
+  clock: folderRenamed,
+  source: $folders,
+  filter: (folders, { id }) => folders.some((folder) => folder.id === id),
+  fn: (folders, { id, name }): Folder => {
+    const existing = folders.find((folder) => folder.id === id) as Folder
+    const trimmed = name.trim()
+    // Same "blank falls back to a default, never silently keeps the old
+    // name" shape as `documentRenamed` above.
+    return { ...existing, name: trimmed === '' ? 'Untitled folder' : trimmed }
+  },
+  target: folderRenameApplied,
+})
+
+$folders.on(folderRenameApplied, (folders, renamed) =>
+  folders.map((folder) => (folder.id === renamed.id ? renamed : folder)),
+)
+sample({ clock: folderRenameApplied, target: saveFolderFx })
+
+// --- Folders: deleting (with confirmation) --------------------------------
+//
+// Deleting a folder never deletes the documents inside it — they move to
+// root. `db.deleteFolderAndOrphanDocuments` does both the folder deletion
+// and every affected document's `folderId` update inside one IndexedDB
+// transaction (see its doc comment for why that's what actually closes the
+// "stale write recreates a deleted folder, or orphans a document into a
+// missing folder id" hazard at the storage layer) — this wiring just
+// reflects that same already-atomic result into the in-memory stores from
+// `deleteFolderFx.done`, rather than recomputing it from local state (which
+// would risk disagreeing with what was actually written).
+
+$pendingFolderDelete.on(folderDeleteRequested, (_, id) => id)
+$pendingFolderDelete.reset(folderDeleteCancelled)
+
+sample({
+  clock: folderDeleteConfirmed,
+  source: $pendingFolderDelete,
+  filter: (id): id is string => id !== null,
+  target: deleteFolderFx,
+})
+
+$pendingFolderDelete.reset(deleteFolderFx.done)
+$folders.on(deleteFolderFx.done, (folders, { params: folderId }) =>
+  folders.filter((folder) => folder.id !== folderId),
+)
+// `deleteFolderFx`'s result is exactly the set of documents the DB
+// transaction actually moved to root — applying that (rather than a fresh
+// `folderId === deletedId ? null : ...` sweep over the pre-delete list)
+// keeps this tab's in-memory copy identical to what's really on disk.
+$documents.on(deleteFolderFx.done, (docs, { result: orphaned }) =>
+  docs.map((doc) => orphaned.find((moved) => moved.id === doc.id) ?? doc),
+)
+
+// --- Folders: collapse/expand ----------------------------------------------
+// (Persistence for `$collapsedFolderIds` is the `persistCollapsedFoldersFx`
+// sample above; the toggle reducer itself lives on the store's own
+// definition next to `$folders`.)
+
+// --- Moving a document to a folder (or back to root) ----------------------
+//
+// Same shape as renaming: resolve against current state, apply as one full
+// snapshot, persist immediately and independently of the active document's
+// content autosave. `updatedAt` is deliberately left unchanged — a move is
+// a metadata change, not an edit, and touching it would reshuffle the
+// most-recently-updated sort order for something the user didn't actually
+// edit.
+sample({
+  clock: documentMoveRequested,
+  source: { docs: $documents, folders: $folders },
+  filter: ({ docs, folders }, { id, folderId }) =>
+    docs.some((doc) => doc.id === id) &&
+    (folderId === null || folders.some((folder) => folder.id === folderId)),
+  fn: ({ docs }, { id, folderId }): MarkdownDocument => {
+    const existing = docs.find((doc) => doc.id === id) as MarkdownDocument
+    return { ...existing, folderId }
+  },
+  target: documentMoveApplied,
+})
+
+$documents.on(documentMoveApplied, (docs, moved) =>
+  docs.map((doc) => (doc.id === moved.id ? moved : doc)),
+)
+sample({
+  clock: documentMoveApplied,
+  source: $knownDiskUpdatedAt,
+  fn: (known, moved): SavePayload => ({ doc: moved, base: known[moved.id] ?? 0 }),
+  target: saveDocumentFx,
+})
+// The active document is never touched by any of the above — `$activeId`
+// has no reducer keyed on `documentMoveApplied` — so it stays active across
+// a move, whether or not it's the document being moved.
+
+// --- Folders: cross-tab sync -----------------------------------------------
+//
+// Same shape as the documents cross-tab sync above: keeps `$folders` from
+// going stale in other tabs. `deleteFolderAndOrphanDocuments` already
+// broadcasts a `put` for every orphaned document on the existing document
+// channel, so those tabs' `$documents` catch up via the handler above
+// without any folder-specific document handling needed here.
+const folderBroadcastReceived = createEvent<db.FolderBroadcast>()
+db.subscribeToFolderBroadcasts((message) => folderBroadcastReceived(message))
+
+$folders.on(folderBroadcastReceived, (folders, message) => {
+  if (message.type === 'delete') {
+    return folders.filter((folder) => folder.id !== message.id)
+  }
+  const incoming = message.folder
+  const existing = folders.find((folder) => folder.id === incoming.id)
+  if (existing === undefined) return [...folders, incoming]
+  return folders.map((folder) => (folder.id === incoming.id ? incoming : folder))
+})
 
 // --- Init ----------------------------------------------------------------
 

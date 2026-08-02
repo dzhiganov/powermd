@@ -1,12 +1,26 @@
 /** A single markdown document owned by the documents feature. `content` is
  * the full source text; `title` is user-editable and independent of the
- * content. Timestamps are epoch milliseconds. */
+ * content. Timestamps are epoch milliseconds. `folderId` is `null` for a
+ * root-level document, or the id of the (flat, non-nested) folder it lives
+ * in — a value that doesn't resolve to a `Folder` in `$folders` is treated
+ * as root by every reader, see `model/documents.ts`. */
 export interface MarkdownDocument {
   id: string
   title: string
   content: string
   createdAt: number
   updatedAt: number
+  folderId: string | null
+}
+
+/** A flat (non-nested) grouping for documents. `createdAt` is epoch
+ * milliseconds; folders have no `updatedAt` — nothing about a folder
+ * changes other than its name, which doesn't need its own recency
+ * tracking. */
+export interface Folder {
+  id: string
+  name: string
+  createdAt: number
 }
 
 /**

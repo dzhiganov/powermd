@@ -11,11 +11,20 @@ export {
   documentSelected,
   documentCreated,
   documentDuplicated,
+  documentMoveRequested,
   drawerClosed,
   saveRequested,
   autosaveIntervalChanged,
+  folderCreated,
+  folderRenamed,
+  folderDeleteRequested,
+  folderDeleteConfirmed,
+  folderDeleteCancelled,
+  folderCollapseToggled,
   $activeId,
   $activeDocument,
+  $folders,
+  $dbBlocked,
 } from './model/documents'
 
-export type { MarkdownDocument, SaveStatus } from './model/types'
+export type { MarkdownDocument, SaveStatus, Folder } from './model/types'

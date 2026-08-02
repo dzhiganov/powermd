@@ -1,4 +1,4 @@
-import type { MarkdownDocument } from '../model/types'
+import type { Folder, MarkdownDocument } from '../model/types'
 
 /**
  * Thin promise wrapper over raw IndexedDB. Chosen over the `idb` package on
@@ -12,9 +12,17 @@ import type { MarkdownDocument } from '../model/types'
  */
 
 const DB_NAME = 'markdown-editor'
-const DB_VERSION = 1
+/**
+ * v1 -> v2: added the `folders` store and a `folderId` field on every
+ * document (see `onupgradeneeded` below for the real migration — every
+ * existing document record is walked and given an explicit
+ * `folderId: null`, not just left for `normalizeDocument` to paper over on
+ * read forever).
+ */
+const DB_VERSION = 2
 const DOC_STORE = 'documents'
 const META_STORE = 'meta'
+const FOLDER_STORE = 'folders'
 const ACTIVE_ID_KEY = 'activeId'
 
 interface MetaRow {
@@ -54,6 +62,63 @@ export function subscribeToDocumentBroadcasts(
   return () => broadcastChannel.removeEventListener('message', handler)
 }
 
+// Same shape as the document broadcast channel above, kept separate so a
+// listener for one kind never has to filter out messages of the other.
+const FOLDER_BROADCAST_CHANNEL_NAME = 'markdown-editor:folders'
+
+export type FolderBroadcast = { type: 'put'; folder: Folder } | { type: 'delete'; id: string }
+
+const folderBroadcastChannel: BroadcastChannel | null =
+  typeof BroadcastChannel === 'undefined'
+    ? null
+    : new BroadcastChannel(FOLDER_BROADCAST_CHANNEL_NAME)
+
+function broadcastFolder(message: FolderBroadcast): void {
+  folderBroadcastChannel?.postMessage(message)
+}
+
+export function subscribeToFolderBroadcasts(
+  listener: (message: FolderBroadcast) => void,
+): () => void {
+  if (folderBroadcastChannel === null) return () => {}
+  const handler = (event: MessageEvent<FolderBroadcast>) => listener(event.data)
+  folderBroadcastChannel.addEventListener('message', handler)
+  return () => folderBroadcastChannel.removeEventListener('message', handler)
+}
+
+/**
+ * Thrown when opening the database is blocked by another tab still holding
+ * a connection open at an older version (`IDBOpenDBRequest.onblocked`). This
+ * is distinct from every other open failure on purpose: the caller (see
+ * `model/documents.ts`'s `loadFx`) must not fold it into the generic
+ * "IndexedDB unavailable, running in-memory" state, which would silently
+ * hide the real, recoverable cause (close the other tab) behind a message
+ * that reads like permanent unavailability.
+ */
+export class DatabaseBlockedError extends Error {
+  constructor() {
+    super('IndexedDB open was blocked by another tab running an older version')
+    this.name = 'DatabaseBlockedError'
+  }
+}
+
+// Fired every time an open request reports `onblocked` — may fire more than
+// once if the blocking tab doesn't close. Purely informational: the retry
+// loop that actually recovers lives in `getDatabase` below.
+type BlockedListener = () => void
+const blockedListeners = new Set<BlockedListener>()
+
+/** Subscribe to "database open is currently blocked by another tab"
+ * notifications. Returns an unsubscribe function. */
+export function subscribeToDatabaseBlocked(listener: BlockedListener): () => void {
+  blockedListeners.add(listener)
+  return () => blockedListeners.delete(listener)
+}
+
+function notifyBlocked(): void {
+  blockedListeners.forEach((listener) => listener())
+}
+
 let dbPromise: Promise<IDBDatabase> | null = null
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -73,18 +138,110 @@ function openDatabase(): Promise<IDBDatabase> {
       return
     }
 
-    request.onupgradeneeded = () => {
+    // Real v1 -> v2 migration. `event.oldVersion` is 0 for a brand-new
+    // database (nothing to migrate — the cursor walk below just iterates
+    // zero rows) and 1 for an existing installation. Every store-creation
+    // step stays guarded by `contains` so re-running this against a
+    // partially-created database (a previous open that failed mid-upgrade)
+    // is still safe.
+    request.onupgradeneeded = (event) => {
       const db = request.result
+      const tx = request.transaction
+      const oldVersion = event.oldVersion
+
       if (!db.objectStoreNames.contains(DOC_STORE)) {
         db.createObjectStore(DOC_STORE, { keyPath: 'id' })
       }
       if (!db.objectStoreNames.contains(META_STORE)) {
         db.createObjectStore(META_STORE, { keyPath: 'key' })
       }
+      if (!db.objectStoreNames.contains(FOLDER_STORE)) {
+        db.createObjectStore(FOLDER_STORE, { keyPath: 'id' })
+      }
+
+      // Give every pre-existing document record an explicit `folderId:
+      // null` (root) on disk — content, title, and both timestamps are
+      // left completely untouched, only the new field is added. `tx` is
+      // the versionchange transaction driving this whole upgrade; it's
+      // still open here, so this cursor walk is part of the same atomic
+      // upgrade as the store creation above (either all of it lands, or
+      // none of it does).
+      if (oldVersion < 2 && tx !== null) {
+        const store = tx.objectStore(DOC_STORE)
+        const cursorRequest = store.openCursor()
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result
+          if (!cursor) return
+          const record = cursor.value as Record<string, unknown>
+          if (typeof record.folderId === 'undefined') {
+            cursor.update({ ...record, folderId: null })
+          }
+          cursor.continue()
+        }
+      }
     }
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error ?? new Error('Failed to open IndexedDB'))
-    request.onblocked = () => reject(new Error('IndexedDB open was blocked'))
+    // `onblocked` fires while another tab still holds an older connection
+    // open. The moment that tab closes, this same pending request still
+    // resolves/upgrades normally with no further action needed — so
+    // `onblocked` doesn't reject by itself; it only notifies listeners
+    // (see `subscribeToDatabaseBlocked` above) so the UI can show a
+    // visible "waiting on another tab" state instead of looking hung.
+    //
+    // The grace-period timeout that actually gives up is deliberately
+    // NOT started from inside `onblocked` — observed in testing: with
+    // more than one version-change request already queued against the
+    // same database, a later request can sit unresolved without its own
+    // `onblocked` ever firing (it's waiting behind the earlier request,
+    // not yet at the point where the browser checks for blocking
+    // connections). Gating the timeout on `onblocked` in that situation
+    // would mean this open() hangs forever with zero feedback and no
+    // fallback — strictly worse than the generic "unavailable, run
+    // in-memory" path this whole mechanism exists to avoid folding into.
+    // Starting the timer unconditionally as soon as the request is issued
+    // closes that gap: the open either resolves normally well within the
+    // grace period (the overwhelmingly common case), or this gives up and
+    // reports it as blocked regardless of whether `onblocked` happened to
+    // fire.
+    const BLOCKED_GRACE_MS = 5000
+    let gaveUpAfterBlock = false
+
+    const blockedTimeoutId = setTimeout(() => {
+      gaveUpAfterBlock = true
+      reject(new DatabaseBlockedError())
+    }, BLOCKED_GRACE_MS)
+
+    request.onsuccess = () => {
+      clearTimeout(blockedTimeoutId)
+      const database = request.result
+      if (gaveUpAfterBlock) {
+        // Already told the caller this attempt failed and moved on (see
+        // the timeout above) — nobody holds a reference to this
+        // connection, so close it immediately rather than let it linger
+        // as a phantom blocker for the *next* open attempt.
+        database.close()
+        return
+      }
+      // If another tab later tries to open a newer version, this
+      // connection would otherwise block it forever (the user would have
+      // to know to close this tab). Close proactively and drop the cached
+      // promise so this tab's next database call re-opens (picking up the
+      // new version, or itself becoming the blocked party if it's the one
+      // that's now stale) instead of operating on a connection that's
+      // about to be superseded.
+      database.onversionchange = () => {
+        database.close()
+        dbPromise = null
+      }
+      resolve(database)
+    }
+    request.onerror = () => {
+      clearTimeout(blockedTimeoutId)
+      if (!gaveUpAfterBlock) reject(request.error ?? new Error('Failed to open IndexedDB'))
+    }
+    // Still wired for the common case: fires promptly and gives listeners
+    // (the UI banner) earlier feedback than waiting for the full grace
+    // period to elapse. Doesn't itself start or stop the timeout above.
+    request.onblocked = () => notifyBlocked()
   })
 }
 
@@ -134,6 +291,12 @@ function normalizeDocument(value: unknown): MarkdownDocument | null {
       typeof raw.createdAt === 'number' && Number.isFinite(raw.createdAt) ? raw.createdAt : now,
     updatedAt:
       typeof raw.updatedAt === 'number' && Number.isFinite(raw.updatedAt) ? raw.updatedAt : now,
+    // A record with no `folderId` at all predates the v2 migration and
+    // should already have been backfilled to `null` by `onupgradeneeded`
+    // — this default is the second line of defense, same spirit as every
+    // other field here. A non-string, non-null value is treated as root
+    // too, rather than trusting a corrupt/future-shaped value through.
+    folderId: typeof raw.folderId === 'string' ? raw.folderId : null,
   }
 }
 
@@ -209,4 +372,100 @@ export async function setActiveId(id: string): Promise<void> {
   const tx = db.transaction(META_STORE, 'readwrite')
   tx.objectStore(META_STORE).put({ key: ACTIVE_ID_KEY, value: id } satisfies MetaRow)
   await transactionDone(tx)
+}
+
+// --- Folders ---------------------------------------------------------------
+
+/** Same shape/defensiveness as `normalizeDocument` above — a corrupt or
+ * future-shaped record is dropped rather than flowing into the model. */
+function normalizeFolder(value: unknown): Folder | null {
+  if (typeof value !== 'object' || value === null) return null
+  const raw = value as Record<string, unknown>
+  if (typeof raw.id !== 'string' || raw.id === '') return null
+  const now = Date.now()
+  return {
+    id: raw.id,
+    name: typeof raw.name === 'string' ? raw.name : 'Untitled folder',
+    createdAt:
+      typeof raw.createdAt === 'number' && Number.isFinite(raw.createdAt) ? raw.createdAt : now,
+  }
+}
+
+export async function getAllFolders(): Promise<Folder[]> {
+  const db = await getDatabase()
+  const tx = db.transaction(FOLDER_STORE, 'readonly')
+  const request = tx.objectStore(FOLDER_STORE).getAll()
+  const raw = (await requestToPromise(request)) as unknown[]
+  return raw.reduce<Folder[]>((folders, entry) => {
+    const normalized = normalizeFolder(entry)
+    if (normalized !== null) folders.push(normalized)
+    return folders
+  }, [])
+}
+
+/** Unconditional upsert — unlike `putDocument`, folder writes are never
+ * debounced/autosaved (create and rename both commit immediately, once),
+ * so there's no in-flight-edit staleness window that needs a `base` guard
+ * here. */
+export async function putFolder(folder: Folder): Promise<void> {
+  const db = await getDatabase()
+  const tx = db.transaction(FOLDER_STORE, 'readwrite')
+  tx.objectStore(FOLDER_STORE).put(folder)
+  await transactionDone(tx)
+  broadcastFolder({ type: 'put', folder })
+}
+
+/**
+ * Deletes a folder and moves every document inside it back to root
+ * (`folderId: null`) — deleting a folder must never delete the documents in
+ * it. Both the folder deletion and every affected document's update happen
+ * inside a single readwrite transaction spanning both stores, so this is
+ * atomic: either the folder is gone and every one of its documents is
+ * updated to root, or (on any failure) neither happens — there's no
+ * intermediate state where a document is left pointing at a `folderId` that
+ * no longer resolves to anything.
+ *
+ * Running this as one real transaction (rather than a read-then-write pair
+ * of separate calls) also closes the "stale write recreates a deleted
+ * folder" hazard at the storage layer: because a readwrite transaction
+ * touching `FOLDER_STORE` here serializes against any other pending
+ * readwrite transaction on the same store (e.g. `putFolder` from an
+ * in-flight rename), whichever of the two actually lands last is the one
+ * that determines the final on-disk state — never a lost update silently
+ * merged from both.
+ */
+export async function deleteFolderAndOrphanDocuments(
+  folderId: string,
+): Promise<MarkdownDocument[]> {
+  const db = await getDatabase()
+  const tx = db.transaction([DOC_STORE, FOLDER_STORE], 'readwrite')
+  const docStore = tx.objectStore(DOC_STORE)
+  const orphaned: MarkdownDocument[] = []
+
+  await new Promise<void>((resolve, reject) => {
+    const cursorRequest = docStore.openCursor()
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result
+      if (!cursor) {
+        resolve()
+        return
+      }
+      const normalized = normalizeDocument(cursor.value)
+      if (normalized !== null && normalized.folderId === folderId) {
+        const moved: MarkdownDocument = { ...normalized, folderId: null }
+        cursor.update(moved)
+        orphaned.push(moved)
+      }
+      cursor.continue()
+    }
+    cursorRequest.onerror = () => reject(cursorRequest.error ?? new Error('Cursor walk failed'))
+  })
+
+  tx.objectStore(FOLDER_STORE).delete(folderId)
+  await transactionDone(tx)
+
+  orphaned.forEach((doc) => broadcast({ type: 'put', document: doc }))
+  broadcastFolder({ type: 'delete', id: folderId })
+
+  return orphaned
 }
