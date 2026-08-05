@@ -188,7 +188,13 @@ async function githubRequest(
     )
   }
   if (response.status === 422) {
-    throw new GitHubUnprocessableError('GitHub rejected this request (422 Unprocessable Entity).')
+    // Like 409 above, 422 covers several unrelated rejections, so the request
+    // and GitHub's own message are carried through rather than flattened into
+    // a status name that identifies nothing. Callers that translate this into
+    // a more specific error propagate the wording with it.
+    throw new GitHubUnprocessableError(
+      `GitHub rejected this request: ${describeRequest(init, path)}${await githubMessage(response)}`,
+    )
   }
   if (!response.ok) {
     throw new Error(`GitHub request failed (status ${response.status}).`)
@@ -667,8 +673,14 @@ export async function updateRef(
     )
   } catch (error) {
     if (error instanceof GitHubUnprocessableError || error instanceof GitHubConflictError) {
+      // Both statuses are collapsed into one meaning here, but they are not
+      // actually the same thing: 422 in particular is GitHub's answer to
+      // several unrelated problems with a ref update, only one of which is a
+      // non-fast-forward. Carrying the original message through keeps a
+      // genuinely different failure from being permanently disguised as a
+      // moved branch — which is only diagnosable if the wording survives.
       throw new GitHubRefConflictError(
-        'The branch moved on GitHub since this sync started — retrying against the latest version.',
+        `Could not move the branch to the new commit — ${error.message}`,
       )
     }
     throw error
