@@ -74,17 +74,20 @@ body {
  *   --pane2 (~= --seg) -> base-200        (secondary surface: header/footer/elevated panels)
  *   --line             -> base-300        (border/divider color)
  *   --t1               -> base-content    (primary text)
- *   --acc              -> primary         (the one token that legitimately differs
- *                                           in hue, not just lightness, per theme —
- *                                           see the file-level comment at the bottom)
+ *   --acc              -> primary         (Phase 2: a neutral grey, deliberately a
+ *                                           *different* hex per theme even though
+ *                                           both are the same hue family now — see
+ *                                           the "GREY ACCENT — Phase 2" comment
+ *                                           further down for why one shared value
+ *                                           doesn't work)
  *   --danger           -> error
  *   primary-content / error-content are *not* part of the reference
  *   palette — they're derived here, per theme, as whichever direction
  *   (near-black vs near-white) actually clears WCAG AA 4.5:1 against that
- *   theme's `--acc`/`--danger` (measured, see the redesign report; the
- *   light theme's `--acc` in particular only clears it with pure black,
- *   not the theme's own near-black `--t1`/white — its measured luminance
- *   sits almost exactly between the two).
+ *   theme's `--acc`/`--danger` (measured; see the "GREY ACCENT — Phase 2"
+ *   comment further down for `--acc`'s pairing, which flipped — light now
+ *   pairs with white, dark still with black — relative to the gold accent
+ *   Phase 2 replaced).
  *
  * `secondary`/`accent`(daisyUI's own role, distinct from this design's
  * `--acc`)/`neutral`/`info`/`success`/`warning` and the `--radius-*`/
@@ -144,12 +147,17 @@ body {
   --color-base-200: #f4f2ef;
   --color-base-300: #e2dfd9;
   --color-base-content: #1c1b19;
-  --color-primary: #9a6f22;
-  /* Only pure black clears 4.5:1 against this theme's `--acc` (measured
-   * 4.6709:1) — the theme's own near-black `--t1` (3.828:1) and white
-   * (4.4959:1, i.e. *below* the floor by a hair) both fall short. See the
-   * file-level comment above. */
-  --color-primary-content: #000000;
+  /* Phase 2 visual redesign: accent swapped from the reference design's gold
+   * (`#9a6f22`) to a neutral dark-ish grey per direct user request — see the
+   * file-level comment block further down ("GREY ACCENT — Phase 2") for the
+   * full measured rationale. This is the light theme's half of the pair;
+   * `--color-primary` is deliberately NOT the same hex as dark theme's grey
+   * — a single value for both themes was the specific mistake that caused
+   * six contrast bugs earlier in this project (see that comment). */
+  --color-primary: #635f57;
+  /* White clears 4.5:1 (measured 6.354:1); black does not (3.305:1, below
+   * the floor) — the opposite pairing from the gold accent this replaces. */
+  --color-primary-content: #ffffff;
   --color-error: #a8402c;
   /* = --md-seg-active below; white clears 6.11:1 against this theme's
    * `--danger`. */
@@ -177,9 +185,15 @@ body {
   --color-base-200: #111214;
   --color-base-300: #1b1d20;
   --color-base-content: #e8e6e3;
-  --color-primary: #d8b26b;
-  /* = --md-rail below; measured 9.8494:1 against this theme's `--acc`. */
-  --color-primary-content: #0a0b0c;
+  /* Phase 2 visual redesign: grey accent, dark theme half — see the
+   * file-level "GREY ACCENT — Phase 2" comment below for the full measured
+   * rationale. Deliberately a *light-ish* grey (not the light theme's same
+   * hex) since it has to clear 4.5:1 against this theme's near-black
+   * surfaces. */
+  --color-primary: #9c968d;
+  /* Pure black clears 4.5:1 (measured 7.161:1); white does not (2.933:1,
+   * nowhere close). */
+  --color-primary-content: #000000;
   --color-error: #d98b7a;
   /* = --md-rail below too; measured 7.4332:1 against this theme's
    * `--danger`. */
@@ -197,5 +211,72 @@ body {
   --md-pop: #15171a;
   --md-line2: #16181a;
 }
+
+/*
+ * GREY ACCENT — Phase 2 visual redesign (user request: replace the
+ * reference design's gold accent with neutral grey). `--color-primary` is
+ * the one token every accent-bearing element in the app resolves to
+ * directly or through `ink()` (link colour, editor caret, selection tint,
+ * the unsaved dot, focus rings, primary buttons, the active view-mode tab) —
+ * so this one substitution repaints all of them.
+ *
+ * Deliberately TWO DIFFERENT hex values, one per theme (light `#635f57`,
+ * dark `#9c968d`) — not one grey reused for both. A single shared value was
+ * the mistake that caused six separate contrast bugs earlier in this
+ * project: a grey light enough to read on the dark theme's near-black
+ * surfaces is, by construction, far too light to clear 4.5:1 on the light
+ * theme's near-white surfaces, and vice versa. Each half is its own
+ * independent choice, picked and measured against its own theme's actual
+ * surfaces (approximated sRGB relative-luminance contrast, `(L1+0.05)/
+ * (L2+0.05)` per WCAG):
+ *
+ *   Light (`#635f57`, a dark warm grey):
+ *     - vs `--color-base-100` (#fbfaf8, pane/editor/preview bg): 6.091:1
+ *     - vs `--color-base-200` (#f4f2ef, header/footer bg):       5.686:1
+ *     - vs `--md-rail`        (#efedea, sidebar bg):              5.438:1
+ *     All three clear the 4.5:1 AA text floor (and trivially the 3:1
+ *     non-text/UI-indicator floor used for the focus ring and the unsaved
+ *     dot).
+ *
+ *   Dark (`#9c968d`, a light warm grey):
+ *     - vs `--color-base-100` (#0e0f11): 6.539:1
+ *     - vs `--color-base-200` (#111214): 6.391:1
+ *     - vs `--md-rail`        (#0a0b0c): 6.717:1
+ *     Same story — all three clear both floors with margin.
+ *
+ *   Separation from `--color-base-content` (so a link doesn't read as
+ *   plain prose): measured as both a contrast ratio and an absolute
+ *   lightness delta (L*, 0-100), since two colours that sit on the same
+ *   side of a background (both "light-ish" on the dark theme, both
+ *   "dark-ish" on the light theme) will never show a large *ratio* between
+ *   each other even when they're clearly different in person — plain body
+ *   text (`--t1`) is close to a background-clearing extreme (near-white on
+ *   dark, near-black on light) precisely because it also has to clear
+ *   4.5:1, and the accent has to sit in the same direction for the same
+ *   reason. Light: ratio 2.709:1, ΔL* 30.65. Dark: ratio 2.354:1, ΔL*
+ *   29.03. Both read as a visually distinct grey step against body text at
+ *   a glance, and links additionally keep the reference design's
+ *   underline (`a { border-bottom: 1px solid currentColor }` — see
+ *   `Preview.vue`'s prose link styling / any anchor), so identifying a
+ *   link never depends on colour alone.
+ *
+ *   Selection background (`.cm-selectionBackground` /
+ *   `::selection` in `features/editor/lib/theme.ts` — accent 60% mixed
+ *   with base-content, then that result laid at 55% opacity over the pane
+ *   background): text drawn on top of the flattened selection colour
+ *   measures 4.265:1 in dark, 5.829:1 in light. Light clears the 4.5:1 text
+ *   floor; dark falls just short of it (though still comfortably above the
+ *   3:1 large-text/non-text floor) — reported here rather than silently
+ *   claimed as passing, since a translucent selection highlight was not
+ *   re-tuned as part of this pass (only the accent hex feeding it changed).
+ *
+ *   `--color-primary-content` (the text colour drawn *on* a solid
+ *   `--color-primary` fill, e.g. the "New file" button, the active
+ *   Write/Split/Read tab): light theme flips to white (`#ffffff`,
+ *   6.354:1) since black only reaches 3.305:1 against this grey — the
+ *   opposite pairing from the gold accent this replaces, where black
+ *   cleared it and white didn't. Dark theme keeps black (`#000000`,
+ *   7.161:1; white only reaches 2.933:1).
+ */
 
 @plugin '@tailwindcss/typography';

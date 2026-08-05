@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
   ChevronDownIcon,
   ChevronRightIcon,
+  EllipsisHorizontalIcon,
   FolderIcon,
-  PencilSquareIcon,
-  TrashIcon,
 } from '@heroicons/vue/24/outline'
 
 import { folderCollapseToggled, folderRenamed } from '../model/documents'
@@ -56,10 +55,70 @@ watch(renaming, async (isRenaming) => {
   renameInputRef.value?.focus()
   renameInputRef.value?.select()
 })
+
+// --- Row actions menu (Phase 2 visual redesign) -----------------------
+//
+// Same consolidation as `DocumentRow.vue`: the two previous inline icon
+// buttons (rename, delete) collapse into a single `⋯` overflow trigger,
+// same reveal behaviour (hidden by default, shown on hover/focus-within,
+// always shown under a coarse pointer/no-hover input) and the same
+// dismiss-on-outside-click/Escape popover shape as that component.
+const menuOpen = ref(false)
+const menuRef = ref<HTMLElement | null>(null)
+const triggerRef = ref<HTMLButtonElement | null>(null)
+
+const folderLabel = computed(() => props.folder.name)
+
+function toggleMenu() {
+  menuOpen.value = !menuOpen.value
+}
+
+function closeMenu() {
+  menuOpen.value = false
+}
+
+function handleRename() {
+  closeMenu()
+  startRename()
+}
+
+function handleDelete(event: MouseEvent) {
+  closeMenu()
+  emit('delete-requested', event)
+}
+
+function handleOutsideClick(event: MouseEvent) {
+  const target = event.target as Node | null
+  if (target === null) return
+  if (menuRef.value?.contains(target) === true) return
+  if (triggerRef.value?.contains(target) === true) return
+  closeMenu()
+}
+
+watch(menuOpen, (open) => {
+  if (open) {
+    document.addEventListener('click', handleOutsideClick, true)
+  } else {
+    document.removeEventListener('click', handleOutsideClick, true)
+  }
+})
+onBeforeUnmount(() => document.removeEventListener('click', handleOutsideClick, true))
+
+function handleMenuKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeMenu()
+    triggerRef.value?.focus()
+  }
+}
 </script>
 
 <template>
   <li>
+    <!-- Folder row doubles as a "group heading" in the redesigned sidebar —
+         small, muted chrome (chevron + icon at full strength for
+         legibility as controls, the name itself in a slightly smaller,
+         letter-spaced treatment) rather than a document-weight row. -->
     <div class="group folder-row flex w-full items-center gap-1 py-0.5">
       <button
         type="button"
@@ -87,32 +146,62 @@ watch(renaming, async (isRenaming) => {
       <button
         v-else
         type="button"
-        class="min-w-0 flex-1 truncate rounded-field px-1 py-1 text-left text-sm font-medium"
+        class="min-w-0 flex-1 truncate rounded-field px-1 py-1 text-left text-[11px] font-semibold tracking-wider uppercase"
+        style="color: var(--md-t3, var(--color-base-content))"
         @click="folderCollapseToggled(folder.id)"
       >
         {{ folder.name }}
       </button>
       <span
-        class="flex shrink-0 items-center pr-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 [@media(hover:none)]:opacity-100"
+        class="relative flex shrink-0 items-center pr-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 [@media(hover:none)]:opacity-100"
       >
         <button
+          ref="triggerRef"
           type="button"
           class="btn btn-ghost btn-xs btn-square"
-          :aria-label="`Rename ${folder.name}`"
-          :title="showTooltips ? 'Rename folder' : undefined"
-          @click.stop="startRename"
+          :aria-label="`Actions for ${folderLabel}`"
+          :title="showTooltips ? 'Folder actions' : undefined"
+          aria-haspopup="menu"
+          :aria-expanded="menuOpen"
+          @click.stop="toggleMenu"
+          @keydown="handleMenuKeydown"
         >
-          <PencilSquareIcon class="h-3.5 w-3.5" />
+          <EllipsisHorizontalIcon class="h-3.5 w-3.5" />
         </button>
-        <button
-          type="button"
-          class="btn btn-ghost btn-xs btn-square text-error"
-          :aria-label="`Delete ${folder.name}`"
-          :title="showTooltips ? 'Delete folder' : undefined"
-          @click.stop="emit('delete-requested', $event)"
+
+        <ul
+          v-if="menuOpen"
+          ref="menuRef"
+          class="menu absolute right-0 top-full z-10 mt-1 w-40 rounded-box p-1 shadow-lg"
+          style="
+            background: var(--md-pop, var(--color-base-100));
+            border: 1px solid var(--color-base-300);
+          "
+          role="menu"
+          :aria-label="`Actions for ${folderLabel}`"
+          @keydown="handleMenuKeydown"
         >
-          <TrashIcon class="h-3.5 w-3.5" />
-        </button>
+          <li role="none">
+            <button
+              type="button"
+              role="menuitem"
+              class="move-menu-item text-sm"
+              @click.stop="handleRename"
+            >
+              Rename
+            </button>
+          </li>
+          <li role="none">
+            <button
+              type="button"
+              role="menuitem"
+              class="move-menu-item text-sm text-error"
+              @click.stop="handleDelete"
+            >
+              Delete
+            </button>
+          </li>
+        </ul>
       </span>
     </div>
 
@@ -135,8 +224,16 @@ watch(renaming, async (isRenaming) => {
 /* Same daisyUI `.menu` `:active` defect as `DocumentRow.vue` — see that
  * file's `<style>` comment for the root cause. This row wrapper is also a
  * direct, non-`.btn` child of a `.menu`'s `<li>`, so it needs the same
- * theme-adaptive override. */
+ * theme-adaptive override. `.move-menu-item` is shared with `DocumentRow`'s
+ * scoped block but Vue's `scoped` attribute-selector means each component's
+ * copy only ever matches its own template — declaring it again here is
+ * required, not redundant. */
 .folder-row:active {
+  background-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
+  color: var(--color-base-content);
+}
+
+.move-menu-item:active {
   background-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
   color: var(--color-base-content);
 }

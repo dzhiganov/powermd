@@ -4,7 +4,13 @@ import { useUnit } from 'effector-vue/composition'
 
 import { useMediaQuery } from '@/shared/lib/useMediaQuery'
 import { DocumentDrawer, SaveIndicator } from '@/features/documents'
-import { SettingsModal, ShortcutsModal, $showTooltips, $drawerSide } from '@/features/settings'
+import {
+  SettingsModal,
+  ShortcutsModal,
+  $showTooltips,
+  $drawerSide,
+  drawerSideChanged,
+} from '@/features/settings'
 import { GitHubModal, CommitDialog } from '@/features/github'
 import { WordCount } from '@/features/editor'
 
@@ -46,12 +52,16 @@ const editorInlineStyle = computed(() =>
   showSplitter.value ? { flex: '0 0 calc(var(--split-ratio, 0.5) * 100%)' } : undefined,
 )
 
-// A pane is the sole visible one whenever the split isn't showing — that
-// covers desktop editor-only/preview-only *and* every mobile state (mobile
-// never shows the splitter, see `showSplitter` above). Only desktop split
-// mode gets both panes side by side, so it's the one case that keeps its
-// current full-width-of-pane behaviour with no content max-width.
-const singlePane = computed(() => !showSplitter.value)
+// Phase 2 visual redesign: both panes are now *always* centred to their own
+// fixed reading-column max-width (720px editor / 680px preview — see
+// `EditorPane.vue`/`PreviewPane.vue`), matching the reference design, which
+// centres each pane's content column whether it's the sole visible pane or
+// sharing the row in split mode. This used to be conditional on
+// `!showSplitter` (full-bleed in split mode, centred only when a pane was
+// alone) — the `centered` prop stays (both panes still branch on it) so a
+// future mode that genuinely wants full-bleed content has somewhere to hook
+// back in, it's just unconditionally `true` for every mode today.
+const centered = true
 </script>
 
 <template>
@@ -80,22 +90,28 @@ const singlePane = computed(() => !showSplitter.value)
     <div
       class="flex min-h-0 flex-1 overflow-hidden print:block print:h-auto print:overflow-visible"
     >
-      <DocumentDrawer :show-tooltips="showTooltips" :side="drawerSide" />
+      <DocumentDrawer
+        :show-tooltips="showTooltips"
+        :side="drawerSide"
+        @dock-changed="drawerSideChanged"
+      >
+        <!-- Word count moves from the old global footer bar (removed in
+             the Phase 2 visual redesign) into the sidebar's own footer,
+             beside its dock-side control — see `DocumentDrawer.vue`'s
+             `footer-extra` slot doc comment. -->
+        <template #footer-extra>
+          <WordCount />
+        </template>
+      </DocumentDrawer>
 
       <main
         class="flex min-h-0 flex-1 overflow-hidden print:block print:h-auto print:min-h-0 print:overflow-visible"
         :style="{ '--split-ratio': splitRatio }"
       >
-        <EditorPane v-show="showEditor" :style="editorInlineStyle" :centered="singlePane" />
+        <EditorPane v-show="showEditor" :style="editorInlineStyle" :centered="centered" />
         <Splitter v-show="showSplitter" />
-        <PreviewPane v-show="showPreview" :centered="singlePane" />
+        <PreviewPane v-show="showPreview" :centered="centered" />
       </main>
     </div>
-
-    <footer
-      class="flex h-6 shrink-0 items-center justify-end border-t border-base-300 bg-base-200 px-3 print:hidden"
-    >
-      <WordCount />
-    </footer>
   </div>
 </template>

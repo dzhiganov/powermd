@@ -1,14 +1,39 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { useUnit } from 'effector-vue/composition'
 
-import { $activeDocument, documentRenamed } from '../model/documents'
+import { $activeDocument, $folders, $saveStatus, documentRenamed } from '../model/documents'
 
 // See `DrawerToggleButton.vue` for why this is a prop rather than a direct
 // `@/features/settings` import.
 defineProps<{ showTooltips?: boolean }>()
 
 const active = useUnit($activeDocument)
+const folders = useUnit($folders)
+const saveStatus = useUnit($saveStatus)
+
+// Header breadcrumb (Phase 2 visual redesign): folder name, a `/`
+// separator, then the document title — `DocumentTitle` already owned the
+// title + its rename interaction, so the breadcrumb is built here rather
+// than in a new component, keeping rename a single source of truth. A
+// root-level document (`folderId === null`) — or one whose folder id no
+// longer resolves, same defensive fallback `$pendingFolderDeleteDoc` etc.
+// already use elsewhere in this feature — reads as "Unfiled".
+const folderName = computed(() => {
+  const doc = active.value
+  if (doc === null || doc.folderId === null) return 'Unfiled'
+  return folders.value.find((folder) => folder.id === doc.folderId)?.name ?? 'Unfiled'
+})
+
+// The unsaved dot: pending/saving shows it, saved hides it. A save
+// *failure* deliberately does NOT show here — collapsing an error down to
+// "just a dot" is exactly what the redesign must avoid; a failure instead
+// keeps the stronger, persistent, non-auto-hiding affordance in
+// `SaveIndicator.vue` (rendered separately, see `AppShell.vue`). This
+// replaces the old transient corner "saving/saved" flash for those two
+// states; the corner indicator's accessible live-region announcement
+// (`aria-live="polite"`) still fires for every state, dot or not.
+const showUnsavedDot = computed(() => saveStatus.value === 'unsaved')
 
 // Same shape as `DocumentDrawer.vue`'s inline rename — local UI state only;
 // the model only hears about a rename once it's committed (Enter or blur).
@@ -41,25 +66,54 @@ function cancelRename() {
 </script>
 
 <template>
-  <input
-    v-if="renaming"
-    ref="inputRef"
-    v-model="renameValue"
-    type="text"
-    class="input input-sm min-w-0 max-w-[10rem] sm:max-w-[16rem]"
-    aria-label="Document title"
-    @keydown.enter.prevent="commitRename"
-    @keydown.esc.prevent="cancelRename"
-    @blur="commitRename"
-  />
-  <button
-    v-else
-    type="button"
-    class="btn btn-ghost btn-sm min-w-0 max-w-[10rem] justify-start truncate font-medium sm:max-w-[16rem]"
-    aria-label="Rename document"
-    :title="showTooltips ? 'Rename document' : undefined"
-    @click="startRename"
-  >
-    {{ active?.title || 'Untitled' }}
-  </button>
+  <div class="flex min-w-0 items-baseline gap-2">
+    <!-- `--md-t3`/`--md-t4` here are exactly the "small secondary label"
+         case they're safe for (13px breadcrumb chrome, not running text) —
+         see `app/styles/main.css`'s contrast-limitation note on those two
+         tokens. Falls back to `base-content` if the custom property is ever
+         unset, same defensive fallback pattern the reference design itself
+         uses. -->
+    <span
+      class="shrink-0 truncate text-[13px]"
+      style="color: var(--md-t3, var(--color-base-content))"
+    >
+      {{ folderName }}
+    </span>
+    <span
+      class="shrink-0 text-[13px]"
+      style="color: var(--md-t4, var(--color-base-content))"
+      aria-hidden="true"
+      >/</span
+    >
+
+    <input
+      v-if="renaming"
+      ref="inputRef"
+      v-model="renameValue"
+      type="text"
+      class="input input-sm min-w-0 max-w-[10rem] sm:max-w-[16rem]"
+      aria-label="Document title"
+      @keydown.enter.prevent="commitRename"
+      @keydown.esc.prevent="cancelRename"
+      @blur="commitRename"
+    />
+    <button
+      v-else
+      type="button"
+      class="btn btn-ghost btn-sm min-w-0 max-w-[10rem] justify-start truncate px-1.5 font-medium sm:max-w-[16rem]"
+      aria-label="Rename document"
+      :title="showTooltips ? 'Rename document' : undefined"
+      @click="startRename"
+    >
+      {{ active?.title || 'Untitled' }}
+    </button>
+
+    <span
+      v-if="showUnsavedDot"
+      class="h-[5px] w-[5px] shrink-0 rounded-full"
+      style="background: var(--color-primary)"
+      title="Unsaved changes"
+      aria-hidden="true"
+    />
+  </div>
 </template>

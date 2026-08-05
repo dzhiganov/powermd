@@ -1,11 +1,6 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import {
-  PencilSquareIcon,
-  DocumentDuplicateIcon,
-  TrashIcon,
-  FolderArrowDownIcon,
-} from '@heroicons/vue/24/outline'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { EllipsisHorizontalIcon } from '@heroicons/vue/24/outline'
 
 import {
   documentSelected,
@@ -64,38 +59,64 @@ watch(renaming, async (isRenaming) => {
   renameInputRef.value?.select()
 })
 
-// --- Move to folder: a small transient menu, not a modal — dismissible via
-// Escape or an outside click, same as any other popover menu. Doesn't need
-// the heavier focus-trap treatment reserved for blocking dialogs (delete
-// confirmations, settings) since it never blocks interacting with the rest
-// of the page.
-const moveMenuOpen = ref(false)
-const moveMenuRef = ref<HTMLElement | null>(null)
-const moveTriggerRef = ref<HTMLButtonElement | null>(null)
+// --- Row actions menu (Phase 2 visual redesign) -----------------------
+//
+// The four previous inline icon buttons (rename, duplicate, move, delete)
+// collapse into a single `⋯` overflow trigger — same reveal behaviour as
+// before (hidden by default, shown on hover/focus-within, always shown
+// under a coarse pointer/no-hover input), just one target instead of four.
+// "Move to folder" used to be its own nested flyout; it's now inline in
+// this same menu as a labelled sub-list, so there's still exactly one
+// popover open at a time per row.
+//
+// Dismissible via Escape or an outside click, same as the menu it
+// replaces — not the heavier modal focus-trap treatment reserved for
+// blocking dialogs (delete confirmations, settings), since it never blocks
+// interacting with the rest of the page.
+const menuOpen = ref(false)
+const menuRef = ref<HTMLElement | null>(null)
+const triggerRef = ref<HTMLButtonElement | null>(null)
 
-function toggleMoveMenu() {
-  moveMenuOpen.value = !moveMenuOpen.value
+const rowLabel = computed(() => props.doc.title || 'Untitled')
+
+function toggleMenu() {
+  menuOpen.value = !menuOpen.value
 }
 
-function closeMoveMenu() {
-  moveMenuOpen.value = false
+function closeMenu() {
+  menuOpen.value = false
+}
+
+function handleRename() {
+  closeMenu()
+  startRename()
+}
+
+function handleDuplicate() {
+  closeMenu()
+  documentDuplicated(props.doc.id)
 }
 
 function moveTo(folderId: string | null) {
   documentMoveRequested({ id: props.doc.id, folderId })
-  closeMoveMenu()
-  moveTriggerRef.value?.focus()
+  closeMenu()
+  triggerRef.value?.focus()
+}
+
+function handleDelete(event: MouseEvent) {
+  closeMenu()
+  emit('delete-requested', event)
 }
 
 function handleOutsideClick(event: MouseEvent) {
   const target = event.target as Node | null
   if (target === null) return
-  if (moveMenuRef.value?.contains(target) === true) return
-  if (moveTriggerRef.value?.contains(target) === true) return
-  closeMoveMenu()
+  if (menuRef.value?.contains(target) === true) return
+  if (triggerRef.value?.contains(target) === true) return
+  closeMenu()
 }
 
-watch(moveMenuOpen, (open) => {
+watch(menuOpen, (open) => {
   if (open) {
     document.addEventListener('click', handleOutsideClick, true)
   } else {
@@ -104,11 +125,11 @@ watch(moveMenuOpen, (open) => {
 })
 onBeforeUnmount(() => document.removeEventListener('click', handleOutsideClick, true))
 
-function handleMoveMenuKeydown(event: KeyboardEvent) {
+function handleMenuKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
     event.preventDefault()
-    closeMoveMenu()
-    moveTriggerRef.value?.focus()
+    closeMenu()
+    triggerRef.value?.focus()
   }
 }
 </script>
@@ -144,54 +165,52 @@ function handleMoveMenuKeydown(event: KeyboardEvent) {
         class="relative flex shrink-0 items-center pr-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 [@media(hover:none)]:opacity-100"
       >
         <button
+          ref="triggerRef"
           type="button"
           class="btn btn-ghost btn-xs btn-square"
-          :aria-label="`Rename ${doc.title || 'Untitled'}`"
-          :title="showTooltips ? 'Rename' : undefined"
-          @click.stop="startRename"
-        >
-          <PencilSquareIcon class="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          class="btn btn-ghost btn-xs btn-square"
-          :aria-label="`Duplicate ${doc.title || 'Untitled'}`"
-          :title="showTooltips ? 'Duplicate' : undefined"
-          @click.stop="documentDuplicated(doc.id)"
-        >
-          <DocumentDuplicateIcon class="h-3.5 w-3.5" />
-        </button>
-        <button
-          ref="moveTriggerRef"
-          type="button"
-          class="btn btn-ghost btn-xs btn-square"
-          :aria-label="`Move ${doc.title || 'Untitled'} to folder`"
-          :title="showTooltips ? 'Move to folder' : undefined"
+          :aria-label="`Actions for ${rowLabel}`"
+          :title="showTooltips ? 'Actions' : undefined"
           aria-haspopup="menu"
-          :aria-expanded="moveMenuOpen"
-          @click.stop="toggleMoveMenu"
-          @keydown="handleMoveMenuKeydown"
+          :aria-expanded="menuOpen"
+          @click.stop="toggleMenu"
+          @keydown="handleMenuKeydown"
         >
-          <FolderArrowDownIcon class="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          class="btn btn-ghost btn-xs btn-square text-error"
-          :aria-label="`Delete ${doc.title || 'Untitled'}`"
-          :title="showTooltips ? 'Delete' : undefined"
-          @click.stop="emit('delete-requested', $event)"
-        >
-          <TrashIcon class="h-3.5 w-3.5" />
+          <EllipsisHorizontalIcon class="h-3.5 w-3.5" />
         </button>
 
         <ul
-          v-if="moveMenuOpen"
-          ref="moveMenuRef"
-          class="menu absolute right-0 top-full z-10 mt-1 w-40 rounded-box bg-base-100 p-1 shadow-lg"
+          v-if="menuOpen"
+          ref="menuRef"
+          class="menu absolute right-0 top-full z-10 mt-1 w-44 rounded-box p-1 shadow-lg"
+          style="
+            background: var(--md-pop, var(--color-base-100));
+            border: 1px solid var(--color-base-300);
+          "
           role="menu"
-          :aria-label="`Move ${doc.title || 'Untitled'} to folder`"
-          @keydown="handleMoveMenuKeydown"
+          :aria-label="`Actions for ${rowLabel}`"
+          @keydown="handleMenuKeydown"
         >
+          <li role="none">
+            <button
+              type="button"
+              role="menuitem"
+              class="move-menu-item text-sm"
+              @click.stop="handleRename"
+            >
+              Rename
+            </button>
+          </li>
+          <li role="none">
+            <button
+              type="button"
+              role="menuitem"
+              class="move-menu-item text-sm"
+              @click.stop="handleDuplicate"
+            >
+              Duplicate
+            </button>
+          </li>
+          <li class="menu-title px-2 pt-2 text-xs">Move to</li>
           <li role="none">
             <button
               type="button"
@@ -212,6 +231,17 @@ function handleMoveMenuKeydown(event: KeyboardEvent) {
               @click.stop="moveTo(folder.id)"
             >
               {{ folder.name }}
+            </button>
+          </li>
+          <li class="my-1 h-px" style="background: var(--color-base-300)" role="none" />
+          <li role="none">
+            <button
+              type="button"
+              role="menuitem"
+              class="move-menu-item text-sm text-error"
+              @click.stop="handleDelete"
+            >
+              Delete
             </button>
           </li>
         </ul>

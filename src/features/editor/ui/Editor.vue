@@ -87,9 +87,17 @@ onUnmounted(wrapSubscription.unsubscribe)
  * own theme reads DaisyUI's `--color-*` variables — the `75ch` fallback
  * here only matters before that effect has run, which is never in
  * practice (it runs synchronously during app init).
+ *
+ * `min(720px, ...)` (Phase 2 visual redesign): 720px is the reference
+ * design's fixed editor column width, applied whether this pane is the
+ * sole visible one or sharing the row in split mode (`AppShell.vue`'s
+ * `centered` is unconditionally `true` now — see its doc comment). The
+ * user's "Reading width" setting still works exactly as before within that
+ * cap: it can narrow the column below 720px, it just can no longer widen
+ * it past the design's fixed pane width.
  */
 .editor-centered :deep(.cm-content) {
-  max-width: var(--md-reading-width, 75ch);
+  max-width: min(720px, var(--md-reading-width, 75ch));
   margin-inline: auto;
 }
 </style>

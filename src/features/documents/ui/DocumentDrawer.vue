@@ -37,6 +37,15 @@ withDefaults(defineProps<{ showTooltips?: boolean; side?: 'left' | 'right' }>(),
   side: 'right',
 })
 
+// Dock-left/right is a `settings`-owned preference (`$drawerSide` /
+// `drawerSideChanged`) — `documents` never imports `settings` directly (see
+// the file-level note above `showTooltips`/`side`), so the footer's dock
+// control (Phase 2 visual redesign — the same preference the Settings
+// modal's Left/Right buttons already expose, just also reachable from the
+// sidebar itself) only emits the intent; `AppShell.vue` (already importing
+// both features) wires it to the real event.
+const emit = defineEmits<{ 'dock-changed': [side: 'left' | 'right'] }>()
+
 const documents = useUnit($documentList)
 const activeId = useUnit($activeId)
 const open = useUnit($drawerOpen)
@@ -209,7 +218,8 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
            lives here rather than on the clip box, since this is the box
            that's actually visible. -->
       <div
-        class="flex h-full w-80 max-w-[85vw] flex-col border-base-300 bg-base-200 shadow-xl transition-transform duration-500 ease-out motion-reduce:transition-none md:max-w-none md:shadow-none"
+        class="flex h-full w-80 max-w-[85vw] flex-col border-base-300 shadow-xl transition-transform duration-500 ease-out motion-reduce:transition-none md:max-w-none md:shadow-none"
+        style="background: var(--md-rail, var(--color-base-200))"
         :class="[
           side === 'right' ? 'border-l' : 'border-r',
           open ? 'translate-x-0' : side === 'right' ? 'translate-x-full' : '-translate-x-full',
@@ -222,30 +232,38 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
              above via `aria-label="Documents"`; it must stay there since
              there's no visible heading to fall back on. Fixed left-aligned
              layout — this header no longer mirrors with `side`, matching the
-             toolbar above it. -->
-        <header class="flex h-12 shrink-0 items-center gap-1 border-b border-base-300 px-3">
-          <button
-            type="button"
-            class="btn btn-primary btn-xs gap-1"
-            aria-label="New file"
-            @click="documentCreated()"
-          >
-            <PlusIcon class="h-3.5 w-3.5" />
-            New file
-          </button>
-          <!-- `ml-auto` pushes this to the far right of the header, leaving
-               "New file" at the left — the two are otherwise independent
-               siblings with no shared `justify-between` wrapper needed. -->
-          <button
-            type="button"
-            class="btn btn-ghost btn-xs btn-square ml-auto"
-            aria-label="New folder"
-            :title="showTooltips ? 'New folder' : undefined"
-            @click="startCreateFolder"
-          >
-            <FolderPlusIcon class="h-3.5 w-3.5" />
-          </button>
-        </header>
+             toolbar above it.
+
+             Wrapped in a column (rather than one row) so a search box (out
+             of scope for this phase — see `AGENTS`/task notes) has an
+             obvious slot above the New file/New folder row without any
+             later restructuring: just another child before this `div`,
+             sharing the same padding/gap rhythm. -->
+        <div class="flex shrink-0 flex-col gap-2.5 border-b border-base-300 p-3 pb-2.5">
+          <!-- Phase 3 will add a search input here, above the New
+               file/New folder row (matching the reference design's
+               layout) — deliberately left empty for now. -->
+          <div class="flex items-center gap-1.5">
+            <button
+              type="button"
+              class="btn btn-primary btn-xs h-[30px] flex-1 gap-1.5"
+              aria-label="New file"
+              @click="documentCreated()"
+            >
+              <PlusIcon class="h-3.5 w-3.5" />
+              New file
+            </button>
+            <button
+              type="button"
+              class="btn btn-ghost btn-xs btn-square h-[30px] w-[30px] border border-base-300"
+              aria-label="New folder"
+              :title="showTooltips ? 'New folder' : undefined"
+              @click="startCreateFolder"
+            >
+              <FolderPlusIcon class="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
 
         <!-- Blocked-upgrade notice: see `db.subscribeToDatabaseBlocked` /
              `$dbBlocked`'s doc comment. Deliberately visible and specific
@@ -304,6 +322,88 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
             />
           </li>
         </ul>
+
+        <!-- Footer (Phase 2 visual redesign): the dock-left/dock-right
+             control is the same `settings`-owned preference the Settings
+             modal's "Documents panel side" Left/Right buttons already
+             expose (see the `emit` doc comment above) — reachable here too
+             for convenience, not a new feature. Word count moves here from
+             `AppShell.vue`'s old global footer bar, via the
+             `footer-extra` slot (a slot, not a direct `@/features/editor`
+             import, for the same "documents doesn't import other features
+             directly" reason `showTooltips`/`side` are props). -->
+        <footer
+          class="flex h-8 shrink-0 items-center justify-between gap-2 border-t border-base-300 px-2.5"
+        >
+          <slot name="footer-extra" />
+          <div
+            class="ml-auto flex items-center gap-0.5 rounded-md p-0.5"
+            role="group"
+            aria-label="Documents panel side"
+            style="background: var(--md-seg, var(--color-base-200))"
+          >
+            <button
+              type="button"
+              class="dock-btn"
+              :class="{ 'dock-btn-active': side === 'left' }"
+              :aria-pressed="side === 'left'"
+              aria-label="Dock sidebar left"
+              :title="showTooltips ? 'Dock left' : undefined"
+              @click="emit('dock-changed', 'left')"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.25"
+              >
+                <rect x="1.8" y="2.6" width="12.4" height="10.8" rx="2" />
+                <rect
+                  x="1.8"
+                  y="2.6"
+                  width="4.6"
+                  height="10.8"
+                  rx="2"
+                  fill="currentColor"
+                  stroke="none"
+                  opacity="0.55"
+                />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="dock-btn"
+              :class="{ 'dock-btn-active': side === 'right' }"
+              :aria-pressed="side === 'right'"
+              aria-label="Dock sidebar right"
+              :title="showTooltips ? 'Dock right' : undefined"
+              @click="emit('dock-changed', 'right')"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.25"
+              >
+                <rect x="1.8" y="2.6" width="12.4" height="10.8" rx="2" />
+                <rect
+                  x="9.6"
+                  y="2.6"
+                  width="4.6"
+                  height="10.8"
+                  rx="2"
+                  fill="currentColor"
+                  stroke="none"
+                  opacity="0.55"
+                />
+              </svg>
+            </button>
+          </div>
+        </footer>
       </div>
     </aside>
 
@@ -383,3 +483,32 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
     </div>
   </div>
 </template>
+
+<style scoped>
+/* Footer dock-side segmented control — raw `var(--color-*)`/`--md-*`
+ * rather than daisyUI's `join`/`btn-active` utilities, matching the
+ * `Splitter.vue`/`MobileTabs.vue` convention of hand-rolled state colours
+ * for small custom controls this codebase already follows elsewhere. */
+.dock-btn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--md-t4, var(--color-base-content));
+}
+
+.dock-btn-active {
+  background: var(--md-seg-active, var(--color-base-100));
+  color: var(--color-base-content);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 22%);
+}
+
+.dock-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+</style>

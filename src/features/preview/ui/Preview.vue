@@ -94,6 +94,14 @@ const titleColor = ink('--color-info')
 const numberColor = ink('--color-secondary')
 const attributeColor = ink('--color-warning')
 const deletionColor = ink('--color-error')
+
+// 680px is the reference design's fixed preview column width (Phase 2
+// visual redesign). `min()` with the settings feature's user-adjustable
+// "Reading width" (ch) preference means the setting can still narrow the
+// column below 680px, but can no longer widen it past the design's column —
+// the preference isn't lost, just capped at this phase's fixed pane width.
+const previewMaxWidth = 'min(680px, var(--md-reading-width, 75ch))'
+
 // Reused below for the mermaid error box's heading — same semantic role
 // (`hljs-deletion` and "diagram failed to render" are both an error
 // accent), so this shares `deletionColor` rather than adding a second
@@ -101,12 +109,16 @@ const deletionColor = ink('--color-error')
 </script>
 
 <template>
+  <!-- Root class/style are open for the parent to extend (Vue's default
+       attribute fallthrough) — `layout/ui/PreviewPane.vue` (Phase 2 visual
+       redesign) adds `min-w-0 flex-1` so this scroller sizes correctly as a
+       flex sibling of the new outline nav. -->
   <div ref="scroller" class="h-full overflow-y-auto print:h-auto print:overflow-visible">
     <div
       ref="content"
       class="markdown-preview prose prose-sm p-4 print:max-w-none print:p-0"
       :class="centered ? 'mx-auto' : 'max-w-none'"
-      :style="centered ? { maxWidth: 'var(--md-reading-width, 75ch)' } : undefined"
+      :style="centered ? { maxWidth: previewMaxWidth } : undefined"
       v-html="html"
     />
   </div>
