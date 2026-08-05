@@ -9,12 +9,19 @@ import {
   documentMoveRequested,
 } from '../model/documents'
 import type { Folder, MarkdownDocument } from '../model/types'
+import HighlightedText from './HighlightedText.vue'
 
 const props = defineProps<{
   doc: MarkdownDocument
   active: boolean
   folders: readonly Folder[]
   showTooltips?: boolean
+  /** Present only when this row is rendered inside a search result list
+   * (`DocumentDrawer.vue`'s search branch) — highlights the matched
+   * substring in the title instead of showing it as plain text. Every
+   * other rendering/behaviour of the row (rename, duplicate, move,
+   * delete, the `⋯` menu) is unaffected and fully reused as-is. */
+  query?: string
 }>()
 
 const emit = defineEmits<{ 'delete-requested': [event: MouseEvent] }>()
@@ -159,7 +166,10 @@ function handleMenuKeydown(event: KeyboardEvent) {
         :title="showTooltips && active ? 'Click to rename' : undefined"
         @click="handleTitleClick"
       >
-        <span class="truncate text-sm">{{ doc.title || 'Untitled' }}</span>
+        <span class="truncate text-sm">
+          <HighlightedText v-if="query" :text="doc.title || 'Untitled'" :query="query" />
+          <template v-else>{{ doc.title || 'Untitled' }}</template>
+        </span>
       </button>
       <span
         class="relative flex shrink-0 items-center pr-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 [@media(hover:none)]:opacity-100"

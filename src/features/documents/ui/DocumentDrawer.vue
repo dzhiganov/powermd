@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useUnit } from 'effector-vue/composition'
-import { PlusIcon, FolderPlusIcon } from '@heroicons/vue/24/outline'
+import { PlusIcon, FolderPlusIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 
 import { useDialogFocusTrap } from '@/shared/lib/useDialog'
 import { ink } from '@/shared/lib/ink'
@@ -25,8 +25,16 @@ import {
   folderDeleteConfirmed,
   folderDeleteCancelled,
 } from '../model/documents'
+import {
+  $searchQuery,
+  $isSearching,
+  $searchResults,
+  searchQueryChanged,
+  searchCleared,
+} from '../model/search'
 import DocumentRow from './DocumentRow.vue'
 import FolderGroup from './FolderGroup.vue'
+import HighlightedText from './HighlightedText.vue'
 
 // `showTooltips` and `side` come in as props rather than a direct
 // `@/features/settings` import — `documents` and `settings` never import
@@ -54,6 +62,28 @@ const folders = useUnit($folders)
 const pendingFolderDelete = useUnit($pendingFolderDeleteDoc)
 const collapsedFolderIds = useUnit($collapsedFolderIds)
 const dbBlocked = useUnit($dbBlocked)
+
+// --- Search (Phase 3 visual redesign) --------------------------------
+//
+// Filters by title and content — see `model/search.ts` for the debounce
+// shape and the measured perf decision behind it. `searchQuery` (not the
+// debounced value the results are actually computed from) is what the
+// input displays and what result highlighting is drawn against, so typing
+// itself never feels debounced — only the (already sub-millisecond, per
+// that module's measurement) filtering work lags by up to 150ms.
+const searchQuery = useUnit($searchQuery)
+const isSearching = useUnit($isSearching)
+const searchResults = useUnit($searchResults)
+const searchInputRef = ref<HTMLInputElement | null>(null)
+
+function onSearchInput(event: Event) {
+  searchQueryChanged((event.target as HTMLInputElement).value)
+}
+
+function clearSearch() {
+  searchCleared()
+  searchInputRef.value?.focus()
+}
 
 // Folders sort alphabetically (case-insensitive) — flat, no manual
 // reordering (out of scope; moving is a per-document menu action, not
@@ -234,15 +264,46 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
              layout — this header no longer mirrors with `side`, matching the
              toolbar above it.
 
-             Wrapped in a column (rather than one row) so a search box (out
-             of scope for this phase — see `AGENTS`/task notes) has an
-             obvious slot above the New file/New folder row without any
+             Wrapped in a column (rather than one row) so the search box
+             below sits above the New file/New folder row without any
              later restructuring: just another child before this `div`,
              sharing the same padding/gap rhythm. -->
         <div class="flex shrink-0 flex-col gap-2.5 border-b border-base-300 p-3 pb-2.5">
-          <!-- Phase 3 will add a search input here, above the New
-               file/New folder row (matching the reference design's
-               layout) — deliberately left empty for now. -->
+          <!-- Search (Phase 3 visual redesign) — filters the list below by
+               title and content, see `model/search.ts`. Styled as a
+               text-like affordance (not a real `.input`) matching the
+               reference design's search box. -->
+          <div
+            class="flex h-[30px] items-center gap-2 rounded-lg border border-base-300 px-2.5"
+            style="background: var(--color-base-100)"
+          >
+            <MagnifyingGlassIcon
+              class="h-3.5 w-3.5 shrink-0"
+              style="color: var(--md-t4, var(--color-base-content))"
+              aria-hidden="true"
+            />
+            <input
+              ref="searchInputRef"
+              type="text"
+              class="min-w-0 flex-1 border-none bg-transparent text-[13px] outline-none"
+              placeholder="Search"
+              aria-label="Search documents"
+              :value="searchQuery"
+              @input="onSearchInput"
+              @keydown.esc.prevent="clearSearch"
+            />
+            <button
+              v-if="searchQuery"
+              type="button"
+              class="btn btn-ghost btn-xs btn-square h-5 w-5 min-h-0 shrink-0"
+              aria-label="Clear search"
+              :title="showTooltips ? 'Clear search' : undefined"
+              @click="clearSearch"
+            >
+              <XMarkIcon class="h-3 w-3" />
+            </button>
+          </div>
+
           <div class="flex items-center gap-1.5">
             <button
               type="button"
@@ -285,42 +346,81 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
              otherwise shrinks the list to its longest title instead of filling
              the drawer. -->
         <ul class="menu min-h-0 w-full flex-1 flex-nowrap gap-1 overflow-y-auto p-2">
-          <li v-if="creatingFolder">
-            <input
-              ref="newFolderInputRef"
-              v-model="newFolderName"
-              type="text"
-              class="input input-sm w-full"
-              placeholder="Folder name"
-              aria-label="New folder name"
-              @keydown.enter.prevent="commitCreateFolder"
-              @keydown.esc.prevent="cancelCreateFolder"
-              @blur="commitCreateFolder"
-            />
-          </li>
+          <!-- Search results: a flat list (not the folder tree below) —
+               each match shows its folder context inline, since search
+               deliberately crosses folder boundaries rather than staying
+               scoped to whichever one happens to be expanded. -->
+          <template v-if="isSearching">
+            <li
+              v-if="(searchResults ?? []).length === 0"
+              class="px-3 py-8 text-center text-xs text-base-content/50"
+            >
+              No documents match “{{ searchQuery }}”.
+            </li>
+            <li v-for="result in searchResults ?? []" :key="result.doc.id" class="flex flex-col">
+              <span
+                v-if="result.folderName"
+                class="truncate px-3 pt-1.5 text-[10.5px] font-semibold tracking-wider uppercase"
+                style="color: var(--md-t4, var(--color-base-content))"
+              >
+                {{ result.folderName }}
+              </span>
+              <DocumentRow
+                :doc="result.doc"
+                :active="result.doc.id === activeId"
+                :folders="folders"
+                :show-tooltips="showTooltips"
+                :query="searchQuery"
+                @delete-requested="(event) => requestDelete(result.doc.id, event)"
+              />
+              <p
+                v-if="result.snippet"
+                class="truncate px-3 pb-1 text-xs"
+                style="color: var(--md-t3, var(--color-base-content))"
+              >
+                <HighlightedText :text="result.snippet" :query="searchQuery" />
+              </p>
+            </li>
+          </template>
 
-          <FolderGroup
-            v-for="folder in sortedFolders"
-            :key="folder.id"
-            :folder="folder"
-            :documents="documentsInFolder(folder.id)"
-            :all-folders="folders"
-            :active-id="activeId"
-            :collapsed="isCollapsed(folder.id)"
-            :show-tooltips="showTooltips"
-            @delete-requested="folderDeleteRequested(folder.id)"
-            @document-delete-requested="requestDelete"
-          />
+          <template v-else>
+            <li v-if="creatingFolder">
+              <input
+                ref="newFolderInputRef"
+                v-model="newFolderName"
+                type="text"
+                class="input input-sm w-full"
+                placeholder="Folder name"
+                aria-label="New folder name"
+                @keydown.enter.prevent="commitCreateFolder"
+                @keydown.esc.prevent="cancelCreateFolder"
+                @blur="commitCreateFolder"
+              />
+            </li>
 
-          <li v-for="doc in rootDocuments" :key="doc.id">
-            <DocumentRow
-              :doc="doc"
-              :active="doc.id === activeId"
-              :folders="folders"
+            <FolderGroup
+              v-for="folder in sortedFolders"
+              :key="folder.id"
+              :folder="folder"
+              :documents="documentsInFolder(folder.id)"
+              :all-folders="folders"
+              :active-id="activeId"
+              :collapsed="isCollapsed(folder.id)"
               :show-tooltips="showTooltips"
-              @delete-requested="(event) => requestDelete(doc.id, event)"
+              @delete-requested="folderDeleteRequested(folder.id)"
+              @document-delete-requested="requestDelete"
             />
-          </li>
+
+            <li v-for="doc in rootDocuments" :key="doc.id">
+              <DocumentRow
+                :doc="doc"
+                :active="doc.id === activeId"
+                :folders="folders"
+                :show-tooltips="showTooltips"
+                @delete-requested="(event) => requestDelete(doc.id, event)"
+              />
+            </li>
+          </template>
         </ul>
 
         <!-- Footer (Phase 2 visual redesign): the dock-left/dock-right

@@ -30,4 +30,13 @@ export {
   $dbBlocked,
 } from './model/documents'
 
+export {
+  searchQueryChanged,
+  searchCleared,
+  $searchQuery,
+  $isSearching,
+  $searchResults,
+} from './model/search'
+
 export type { MarkdownDocument, SaveStatus, Folder, GitHubOrigin } from './model/types'
+export type { SearchResult, SearchMatchLocation } from './lib/search'

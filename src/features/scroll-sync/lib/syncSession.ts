@@ -16,11 +16,26 @@ type ActiveSource = 'editor' | 'preview'
 // `pointerdown` still covers scrollbar dragging.
 const OWNERSHIP_EVENTS = ['pointerdown', 'wheel', 'touchstart', 'keydown', 'focusin'] as const
 
+export interface SyncSession {
+  /** Removes every listener/observer this session created; call it exactly
+   * once when the session should end (view mode leaves split, or either
+   * handle goes away). */
+  teardown: () => void
+  /** Hands preview-pane scroll ownership to `'preview'` without requiring
+   * a real pointer/keyboard event on it — see `claimPreviewScroll` in
+   * `model/scrollSync.ts`, the one external caller (the outline nav's
+   * "click a heading" action). After this, a `scrollTop` write on the
+   * preview scroller is treated exactly like user-driven preview
+   * scrolling: `onPreviewScroll` below picks it up and drives the editor
+   * to match, through the same anchor-table/interpolation path a real
+   * scroll takes — no separate line/top mapping needed at the call site. */
+  claimPreview: () => void
+}
+
 /**
  * Wires up bidirectional scroll sync between one editor/preview pair.
- * Returns a teardown function that removes every listener/observer this
- * created; call it exactly once when the session should end (view mode
- * leaves split, or either handle goes away).
+ * Returns a `SyncSession`; call `teardown()` exactly once when the session
+ * should end (view mode leaves split, or either handle goes away).
  *
  * Feedback-loop safety: rather than a timed `isSyncing` flag (unreliable
  * once smooth scrolling / momentum is involved — a programmatic scroll's
@@ -36,7 +51,7 @@ const OWNERSHIP_EVENTS = ['pointerdown', 'wheel', 'touchstart', 'keydown', 'focu
 export function createSyncSession(
   editor: EditorScrollHandle,
   preview: PreviewScrollHandle,
-): () => void {
+): SyncSession {
   const editorScroller = editor.getScroller()
   const previewScroller = preview.getScroller()
   const contentRoot = preview.getContentRoot()
@@ -167,7 +182,7 @@ export function createSyncSession(
   // bookkeeping needed even though the image set changes on every render.
   contentRoot.addEventListener('load', onContentChanged, true)
 
-  return function teardown() {
+  function teardown() {
     for (const type of OWNERSHIP_EVENTS) {
       editorScroller.removeEventListener(type, claimEditor)
       previewScroller.removeEventListener(type, claimPreview)
@@ -177,4 +192,6 @@ export function createSyncSession(
     contentRoot.removeEventListener('load', onContentChanged, true)
     mutationObserver.disconnect()
   }
+
+  return { teardown, claimPreview }
 }

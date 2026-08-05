@@ -8,7 +8,16 @@ interface Session {
   editor: EditorScrollHandle
   preview: PreviewScrollHandle
   teardown: () => void
+  claimPreview: () => void
 }
+
+/** Module-scope (not local to `initScrollSync`) so `claimPreviewScroll`
+ * below — called from outside this module entirely, by the outline nav's
+ * "click a heading" action — can reach whatever session is currently live,
+ * without `initScrollSync` having to thread it back out itself. There is
+ * only ever one session for the app's lifetime (one editor, one preview),
+ * so a single module-level binding is the whole state that needs sharing. */
+let activeSession: Session | null = null
 
 /**
  * Starts watching the editor/preview scroll handles and each pane's actual
@@ -48,8 +57,6 @@ interface Session {
  * together. Called once from that file.
  */
 export function initScrollSync(): void {
-  let session: Session | null = null
-
   function evaluate(): void {
     const editor = $editorScrollHandle.getState()
     const preview = $previewScrollHandle.getState()
@@ -57,15 +64,17 @@ export function initScrollSync(): void {
       editor !== null && preview !== null && $showEditor.getState() && $showPreview.getState()
 
     const handlesChanged =
-      session !== null && (session.editor !== editor || session.preview !== preview)
+      activeSession !== null &&
+      (activeSession.editor !== editor || activeSession.preview !== preview)
 
     if (!panesVisible || handlesChanged) {
-      session?.teardown()
-      session = null
+      activeSession?.teardown()
+      activeSession = null
     }
 
-    if (panesVisible && !session && editor && preview) {
-      session = { editor, preview, teardown: createSyncSession(editor, preview) }
+    if (panesVisible && !activeSession && editor && preview) {
+      const { teardown, claimPreview } = createSyncSession(editor, preview)
+      activeSession = { editor, preview, teardown, claimPreview }
     }
   }
 
@@ -73,4 +82,19 @@ export function initScrollSync(): void {
   $previewScrollHandle.watch(evaluate)
   $showEditor.watch(evaluate)
   $showPreview.watch(evaluate)
+}
+
+/**
+ * Hands preview-pane scroll ownership to `'preview'` without a real
+ * pointer/keyboard event — see `SyncSession.claimPreview`'s doc comment in
+ * `lib/syncSession.ts` for why that's what lets a single `scrollTop` write
+ * afterwards drive the editor too, through the session's own already-wired
+ * `scroll` listener. A no-op if scroll sync isn't currently active (editor-
+ * only or preview-only view, or either pane not yet mounted) — the caller
+ * (the outline nav's "click a heading" action) still scrolls the preview
+ * itself in that case, just without the editor following, which is correct
+ * since there is no editor pane visible to follow.
+ */
+export function claimPreviewScroll(): void {
+  activeSession?.claimPreview()
 }
