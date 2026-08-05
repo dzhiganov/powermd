@@ -105,6 +105,28 @@ export class GitHubNetworkError extends Error {
 
 // --- Core request ---------------------------------------------------------
 
+/** `GET /repos/owner/name/git/ref/heads/main` — the request, with no token in
+ * it. Used only to make otherwise-undiagnosable statuses actionable. */
+function describeRequest(init: RequestInit, path: string): string {
+  return `${(init.method ?? 'GET').toUpperCase()} ${path}`
+}
+
+/** GitHub's own `message` field, if the body carries one. Returns an empty
+ * string rather than throwing when the body is missing or not JSON, since
+ * this only ever decorates an error that is already being raised. */
+async function githubMessage(response: Response): Promise<string> {
+  try {
+    const body: unknown = await response.clone().json()
+    if (body !== null && typeof body === 'object' && 'message' in body) {
+      const message = (body as { message: unknown }).message
+      if (typeof message === 'string' && message !== '') return ` — ${message}`
+    }
+  } catch {
+    // Body absent or not JSON; the request description alone is enough.
+  }
+  return ''
+}
+
 async function githubRequest(
   path: string,
   token: string,
@@ -139,7 +161,15 @@ async function githubRequest(
     // lookup on a repository with zero commits with 409 "Git Repository is
     // empty." rather than 404, so `getBranchRef` treats this as "no ref yet"
     // instead of an error — see its catch block.
-    throw new GitHubConflictError('GitHub reported a conflict for this request.')
+    //
+    // The method, path and GitHub's own message are included because a bare
+    // "conflict" is undiagnosable: this status arrives from several different
+    // endpoints for unrelated reasons. The path contains only owner/repo/ref
+    // names, never the token, which travels solely in the Authorization
+    // header above.
+    throw new GitHubConflictError(
+      `GitHub reported a conflict: ${describeRequest(init, path)}${await githubMessage(response)}`,
+    )
   }
   if (response.status === 403 || response.status === 429) {
     const remaining = response.headers.get('x-ratelimit-remaining')
