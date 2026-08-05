@@ -181,6 +181,33 @@ function commitMessageFor(dirty: DirtyDoc[]): string {
   return `Sync ${dirty.length} documents`
 }
 
+/**
+ * The commit this client last put on the branch, or `null` before the first
+ * push of a session.
+ *
+ * A ref read immediately after a write can still return the previous tip —
+ * GitHub's own propagation, not the HTTP cache, which requests already opt
+ * out of. A push queued right behind a successful one therefore builds on a
+ * parent that has already been superseded, and is rejected as not a fast
+ * forward. Preferring the commit we just made removes the dependency on that
+ * read entirely for consecutive pushes from this client.
+ *
+ * Trusting it is safe: `updateRef` is never forced, so if another writer has
+ * genuinely moved the branch, the update is rejected and the retry refetches.
+ * The worst case is one wasted attempt, not a clobbered commit.
+ */
+let lastPushedCommitSha: string | null = null
+
+function forgetLastPushedCommit(): void {
+  lastPushedCommitSha = null
+}
+
+// Forgotten on disconnect and on every (re)connect: a sha remembered from one
+// repository or branch means nothing in another, and trusting it there would
+// build on a commit that does not exist in the new history.
+disconnectRequested.watch(forgetLastPushedCommit)
+syncConnected.watch(forgetLastPushedCommit)
+
 const MAX_PUSH_ATTEMPTS = 4
 
 /** Multiplied by the attempt number, so retries wait ~0.5s, 1s, 1.5s rather
@@ -228,7 +255,23 @@ async function pushBatch(
     return [bootstrapped, ...(await pushBatch(token, connection, rest, attempt))]
   }
 
-  const baseTreeSha = (await getCommit(token, owner, repo, ref.sha)).treeSha
+  // Prefer the commit this client last made over a ref read that may not have
+  // caught up with it yet (see `lastPushedCommitSha`). If that commit can no
+  // longer be fetched — a different repo, a force push, a deleted branch —
+  // fall back to whatever the ref actually says.
+  let baseSha = ref.sha
+  let baseTreeSha: string
+  if (lastPushedCommitSha !== null && lastPushedCommitSha !== ref.sha) {
+    try {
+      baseTreeSha = (await getCommit(token, owner, repo, lastPushedCommitSha)).treeSha
+      baseSha = lastPushedCommitSha
+    } catch {
+      baseTreeSha = (await getCommit(token, owner, repo, ref.sha)).treeSha
+      lastPushedCommitSha = null
+    }
+  } else {
+    baseTreeSha = (await getCommit(token, owner, repo, ref.sha)).treeSha
+  }
 
   const blobs = await Promise.all(
     dirty.map(async ({ doc }) => ({
@@ -238,11 +281,12 @@ async function pushBatch(
   )
   const tree = await createTree(token, owner, repo, baseTreeSha, blobs)
   const commit = await createCommit(token, owner, repo, commitMessageFor(dirty), tree.sha, [
-    ref.sha,
+    baseSha,
   ])
 
   try {
     await updateRef(token, owner, repo, branch, commit.sha)
+    lastPushedCommitSha = commit.sha
   } catch (error) {
     // The branch moved between this cycle's `getBranchRef` and this update —
     // a concurrent writer. Refetch and rebuild against the new base rather
