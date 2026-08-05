@@ -10,11 +10,10 @@ import {
   createBlob,
   createTree,
   createCommit,
-  createRef,
+  createFileViaContents,
   updateRef,
   GitHubRateLimitError,
   GitHubRefConflictError,
-  GitHubUnprocessableError,
 } from '../lib/api'
 import { sha256Hex } from '../lib/hash'
 import { assignPaths } from '../lib/pathAssignment'
@@ -198,7 +197,32 @@ async function pushBatch(
 ): Promise<{ id: string; origin: GitHubOrigin }[]> {
   const { owner, repo, branch } = connection
   const ref = await getBranchRef(token, owner, repo, branch)
-  const baseTreeSha = ref === null ? null : (await getCommit(token, owner, repo, ref.sha)).treeSha
+
+  if (ref === null) {
+    // A repository with zero commits cannot be pushed to with the git data
+    // endpoints at all: GitHub rejects `POST /git/blobs` with 409 "Git
+    // Repository is empty." until a first commit exists, so there is nothing
+    // for a tree to be built from. Bootstrap with a single Contents write —
+    // which does work against an empty repository — and then recurse, at
+    // which point the ref exists and the normal batched path takes over for
+    // whatever is left.
+    const [first, ...rest] = dirty
+    const firstOrigin = first.doc.origin as GitHubOrigin
+    await createFileViaContents(
+      token,
+      owner,
+      repo,
+      branch,
+      firstOrigin.path,
+      first.doc.content,
+      commitMessageFor([first]),
+    )
+    const bootstrapped = { id: first.doc.id, origin: { ...firstOrigin, syncedHash: first.hash } }
+    if (rest.length === 0) return [bootstrapped]
+    return [bootstrapped, ...(await pushBatch(token, connection, rest, attempt))]
+  }
+
+  const baseTreeSha = (await getCommit(token, owner, repo, ref.sha)).treeSha
 
   const blobs = await Promise.all(
     dirty.map(async ({ doc }) => ({
@@ -207,31 +231,17 @@ async function pushBatch(
     })),
   )
   const tree = await createTree(token, owner, repo, baseTreeSha, blobs)
-  const commit = await createCommit(
-    token,
-    owner,
-    repo,
-    commitMessageFor(dirty),
-    tree.sha,
-    ref === null ? [] : [ref.sha],
-  )
+  const commit = await createCommit(token, owner, repo, commitMessageFor(dirty), tree.sha, [
+    ref.sha,
+  ])
 
   try {
-    if (ref === null) {
-      await createRef(token, owner, repo, branch, commit.sha)
-    } else {
-      await updateRef(token, owner, repo, branch, commit.sha)
-    }
+    await updateRef(token, owner, repo, branch, commit.sha)
   } catch (error) {
-    // A previously-empty repo whose branch got created by someone else in
-    // the gap between `getBranchRef` (null) and this `createRef` surfaces as
-    // a plain 422 (`GitHubUnprocessableError`) rather than the
-    // `GitHubRefConflictError` `updateRef` throws — both mean the same
-    // thing here ("the ref moved/appeared under us"), so both retry.
-    const isRefConflict =
-      error instanceof GitHubRefConflictError ||
-      (ref === null && error instanceof GitHubUnprocessableError)
-    if (isRefConflict && attempt < MAX_PUSH_ATTEMPTS) {
+    // The branch moved between this cycle's `getBranchRef` and this update —
+    // a concurrent writer. Refetch and rebuild against the new base rather
+    // than ever force-pushing over their commit.
+    if (error instanceof GitHubRefConflictError && attempt < MAX_PUSH_ATTEMPTS) {
       return pushBatch(token, connection, dirty, attempt + 1)
     }
     throw error

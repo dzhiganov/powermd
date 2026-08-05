@@ -480,6 +480,45 @@ interface RawGitBlob {
  * correctness-critical encoding `getFileContent`/the old Contents-API write
  * path used, unconditionally reused here) and returns its sha, ready to be
  * referenced by path in `createTree`. */
+/**
+ * Creates a single file through the Contents API, which — unlike the git data
+ * endpoints — works against a repository that has no commits at all.
+ *
+ * This exists solely to bootstrap an empty repository. GitHub rejects
+ * `POST /git/blobs` with 409 "Git Repository is empty." until a first commit
+ * exists, so the blob/tree/commit/ref sequence the normal push uses cannot
+ * create it. One Contents write makes the initial commit and the branch, and
+ * every push after that takes the batched git data path.
+ *
+ * No `sha` is sent, which makes this create-only: GitHub rejects it with 422
+ * if the path already exists, rather than overwriting a file this app never
+ * read.
+ */
+export async function createFileViaContents(
+  token: string,
+  owner: string,
+  repo: string,
+  branch: string,
+  path: string,
+  content: string,
+  message: string,
+): Promise<void> {
+  const segments = path.split('/').map((segment) => encodeURIComponent(segment))
+  await githubRequest(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${segments.join('/')}`,
+    token,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        content: utf8ToBase64(content),
+        branch,
+      }),
+    },
+  )
+}
+
 export async function createBlob(
   token: string,
   owner: string,
