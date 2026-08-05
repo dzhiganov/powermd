@@ -193,7 +193,7 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
          width animation to reclaim space from at all — the overlay is
          `fixed` and out of flow already. -->
     <aside
-      class="fixed inset-y-0 z-50 w-80 max-w-[85vw] transition-none print:hidden md:static md:z-auto md:max-w-none md:shrink-0 md:overflow-hidden md:transition-[width] md:duration-300 md:ease-out motion-reduce:md:transition-none"
+      class="fixed inset-y-0 z-50 w-80 max-w-[85vw] transition-none print:hidden md:static md:z-auto md:max-w-none md:shrink-0 md:overflow-hidden md:transition-[width] md:duration-500 md:ease-out motion-reduce:md:transition-none"
       :class="[side === 'right' ? 'right-0 order-2' : 'left-0', open ? 'md:w-80' : 'md:w-0']"
       :aria-hidden="!open"
       :inert="!open"
@@ -209,7 +209,7 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
            lives here rather than on the clip box, since this is the box
            that's actually visible. -->
       <div
-        class="flex h-full w-80 max-w-[85vw] flex-col border-base-300 bg-base-200 shadow-xl transition-transform duration-300 ease-out motion-reduce:transition-none md:max-w-none md:shadow-none"
+        class="flex h-full w-80 max-w-[85vw] flex-col border-base-300 bg-base-200 shadow-xl transition-transform duration-500 ease-out motion-reduce:transition-none md:max-w-none md:shadow-none"
         :class="[
           side === 'right' ? 'border-l' : 'border-r',
           open ? 'translate-x-0' : side === 'right' ? 'translate-x-full' : '-translate-x-full',
