@@ -160,7 +160,12 @@ const deletionColor = ink('--color-error')
   --tw-prose-links: v-bind(linkColor);
   --tw-prose-code: v-bind(codeColor);
   --tw-prose-pre-code: var(--color-base-content);
-  --tw-prose-pre-bg: var(--color-base-200);
+  /* `--md-code` (`app/styles/main.css`, Phase 1 visual redesign) is the
+   * reference design's dedicated code-block surface — distinct from
+   * `--color-base-200` (used for the header/footer elsewhere), so a fenced
+   * code block reads as its own surface rather than matching whatever
+   * chrome happens to share `base-200`. */
+  --tw-prose-pre-bg: var(--md-code);
 }
 
 .markdown-preview :deep(a) {

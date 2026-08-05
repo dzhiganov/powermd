@@ -21,16 +21,30 @@ export const daisyEditorTheme = EditorView.theme({
   // feature's persisted font preferences (`editorPreferences.ts`), applied
   // to `<html>` as custom properties — the fallbacks here are only the
   // pre-Step-8 defaults, kept so this theme still renders sensibly if that
-  // effect somehow hasn't run yet.
+  // effect somehow hasn't run yet. The fallback family now leads with the
+  // self-hosted IBM Plex Mono (`app/styles/main.css`'s `@fontsource`
+  // imports) instead of the system stack — `editorPreferences.ts`'s own
+  // `FONT_FAMILY_STACKS.mono` leads with it too, so this only matters
+  // before that effect has run, same as before.
+  //
+  // Line-height 1.85 and the slight negative letter-spacing are the
+  // reference design's editor type scale (`design-template.html`'s
+  // `<textarea>` rule) — fixed here rather than exposed as a setting,
+  // unlike font-size/family which stay user-adjustable.
   '.cm-scroller': {
     overflow: 'auto',
     fontFamily:
-      'var(--md-editor-font-family, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace)',
-    fontSize: 'var(--md-editor-font-size, 0.875rem)',
-    lineHeight: '1.6',
+      'var(--md-editor-font-family, "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace)',
+    fontSize: 'var(--md-editor-font-size, 14.5px)',
+    lineHeight: '1.85',
+    letterSpacing: '-0.005em',
   },
   '.cm-content': {
-    caretColor: 'var(--color-base-content)',
+    // The reference design's caret is the theme accent (`--acc` ->
+    // `--color-primary` here), not the body text colour — a thin gold/brown
+    // line reads more clearly as "cursor" against body text than one more
+    // `base-content`-coloured mark blending into the text around it.
+    caretColor: 'var(--color-primary)',
     padding: '1rem 0',
   },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {

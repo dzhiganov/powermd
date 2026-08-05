@@ -1,7 +1,201 @@
 @import 'tailwindcss';
-@plugin 'daisyui' {
-  themes:
-    light --default,
-    dark --prefersdark;
+
+/* Self-hosted fonts (Phase 1 visual redesign) — IBM Plex Sans for UI,
+ * IBM Plex Mono for the editor. Deliberately NOT a Google Fonts CDN
+ * `<link>`: this app is otherwise fully self-contained/offline-capable, and
+ * a CDN font adds an external runtime dependency plus a privacy/CSP
+ * concern. `@fontsource/*` ships the same files as static assets bundled by
+ * Vite, so every request stays same-origin. Only the weights actually used
+ * by the new type scale are imported (400/500/600 for Sans — see the
+ * `@theme` block below and Settings' font-family stack; 400/500 for Mono —
+ * body text plus the `font-weight: 'bold'` heading/strong tokens in
+ * `features/editor/lib/theme.ts`'s `daisyHighlightStyle`), not the full
+ * variable-axis package, to keep the shipped font payload proportional to
+ * what's on screen. */
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+/* Overriding Tailwind v4's `--font-sans`/`--font-mono` theme keys (rather
+ * than a one-off `body { font-family }` rule) means every consumer of the
+ * `font-sans`/`font-mono` utilities *and* Preflight's own base rules picks
+ * this up for free: Preflight's `html` rule reads `--default-font-family`
+ * (aliased from `--font-sans` by `tailwindcss/theme.css`), and its
+ * `code, kbd, samp, pre` rule reads `--default-mono-font-family` (aliased
+ * from `--font-mono` the same way) — see `node_modules/tailwindcss/{theme,
+ * preflight}.css`. That second one is what makes the preview's rendered
+ * `<code>`/`<pre>` (Tailwind Typography, `features/preview/ui/Preview.vue`)
+ * pick up IBM Plex Mono with no change to that component at all. The
+ * system-ui/monospace tails are kept as the fallback chain for the instant
+ * before the self-hosted `@font-face`s above finish loading (`font-display:
+ * swap` already avoids invisible text in the meantime).
+ */
+@theme {
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 }
+
+/* UI base size: 14px, matching the reference design. Set on `body`, not
+ * `html` — Tailwind's whole spacing/sizing scale is `rem`-based, which
+ * resolves against the *root* (`html`) font-size specifically, regardless
+ * of `body`'s. Changing `html`'s font-size would silently rescale every
+ * `rem`-based utility class in the app (padding, gaps, radii, ...) — a
+ * layout change entirely out of scope for this token/font/type-scale-only
+ * phase. `body`'s font-size only affects text that inherits it without an
+ * explicit Tailwind `text-*` class of its own, which is already true of
+ * most of this UI (`text-sm`/`text-base`/etc. cover the rest). */
+body {
+  font-size: 14px;
+}
+
+/*
+ * Custom daisyUI themes (Phase 1 visual redesign) — replaces daisyUI's
+ * built-in "light"/"dark" palettes with the reference design's tokens
+ * (`design-template.html`'s `DARK`/`LIGHT` objects) while keeping the same
+ * theme *names*, so `data-theme="light"|"dark"` (written by
+ * `features/settings/model/theme.ts`) and every existing component that
+ * already consumes `bg-base-100`, `border-base-300`, `btn-primary`, etc.
+ * (see `features/layout/ui/{AppShell,Toolbar}.vue`) repaint for free — no
+ * component touched in this phase.
+ *
+ * `themes: false` below disables the *built-in* `light`/`dark` theme
+ * application from daisyUI's main plugin entirely (it would otherwise emit
+ * a second, conflicting rule for the same `[data-theme="light"|"dark"]`
+ * selectors, fighting the custom ones below over cascade order). Each
+ * `@plugin "daisyui/theme"` block is fully self-sufficient instead —
+ * `default`/`prefersdark` here reproduce the same "light is default, dark
+ * follows prefers-color-scheme" behaviour the old `light --default,
+ * dark --prefersdark` shorthand gave.
+ *
+ * Token mapping (documented once here; both themes follow it identically):
+ *   --pane            -> base-100        (primary app surface: editor/preview/panes)
+ *   --pane2 (~= --seg) -> base-200        (secondary surface: header/footer/elevated panels)
+ *   --line             -> base-300        (border/divider color)
+ *   --t1               -> base-content    (primary text)
+ *   --acc              -> primary         (the one token that legitimately differs
+ *                                           in hue, not just lightness, per theme —
+ *                                           see the file-level comment at the bottom)
+ *   --danger           -> error
+ *   primary-content / error-content are *not* part of the reference
+ *   palette — they're derived here, per theme, as whichever direction
+ *   (near-black vs near-white) actually clears WCAG AA 4.5:1 against that
+ *   theme's `--acc`/`--danger` (measured, see the redesign report; the
+ *   light theme's `--acc` in particular only clears it with pure black,
+ *   not the theme's own near-black `--t1`/white — its measured luminance
+ *   sits almost exactly between the two).
+ *
+ * `secondary`/`accent`(daisyUI's own role, distinct from this design's
+ * `--acc`)/`neutral`/`info`/`success`/`warning` and the `--radius-*`/
+ * `--border`/`--depth`/`--noise` tokens are deliberately left unset here:
+ * `theme/index.js` merges any token this block doesn't specify from
+ * daisyUI's built-in theme of the same name, and nothing in the reference
+ * palette defines those roles (it only names bg/surface/text/line/accent/
+ * danger tokens) or asks for a shape change. `shared/lib/ink.ts`'s
+ * `INK_RATIO` mixing already keeps those built-in roles' *contrast* safe
+ * against the new `base-content`/`base-100` (it mixes toward
+ * `base-content`, which is themed here) even though their raw hue is
+ * unchanged from daisyUI's defaults — legibility was re-measured, not just
+ * assumed, see the report. Recolouring them to fit this palette more
+ * tightly is left to Phase 2, since the reference palette doesn't specify
+ * hues for those roles to move to.
+ *
+ * The custom `--md-*` properties below (`--md-rail`, `--md-t2/3/4`,
+ * `--md-hov`, `--md-sel`, `--md-seg`/`--md-seg-active`, `--md-code`,
+ * `--md-pop`, `--md-line2`) are values the reference design defines that
+ * daisyUI has no semantic slot for at all. They're declared on the same
+ * `[data-theme="..."]` selector as the daisyUI tokens above (so they
+ * switch with the theme exactly the same way), named with the same
+ * `--md-` prefix this codebase already uses for its own custom properties
+ * (`--md-editor-font-size` etc., see `editorPreferences.ts`) rather than
+ * daisyUI's `--color-*` convention, since these aren't daisyUI tokens.
+ * Nothing in this phase reads them yet — Phase 2 (layout/markup) does.
+ *
+ * KNOWN CONTRAST LIMITATIONS in the mandated palette (measured, reported,
+ * deliberately not "fixed" by deviating from the given hex values):
+ *   - `--md-t4` is 2.10:1 (dark) / 3.44:1 (light) against `--pane` —
+ *     below the 4.5:1 AA floor for normal text in both themes (light also
+ *     clears 3:1, dark does not even clear that). `--md-t3` is 3.45:1
+ *     (dark, passes only the 3:1 large-text/non-text floor) / 4.16:1
+ *     (light, just under 4.5:1).
+ *   - `--line` (-> base-300) against `--pane` (-> base-100) is ~1.1-1.3:1
+ *     in both themes — a deliberately subtle hairline, nowhere near the
+ *     3:1 non-text-contrast floor.
+ *   These four tokens are not consumed as text/border color by any
+ *   component in this phase (grepped: none of `t2`/`t3`/`t4`/`line2`/
+ *   `seg`/`hov`/`sel`/`code`/`pop`/`rail` are referenced outside this file
+ *   yet), so nothing regresses today. Flagging this for Phase 2: `--md-t3`/
+ *   `--md-t4` are only AA-safe for large text, icon-only UI, or genuinely
+ *   decorative/disabled content — never small body text — and `--line`/
+ *   `--line2` read as decorative hairlines, not as a border that alone
+ *   needs to convey a required state.
+ */
+@plugin 'daisyui' {
+  themes: false;
+}
+
+@plugin 'daisyui/theme' {
+  name: 'light';
+  default: true;
+  color-scheme: light;
+
+  --color-base-100: #fbfaf8;
+  --color-base-200: #f4f2ef;
+  --color-base-300: #e2dfd9;
+  --color-base-content: #1c1b19;
+  --color-primary: #9a6f22;
+  /* Only pure black clears 4.5:1 against this theme's `--acc` (measured
+   * 4.6709:1) — the theme's own near-black `--t1` (3.828:1) and white
+   * (4.4959:1, i.e. *below* the floor by a hair) both fall short. See the
+   * file-level comment above. */
+  --color-primary-content: #000000;
+  --color-error: #a8402c;
+  /* = --md-seg-active below; white clears 6.11:1 against this theme's
+   * `--danger`. */
+  --color-error-content: #ffffff;
+
+  --md-rail: #efedea;
+  --md-t2: #6d6a64;
+  --md-t3: #7c7972;
+  --md-t4: #8a8780;
+  --md-hov: #e9e6e1;
+  --md-sel: #e5e1d9;
+  --md-seg: #eae7e2;
+  --md-seg-active: #ffffff;
+  --md-code: #f0ede7;
+  --md-pop: #ffffff;
+  --md-line2: #eae7e1;
+}
+
+@plugin 'daisyui/theme' {
+  name: 'dark';
+  prefersdark: true;
+  color-scheme: dark;
+
+  --color-base-100: #0e0f11;
+  --color-base-200: #111214;
+  --color-base-300: #1b1d20;
+  --color-base-content: #e8e6e3;
+  --color-primary: #d8b26b;
+  /* = --md-rail below; measured 9.8494:1 against this theme's `--acc`. */
+  --color-primary-content: #0a0b0c;
+  --color-error: #d98b7a;
+  /* = --md-rail below too; measured 7.4332:1 against this theme's
+   * `--danger`. */
+  --color-error-content: #0a0b0c;
+
+  --md-rail: #0a0b0c;
+  --md-t2: #8b8985;
+  --md-t3: #6a6864;
+  --md-t4: #4a4845;
+  --md-hov: #131518;
+  --md-sel: #16181b;
+  --md-seg: #141619;
+  --md-seg-active: #22252a;
+  --md-code: #191b1e;
+  --md-pop: #15171a;
+  --md-line2: #16181a;
+}
+
 @plugin '@tailwindcss/typography';

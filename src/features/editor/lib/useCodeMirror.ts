@@ -123,6 +123,27 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
       view.value?.requestMeasure()
     })
     resizeObserver.observe(container.value)
+
+    // The self-hosted IBM Plex Mono `@font-face`s (`app/styles/main.css`)
+    // load asynchronously, same as any web font — `font-display: swap`
+    // means CodeMirror's very first layout happens in the fallback
+    // monospace stack, then the real font swaps in once it's fetched. That
+    // swap changes glyph metrics (and this design's line-height/
+    // letter-spacing on top of it), which moves every line's rendered
+    // height — but it's not a *container* resize, so the ResizeObserver
+    // above never fires for it, and CodeMirror has no other way to notice
+    // on its own. Left unhandled, CodeMirror's internal height map (used
+    // for cursor placement, scroll-into-view, and `scroll-sync`'s
+    // proportional mapping — see `features/scroll-sync`) stays keyed to the
+    // fallback font's line height until *something* else happens to trigger
+    // a re-measure (typing, a real resize), which measured as ~85% off in
+    // this project before. `document.fonts.ready` resolves once every
+    // `@font-face` the page requested has finished loading (or failed), so
+    // this fires the one `requestMeasure()` needed exactly once, right when
+    // the swap actually happens — not a poll, not a guess at a timeout.
+    void document.fonts.ready.then(() => {
+      view.value?.requestMeasure()
+    })
   })
 
   onUnmounted(() => {

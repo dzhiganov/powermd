@@ -105,6 +105,7 @@ function handleReadingWidthInput(event: Event) {
             class="range range-sm"
             :min="FONT_SIZE_MIN"
             :max="FONT_SIZE_MAX"
+            step="0.5"
             :value="fontSize"
             aria-label="Editor font size"
             @input="handleFontSizeInput"

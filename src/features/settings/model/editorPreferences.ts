@@ -12,7 +12,10 @@ const READING_WIDTH_KEY = 'markdown-editor:reading-width'
 
 export const FONT_SIZE_MIN = 12
 export const FONT_SIZE_MAX = 20
-const DEFAULT_FONT_SIZE = 14
+// 14.5px matches the reference design's editor type scale
+// (`design-template.html`'s `<textarea>` rule) — still just the *default*
+// within the existing 12-20px user-adjustable range, not a new floor/ceiling.
+const DEFAULT_FONT_SIZE = 14.5
 
 export const AUTOSAVE_MS_MIN = 200
 export const AUTOSAVE_MS_MAX = 3000
@@ -23,11 +26,13 @@ export const READING_WIDTH_MAX = 100
 const DEFAULT_READING_WIDTH = 75
 
 /** Applied as `--md-editor-font-family` (see `applyEditorCssVarsFx` below,
- * and `features/editor/lib/theme.ts` which consumes it). `mono` matches the
- * stack the editor theme hardcoded before this preference existed; `serif`
- * is the "system/serif" alternative called for in the Step 8 spec. */
+ * and `features/editor/lib/theme.ts` which consumes it). `mono` leads with
+ * the self-hosted IBM Plex Mono (`app/styles/main.css`'s `@fontsource`
+ * imports, Phase 1 visual redesign) with the previous system-monospace
+ * stack kept as the fallback chain; `serif` is the "system/serif"
+ * alternative called for in the Step 8 spec, unchanged by that redesign. */
 const FONT_FAMILY_STACKS: Record<EditorFontFamily, string> = {
-  mono: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+  mono: '"IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
   serif: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
 }
 
