@@ -292,10 +292,23 @@ export async function getTree(
   repo: string,
   branch: string,
 ): Promise<{ entries: GitHubTreeEntry[]; truncated: boolean }> {
-  const response = await githubRequest(
-    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
-    token,
-  )
+  let response: Response
+  try {
+    response = await githubRequest(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
+      token,
+    )
+  } catch (error) {
+    // A repository with no commits has no tree to read. GitHub reports that
+    // as 409 "Git Repository is empty." here, and as 404 when the repo exists
+    // but this branch does not. Neither is a failure for this app's purposes:
+    // there is simply nothing to import, and the first push will create the
+    // initial commit. Same reasoning as `getBranchRef` below.
+    if (error instanceof GitHubConflictError || error instanceof GitHubNotFoundError) {
+      return { entries: [], truncated: false }
+    }
+    throw error
+  }
   const raw = (await response.json()) as RawTree
   const entries: GitHubTreeEntry[] = []
   for (const entry of raw.tree) {
