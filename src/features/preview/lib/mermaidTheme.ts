@@ -182,7 +182,10 @@ export function buildMermaidThemeConfig(themeKey: Theme): MermaidThemeConfig {
   const base200 = resolveCssColor('var(--color-base-200)')
   const base300 = resolveCssColor('var(--color-base-300)')
   const baseContent = resolveCssColor('var(--color-base-content)')
-  const accent = resolveCssColor(ink('--color-primary'))
+  // `--md-accent`, not `--color-primary`: the diagram accent is drawn as a
+  // foreground (borders/text), the TEXT role — see "PRIMARY SURFACE/ACCENT
+  // SPLIT — Phase 4" in `app/styles/main.css`.
+  const accent = resolveCssColor(ink('--md-accent'))
   const errorAccent = resolveCssColor(ink('--color-error'))
 
   return {

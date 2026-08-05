@@ -5,6 +5,7 @@ import { readStorage, writeStorage } from '@/shared/lib/storage'
 const SHOW_TOOLTIPS_KEY = 'markdown-editor:show-tooltips'
 const DRAWER_SIDE_KEY = 'markdown-editor:drawer-side'
 const SHOW_FORMATTING_TOOLBAR_KEY = 'markdown-editor:show-formatting-toolbar'
+const SCROLL_SYNC_ENABLED_KEY = 'markdown-editor:scroll-sync-enabled'
 
 export type DrawerSide = 'left' | 'right'
 
@@ -91,5 +92,27 @@ export const $showFormattingToolbar = createStore<boolean>(
 sample({
   clock: $showFormattingToolbar,
   fn: (enabled) => ({ key: SHOW_FORMATTING_TOOLBAR_KEY, value: String(enabled) }),
+  target: persistFx,
+})
+
+// --- Editor/preview scroll sync -----------------------------------------
+//
+// Defaulted OFF per direct user feedback — the panes must not follow each
+// other unless explicitly turned on. Consumed by the `scroll-sync` feature
+// (`features/scroll-sync/model/scrollSync.ts`'s own `$scrollSyncEnabled`
+// mirror), fed through `src/app/wiring.ts` the same "settings owns the
+// persisted preference, wiring.ts feeds it to the feature that acts on it"
+// shape as `$lineWrapEnabled`/`$autosaveDebounceMs` above — `settings`
+// never imports `scroll-sync` directly, and `scroll-sync` never imports
+// `settings` directly either.
+
+export const scrollSyncToggled = createEvent()
+export const $scrollSyncEnabled = createStore<boolean>(
+  readBoolean(SCROLL_SYNC_ENABLED_KEY, false),
+).on(scrollSyncToggled, (enabled) => !enabled)
+
+sample({
+  clock: $scrollSyncEnabled,
+  fn: (enabled) => ({ key: SCROLL_SYNC_ENABLED_KEY, value: String(enabled) }),
   target: persistFx,
 })

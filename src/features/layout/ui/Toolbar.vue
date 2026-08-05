@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import { useUnit } from 'effector-vue/composition'
-import { Bars3BottomLeftIcon, CloudArrowUpIcon } from '@heroicons/vue/24/outline'
+import { CloudArrowUpIcon } from '@heroicons/vue/24/outline'
 
 import { ThemeToggle, $showTooltips } from '@/features/settings'
 import { DrawerToggleButton, DocumentTitle } from '@/features/documents'
@@ -10,20 +9,16 @@ import { $activeDocumentForCommit, commitDialogOpened } from '@/features/github'
 
 import { $viewMode, viewModeChanged } from '../model/layout'
 import type { ViewMode } from '../model/layout'
-import { $outlineOpen, outlineToggled } from '../model/outline'
 import MoreMenu from './MoreMenu.vue'
 
-// The drawer side ('left' | 'right') still comes in as a prop — `layout`
+// The drawer side ('left' | 'right') drives which end of the header the
+// drawer toggle button renders at (see the template below) — `layout`
 // already reads `$drawerSide` in `AppShell.vue` (the single mounting site)
-// to thread it to `DocumentDrawer.vue`, so it's threaded here the same way
-// — but the header itself no longer reacts to it (see template comment
-// below). The prop stays so the drawer can still be told which side it
-// docks on without a second independent read of the same store.
+// to thread it to `DocumentDrawer.vue`, so it's threaded here the same way.
 withDefaults(defineProps<{ side?: 'left' | 'right' }>(), { side: 'right' })
 
 const viewMode = useUnit($viewMode)
 const showTooltips = useUnit($showTooltips)
-const outlineOpen = useUnit($outlineOpen)
 // Non-null only when the active document was opened from GitHub — drives the
 // "Commit to GitHub" control's visibility (read directly here, the same way
 // this header already reads several features' public stores).
@@ -43,34 +38,36 @@ const viewModeOptions: ViewModeOption[] = [
   { value: 'split', label: 'Split' },
   { value: 'preview', label: 'Read' },
 ]
-
-// The outline nav only ever renders next to the *preview* pane
-// (`PreviewPane.vue`) — in editor-only mode there's nothing for it to
-// annotate, so the toggle is disabled rather than silently doing nothing.
-const outlineDisabled = computed(() => viewMode.value === 'editor')
 </script>
 
 <template>
-  <!-- Static layout: the breadcrumb always sits at the left end, the
-       view-mode switcher stays centred, and every instrument icon (outline,
-       theme, export, more) always sits at the right end, regardless of
-       which side the drawer (`side`) actually docks on. This used to mirror
-       with `side` — the user asked for that removed, since a header that
-       rearranges itself based on a setting read poorly. Fixed 52px height
-       per the reference design (was 48px/`h-12` pre-redesign). -->
+  <!-- The drawer toggle is the one control that follows `side`: it renders
+       at the left end of the header when the drawer docks left, and at the
+       right end (alongside its own divider) when it docks right — the
+       default. Everything else in this header is genuinely static
+       regardless of `side`: the breadcrumb always sits at the left end, the
+       view-mode switcher stays centred, and the instrument cluster (commit,
+       theme, export, more) always sits at the right end. This used to mirror
+       the whole header layout with `side` — the user asked for that
+       removed, since a header that rearranges itself based on a setting
+       read poorly; only the toggle button itself was asked to move. Fixed
+       52px height per the reference design (was 48px/`h-12` pre-redesign). -->
   <header
     class="flex h-[52px] shrink-0 items-center gap-4 border-b border-base-300 px-3.5 print:hidden"
     style="background: var(--md-head, var(--color-base-200))"
   >
     <div class="flex min-w-0 flex-1 items-center gap-3">
-      <DrawerToggleButton :show-tooltips="showTooltips" />
-      <div
-        class="h-4.5 w-px shrink-0"
-        style="background: var(--color-base-300)"
-        aria-hidden="true"
-      />
+      <template v-if="side === 'left'">
+        <DrawerToggleButton :show-tooltips="showTooltips" />
+        <div
+          class="h-4.5 w-px shrink-0"
+          style="background: var(--color-base-300)"
+          aria-hidden="true"
+        />
+      </template>
       <!-- Breadcrumb (folder / title) + the unsaved dot — both owned by
-           `DocumentTitle.vue`, see its doc comment. -->
+           `DocumentTitle.vue`, see its doc comment. Always left-pinned,
+           regardless of `side`. -->
       <DocumentTitle :show-tooltips="showTooltips" />
     </div>
 
@@ -95,20 +92,8 @@ const outlineDisabled = computed(() => viewMode.value === 'editor')
       </button>
     </div>
 
+    <!-- Instrument cluster — always right-pinned, regardless of `side`. -->
     <div class="flex flex-1 items-center justify-end gap-0.5">
-      <button
-        type="button"
-        class="btn btn-ghost btn-xs btn-square"
-        :class="{ 'bg-base-300/70': outlineOpen && !outlineDisabled }"
-        :disabled="outlineDisabled"
-        aria-label="Toggle outline"
-        :aria-pressed="outlineOpen"
-        :title="showTooltips ? 'Outline' : undefined"
-        @click="outlineToggled()"
-      >
-        <Bars3BottomLeftIcon class="h-3.5 w-3.5" />
-      </button>
-
       <!-- Only shown when the active document was opened from GitHub — an
            existing, conditional quick action kept in the header (rather
            than folded into the More menu) since it's about *this specific
@@ -134,6 +119,15 @@ const outlineDisabled = computed(() => viewMode.value === 'editor')
            Import/Settings/Shortcuts/Print rather than each getting its own
            permanent header icon. -->
       <MoreMenu :show-tooltips="showTooltips" />
+
+      <template v-if="side === 'right'">
+        <div
+          class="h-4.5 w-px shrink-0"
+          style="background: var(--color-base-300)"
+          aria-hidden="true"
+        />
+        <DrawerToggleButton :show-tooltips="showTooltips" />
+      </template>
     </div>
   </header>
 </template>
@@ -182,7 +176,7 @@ const outlineDisabled = computed(() => viewMode.value === 'editor')
 }
 
 .view-tab:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--md-accent);
   outline-offset: -2px;
 }
 </style>

@@ -111,15 +111,24 @@ function handleMenuKeydown(event: KeyboardEvent) {
     triggerRef.value?.focus()
   }
 }
+
+// Right-aligned document count (Phase 4 visual redesign, matching the
+// reference design's `n.count`) — a plain length off the already-filtered
+// `documents` prop (this folder's own documents, passed down by
+// `DocumentDrawer.vue`), not a second store read.
+const documentCount = computed(() => String(props.documents.length))
 </script>
 
 <template>
   <li>
-    <!-- Folder row doubles as a "group heading" in the redesigned sidebar —
-         small, muted chrome (chevron + icon at full strength for
-         legibility as controls, the name itself in a slightly smaller,
-         letter-spaced treatment) rather than a document-weight row. -->
-    <div class="group folder-row flex w-full items-center gap-1 py-0.5">
+    <!-- Folder row (Phase 4 visual redesign, matching the reference
+         design): a disclosure chevron, folder icon, the name at normal
+         text weight+size (heavier than a document row's own weight, not
+         the small uppercase "section label" treatment this replaces), a
+         right-aligned document count, then the `⋯` menu — same row height
+         as a document row (`h-8`) for one even rhythm down the whole
+         tree. -->
+    <div class="group folder-row flex h-8 w-full items-center gap-1.5 rounded-field px-1">
       <button
         type="button"
         class="btn btn-ghost btn-xs btn-square shrink-0"
@@ -131,7 +140,7 @@ function handleMenuKeydown(event: KeyboardEvent) {
         <ChevronRightIcon v-if="collapsed" class="h-3.5 w-3.5" />
         <ChevronDownIcon v-else class="h-3.5 w-3.5" />
       </button>
-      <FolderIcon class="h-3.5 w-3.5 shrink-0 text-base-content/60" aria-hidden="true" />
+      <FolderIcon class="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
       <input
         v-if="renaming"
         ref="renameInputRef"
@@ -146,14 +155,21 @@ function handleMenuKeydown(event: KeyboardEvent) {
       <button
         v-else
         type="button"
-        class="min-w-0 flex-1 truncate rounded-field px-1 py-1 text-left text-[11px] font-semibold tracking-wider uppercase"
-        style="color: var(--md-t3, var(--color-base-content))"
+        class="min-w-0 flex-1 truncate rounded-field py-1 text-left text-sm font-medium"
         @click="folderCollapseToggled(folder.id)"
       >
         {{ folder.name }}
       </button>
       <span
-        class="relative flex shrink-0 items-center pr-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 [@media(hover:none)]:opacity-100"
+        v-if="!renaming"
+        class="shrink-0 font-mono text-[10.5px]"
+        style="color: var(--md-t4, var(--color-base-content))"
+        aria-hidden="true"
+      >
+        {{ documentCount }}
+      </span>
+      <span
+        class="relative flex shrink-0 items-center opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 [@media(hover:none)]:opacity-100"
       >
         <button
           ref="triggerRef"

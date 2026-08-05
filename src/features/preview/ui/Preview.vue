@@ -88,7 +88,10 @@ onUnmounted(() => {
 // every one of these colours lives in exactly one place: `shared/lib/ink`.
 const linkColor = ink('--color-info')
 const codeColor = ink('--color-accent')
-const keywordColor = ink('--color-primary')
+// `--md-accent`, not `--color-primary`: this is accent-as-foreground-text,
+// the TEXT role — see "PRIMARY SURFACE/ACCENT SPLIT — Phase 4" in
+// `app/styles/main.css`.
+const keywordColor = ink('--md-accent')
 const stringColor = ink('--color-success')
 const titleColor = ink('--color-info')
 const numberColor = ink('--color-secondary')
@@ -110,9 +113,8 @@ const previewMaxWidth = 'min(680px, var(--md-reading-width, 75ch))'
 
 <template>
   <!-- Root class/style are open for the parent to extend (Vue's default
-       attribute fallthrough) — `layout/ui/PreviewPane.vue` (Phase 2 visual
-       redesign) adds `min-w-0 flex-1` so this scroller sizes correctly as a
-       flex sibling of the new outline nav. -->
+       attribute fallthrough) — `layout/ui/PreviewPane.vue` adds `min-w-0
+       flex-1` so this scroller sizes correctly inside its flex parent. -->
   <div ref="scroller" class="h-full overflow-y-auto print:h-auto print:overflow-visible">
     <div
       ref="content"

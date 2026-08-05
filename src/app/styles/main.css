@@ -153,7 +153,14 @@ body {
    * full measured rationale. This is the light theme's half of the pair;
    * `--color-primary` is deliberately NOT the same hex as dark theme's grey
    * — a single value for both themes was the specific mistake that caused
-   * six contrast bugs earlier in this project (see that comment). */
+   * six contrast bugs earlier in this project (see that comment).
+   *
+   * Phase 4: dark theme's `--color-primary` split into a darker surface
+   * role plus a separate `--md-accent` text/focus-ring role (see the
+   * "PRIMARY SURFACE/ACCENT SPLIT — Phase 4" comment below) — light theme's
+   * value was never reported as "too light" and stays exactly as it was,
+   * so `--md-accent` here is simply the same hex as `--color-primary`: no
+   * visual change in this theme. */
   --color-primary: #635f57;
   /* White clears 4.5:1 (measured 6.354:1); black does not (3.305:1, below
    * the floor) — the opposite pairing from the gold accent this replaces. */
@@ -174,6 +181,8 @@ body {
   --md-code: #f0ede7;
   --md-pop: #ffffff;
   --md-line2: #eae7e1;
+  /* Unchanged from `--color-primary` — see the comment above. */
+  --md-accent: #635f57;
 }
 
 @plugin 'daisyui/theme' {
@@ -185,15 +194,18 @@ body {
   --color-base-200: #111214;
   --color-base-300: #1b1d20;
   --color-base-content: #e8e6e3;
-  /* Phase 2 visual redesign: grey accent, dark theme half — see the
-   * file-level "GREY ACCENT — Phase 2" comment below for the full measured
-   * rationale. Deliberately a *light-ish* grey (not the light theme's same
-   * hex) since it has to clear 4.5:1 against this theme's near-black
-   * surfaces. */
-  --color-primary: #9c968d;
-  /* Pure black clears 4.5:1 (measured 7.161:1); white does not (2.933:1,
-   * nowhere close). */
-  --color-primary-content: #000000;
+  /* Phase 4 visual redesign: `--color-primary` (the *surface* role — button
+   * backgrounds, the active-row indicator bar) is now a substantially
+   * darker warm grey per direct user request ("too light"). See the
+   * "PRIMARY SURFACE/ACCENT SPLIT — Phase 4" comment further down for the
+   * full measured rationale and why a single darker value can't serve
+   * every role `--color-primary` used to cover on its own. */
+  --color-primary: #6a6660;
+  /* Surface got darker, so the pairing flips from Phase 2's black
+   * (7.161:1 against the old, lighter #9c968d) to white: white measures
+   * 5.703:1 against the new #6a6660, black only 3.682:1 (below the 4.5:1
+   * floor). */
+  --color-primary-content: #ffffff;
   --color-error: #d98b7a;
   /* = --md-rail below too; measured 7.4332:1 against this theme's
    * `--danger`. */
@@ -210,6 +222,13 @@ body {
   --md-code: #191b1e;
   --md-pop: #15171a;
   --md-line2: #16181a;
+  /* The *old* `--color-primary` value (Phase 2's #9c968d), kept verbatim as
+   * the dedicated text/focus-ring/caret role — see the "PRIMARY SURFACE/
+   * ACCENT SPLIT — Phase 4" comment below. Already measured >=4.5:1 against
+   * every surface in this theme (6.539:1 base-100, 6.391:1 base-200,
+   * 6.717:1 rail), so reusing it unchanged is exactly what "still clears
+   * 4.5:1 for text and 3:1 for non-text UI" requires. */
+  --md-accent: #9c968d;
 }
 
 /*
@@ -275,8 +294,83 @@ body {
  *   Write/Split/Read tab): light theme flips to white (`#ffffff`,
  *   6.354:1) since black only reaches 3.305:1 against this grey — the
  *   opposite pairing from the gold accent this replaces, where black
- *   cleared it and white didn't. Dark theme keeps black (`#000000`,
- *   7.161:1; white only reaches 2.933:1).
+ *   cleared it and white didn't. Dark theme kept black at the time this was
+ *   written (`#000000`, 7.161:1 against the then-`#9c968d` surface) — see
+ *   "PRIMARY SURFACE/ACCENT SPLIT — Phase 4" below for why dark theme's
+ *   pairing flipped to white in a later pass.
+ */
+
+/*
+ * PRIMARY SURFACE/ACCENT SPLIT — Phase 4 visual redesign (user request:
+ * dark theme's `--color-primary`, #9c968d, reads "too light").
+ *
+ * The tension: dark theme's surfaces sit near-black (`--color-base-100`
+ * #0e0f11, `--md-rail` #0a0b0c). A *much* darker grey has LESS contrast
+ * against a near-black background, not more — so simply darkening the one
+ * shared `--color-primary` token would, past a certain point, make it fail
+ * the 4.5:1 text floor it used to clear, and past a further point fail even
+ * the 3:1 non-text-UI floor. `--color-primary` is not one role, though —
+ * it feeds several different jobs (surface fills that other content sits
+ * on top of, vs. a bare foreground drawn directly on the app's own
+ * background) with different contrast requirements, so instead of picking
+ * one compromise hex, dark theme's role is now split into two tokens:
+ *
+ *   `--color-primary` (SURFACE role — the darker one): background fills
+ *   that other content (text, an icon) sits ON TOP of — the "New file"
+ *   button (`.btn-primary`), and the sidebar's active-document accent bar
+ *   (`DocumentRow.vue`). daisyUI still derives `--color-primary-content`
+ *   (the text/icon colour drawn on that fill) from this token automatically
+ *   for every `.btn-primary`/`bg-primary` consumer.
+ *
+ *   `--md-accent` (TEXT/FOCUS-RING role — unchanged from Phase 2): every
+ *   place the accent is drawn directly as a foreground against the app's
+ *   own surfaces rather than as a fill something else sits on — focus
+ *   rings (`Toolbar.vue`, `Splitter.vue`, `MobileTabs.vue`,
+ *   `DocumentDrawer.vue`, `ImportButton.vue`, `MoreMenu.vue`), the editor
+ *   caret and selection tint (`features/editor/lib/theme.ts`), the
+ *   unsaved-changes dot (`DocumentTitle.vue`), the splitter's hover/drag
+ *   line, and every `ink('--color-primary')` call that was actually
+ *   painting accent-coloured TEXT (heading/keyword syntax highlighting in
+ *   `editor/lib/theme.ts` and `preview/ui/Preview.vue`, the mermaid
+ *   diagram accent in `preview/lib/mermaidTheme.ts`) — all switched to
+ *   `ink('--md-accent')`. These all still need to read clearly against
+ *   base-100/base-200/rail on their own, the exact requirement the old
+ *   #9c968d value was already measured against — kept byte-for-byte
+ *   identical, so none of this regresses.
+ *
+ * Measured (dark theme, sRGB relative-luminance contrast):
+ *   --color-primary #6a6660 (SURFACE):
+ *     - vs --color-base-100 (#0e0f11): 3.363:1 — clears the 3:1 non-text/
+ *       UI-boundary floor; does NOT clear 4.5:1. This is the explicit
+ *       "much darker" ceiling: #9c968d scaled any further down its own hue
+ *       ramp drops below even 3:1 against this near-black background (the
+ *       midpoint, #615d57 at 62% of the original lightness, already
+ *       measures 2.933:1 — under the floor). #6a6660 (68%) is the darkest
+ *       point on that ramp still comfortably above 3:1, so surfaces are as
+ *       dark as they can go while staying a legible button/indicator
+ *       against this theme's backgrounds.
+ *     - vs --color-base-200 (#111214): 3.286:1
+ *     - vs --md-rail (#0a0b0c): 3.454:1
+ *     - vs --color-primary-content #ffffff (text/icon drawn on this fill):
+ *       5.703:1 — clears 4.5:1. Black only reaches 3.682:1 here, so
+ *       primary-content flips to white (Phase 2 had it the other way,
+ *       black-on-#9c968d, since that surface was much lighter).
+ *   --md-accent #9c968d (TEXT/FOCUS-RING, unchanged from Phase 2): still
+ *     6.539:1 / 6.391:1 / 6.717:1 against base-100/base-200/rail — see the
+ *     "GREY ACCENT — Phase 2" comment above for the full original
+ *     measurement; nothing about this value changed.
+ *
+ * Explicitly NOT re-derived in this pass (translucent overlays where text
+ * drawn on top only ever gets MORE contrast from a darker source colour,
+ * never less, so they were left reading `--color-primary` as before):
+ * the row `:active`-press tint (`DocumentRow.vue`/`FolderGroup.vue`/
+ * `GitHubModal.vue`, `color-mix(... 30%, transparent)`) and the search
+ * match highlight (`HighlightedText.vue`, `color-mix(... 35%, transparent)`).
+ *
+ * Light theme is untouched — its `--color-primary` (#635f57) was never
+ * reported as a problem, stays exactly as measured under "GREY ACCENT —
+ * Phase 2" above, and `--md-accent` there is simply the same hex (see the
+ * light theme block's own comment).
  */
 
 @plugin '@tailwindcss/typography';

@@ -18,18 +18,9 @@ const OWNERSHIP_EVENTS = ['pointerdown', 'wheel', 'touchstart', 'keydown', 'focu
 
 export interface SyncSession {
   /** Removes every listener/observer this session created; call it exactly
-   * once when the session should end (view mode leaves split, or either
-   * handle goes away). */
+   * once when the session should end (scroll sync is turned off, view mode
+   * leaves split, or either handle goes away). */
   teardown: () => void
-  /** Hands preview-pane scroll ownership to `'preview'` without requiring
-   * a real pointer/keyboard event on it — see `claimPreviewScroll` in
-   * `model/scrollSync.ts`, the one external caller (the outline nav's
-   * "click a heading" action). After this, a `scrollTop` write on the
-   * preview scroller is treated exactly like user-driven preview
-   * scrolling: `onPreviewScroll` below picks it up and drives the editor
-   * to match, through the same anchor-table/interpolation path a real
-   * scroll takes — no separate line/top mapping needed at the call site. */
-  claimPreview: () => void
 }
 
 /**
@@ -193,5 +184,5 @@ export function createSyncSession(
     mutationObserver.disconnect()
   }
 
-  return { teardown, claimPreview }
+  return { teardown }
 }

@@ -36,5 +36,7 @@ export {
   drawerSideChanged,
   $showFormattingToolbar,
   showFormattingToolbarToggled,
+  $scrollSyncEnabled,
+  scrollSyncToggled,
 } from './model/uiPreferences'
 export type { DrawerSide } from './model/uiPreferences'

@@ -41,15 +41,19 @@ export const daisyEditorTheme = EditorView.theme({
   },
   '.cm-content': {
     // The reference design's caret is the theme accent (`--acc` ->
-    // `--color-primary` here), not the body text colour — a thin gold/brown
+    // `--md-accent` here), not the body text colour — a thin gold/brown
     // line reads more clearly as "cursor" against body text than one more
     // `base-content`-coloured mark blending into the text around it.
-    caretColor: 'var(--color-primary)',
+    // `--md-accent`, not `--color-primary`: the caret is a bare foreground
+    // mark drawn directly on the pane background, not a fill something else
+    // sits on top of — see "PRIMARY SURFACE/ACCENT SPLIT — Phase 4" in
+    // `app/styles/main.css`.
+    caretColor: 'var(--md-accent)',
     padding: '1rem 0',
   },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
     backgroundColor:
-      'color-mix(in srgb, color-mix(in oklab, var(--color-primary) 60%, var(--color-base-content)) 55%, transparent)',
+      'color-mix(in srgb, color-mix(in oklab, var(--md-accent) 60%, var(--color-base-content)) 55%, transparent)',
   },
   '.cm-line': {
     padding: '0 1rem',
@@ -65,7 +69,7 @@ export const daisyEditorTheme = EditorView.theme({
  * dark, or a custom one) without maintaining a parallel colour table.
  */
 export const daisyHighlightStyle = HighlightStyle.define([
-  { tag: t.heading, color: ink('--color-primary'), fontWeight: 'bold' },
+  { tag: t.heading, color: ink('--md-accent'), fontWeight: 'bold' },
   { tag: t.strong, color: 'var(--color-base-content)', fontWeight: 'bold' },
   { tag: t.emphasis, color: 'var(--color-base-content)', fontStyle: 'italic' },
   { tag: t.strikethrough, textDecoration: 'line-through' },
@@ -77,7 +81,7 @@ export const daisyHighlightStyle = HighlightStyle.define([
   { tag: t.contentSeparator, color: ink('--color-secondary') },
   { tag: t.meta, color: 'var(--color-base-content)', opacity: '0.5' },
   { tag: t.comment, color: 'var(--color-base-content)', opacity: '0.5', fontStyle: 'italic' },
-  { tag: t.keyword, color: ink('--color-primary') },
+  { tag: t.keyword, color: ink('--md-accent') },
   { tag: t.operator, color: 'var(--color-base-content)', opacity: '0.8' },
   { tag: t.string, color: ink('--color-success') },
   { tag: t.number, color: ink('--color-secondary') },

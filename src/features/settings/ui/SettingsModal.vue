@@ -32,6 +32,8 @@ import {
   drawerSideChanged,
   $showFormattingToolbar,
   showFormattingToolbarToggled,
+  $scrollSyncEnabled,
+  scrollSyncToggled,
 } from '../model/uiPreferences'
 
 const open = useUnit($settingsOpen)
@@ -43,6 +45,7 @@ const readingWidth = useUnit($readingWidthCh)
 const showTooltips = useUnit($showTooltips)
 const drawerSide = useUnit($drawerSide)
 const showFormattingToolbar = useUnit($showFormattingToolbar)
+const scrollSyncEnabled = useUnit($scrollSyncEnabled)
 
 const dialogRef = ref<HTMLElement | null>(null)
 const firstControlRef = ref<HTMLElement | null>(null)
@@ -168,6 +171,20 @@ function handleReadingWidthInput(event: Event) {
             :checked="showFormattingToolbar"
             aria-label="Show formatting toolbar"
             @change="showFormattingToolbarToggled()"
+          />
+        </label>
+
+        <!-- Defaulted off — the editor and preview panes must not follow
+             each other unless explicitly turned on here. See
+             `features/scroll-sync/model/scrollSync.ts`. -->
+        <label class="flex items-center justify-between">
+          <span class="text-sm text-base-content">Sync editor and preview scroll</span>
+          <input
+            type="checkbox"
+            class="toggle toggle-sm"
+            :checked="scrollSyncEnabled"
+            aria-label="Sync editor and preview scroll"
+            @change="scrollSyncToggled()"
           />
         </label>
 

@@ -1,3 +1,5 @@
+import { createEvent, createStore } from 'effector'
+
 import { $editorScrollHandle, type EditorScrollHandle } from '@/features/editor'
 import { $previewScrollHandle, type PreviewScrollHandle } from '@/features/preview'
 import { $showEditor, $showPreview } from '@/features/layout'
@@ -8,24 +10,45 @@ interface Session {
   editor: EditorScrollHandle
   preview: PreviewScrollHandle
   teardown: () => void
-  claimPreview: () => void
 }
 
-/** Module-scope (not local to `initScrollSync`) so `claimPreviewScroll`
- * below — called from outside this module entirely, by the outline nav's
- * "click a heading" action — can reach whatever session is currently live,
- * without `initScrollSync` having to thread it back out itself. There is
- * only ever one session for the app's lifetime (one editor, one preview),
- * so a single module-level binding is the whole state that needs sharing. */
+/** Module-scope (not local to `initScrollSync`) so `evaluate` can be called
+ * from every watcher below without threading session state back out. There
+ * is only ever one session for the app's lifetime (one editor, one
+ * preview), so a single module-level binding is the whole state that needs
+ * sharing. */
 let activeSession: Session | null = null
 
 /**
- * Starts watching the editor/preview scroll handles and each pane's actual
- * visibility, attaching a sync session only while both handles exist *and*
- * both panes are genuinely shown on screen — see `$showEditor`/
- * `$showPreview` in `layout/model/layout.ts`. Tears the session down the
- * instant either stops being true, and rebuilds it if a handle's identity
- * ever changes.
+ * Whether scroll sync is turned on at all — a `settings`-owned persisted
+ * preference (`$scrollSyncEnabled` in `features/settings/model/
+ * uiPreferences.ts`), mirrored here the same way `documents/model/
+ * documents.ts` mirrors the autosave interval: `settings` never imports the
+ * feature that acts on a preference, so `src/app/wiring.ts` feeds this
+ * store from the persisted one via `scrollSyncEnabledChanged` (one kick at
+ * startup, then a `sample` on every later change).
+ *
+ * Defaults OFF — the user does not want the editor/preview panes to follow
+ * each other. When off, `evaluate` below never creates a session at all: no
+ * scroll listeners are attached, no anchor table is built, no work happens
+ * on scroll. Toggling it on with both panes already visible builds the
+ * session immediately (the same `evaluate` this store's own `.watch` below
+ * triggers); toggling it off tears an active session down immediately.
+ */
+export const scrollSyncEnabledChanged = createEvent<boolean>()
+export const $scrollSyncEnabled = createStore<boolean>(false).on(
+  scrollSyncEnabledChanged,
+  (_, enabled) => enabled,
+)
+
+/**
+ * Starts watching the editor/preview scroll handles, each pane's actual
+ * visibility, and the scroll-sync-enabled preference, attaching a sync
+ * session only while the setting is on, both handles exist, *and* both
+ * panes are genuinely shown on screen — see `$showEditor`/`$showPreview` in
+ * `layout/model/layout.ts`. Tears the session down the instant any of
+ * those stops being true, and rebuilds it if a handle's identity ever
+ * changes.
  *
  * Deliberately keyed off `$showEditor`/`$showPreview` rather than
  * `$viewMode === 'split'` or measuring the panes' DOM layout directly:
@@ -58,10 +81,15 @@ let activeSession: Session | null = null
  */
 export function initScrollSync(): void {
   function evaluate(): void {
+    const enabled = $scrollSyncEnabled.getState()
     const editor = $editorScrollHandle.getState()
     const preview = $previewScrollHandle.getState()
     const panesVisible =
-      editor !== null && preview !== null && $showEditor.getState() && $showPreview.getState()
+      enabled &&
+      editor !== null &&
+      preview !== null &&
+      $showEditor.getState() &&
+      $showPreview.getState()
 
     const handlesChanged =
       activeSession !== null &&
@@ -73,8 +101,8 @@ export function initScrollSync(): void {
     }
 
     if (panesVisible && !activeSession && editor && preview) {
-      const { teardown, claimPreview } = createSyncSession(editor, preview)
-      activeSession = { editor, preview, teardown, claimPreview }
+      const { teardown } = createSyncSession(editor, preview)
+      activeSession = { editor, preview, teardown }
     }
   }
 
@@ -82,19 +110,5 @@ export function initScrollSync(): void {
   $previewScrollHandle.watch(evaluate)
   $showEditor.watch(evaluate)
   $showPreview.watch(evaluate)
-}
-
-/**
- * Hands preview-pane scroll ownership to `'preview'` without a real
- * pointer/keyboard event — see `SyncSession.claimPreview`'s doc comment in
- * `lib/syncSession.ts` for why that's what lets a single `scrollTop` write
- * afterwards drive the editor too, through the session's own already-wired
- * `scroll` listener. A no-op if scroll sync isn't currently active (editor-
- * only or preview-only view, or either pane not yet mounted) — the caller
- * (the outline nav's "click a heading" action) still scrolls the preview
- * itself in that case, just without the editor following, which is correct
- * since there is no editor pane visible to follow.
- */
-export function claimPreviewScroll(): void {
-  activeSession?.claimPreview()
+  $scrollSyncEnabled.watch(evaluate)
 }

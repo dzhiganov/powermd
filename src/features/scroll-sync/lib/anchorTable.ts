@@ -25,19 +25,10 @@ export interface ScrollAnchor {
  * writes interleaved, so the browser performs the layout it needs exactly
  * once no matter how many anchors there are — this is the "batch reads,
  * never interleave reads and writes in a loop" requirement.
- *
- * `selector` defaults to every tagged element (`[data-line]`, what
- * editor/preview scroll sync itself uses), but callers needing anchors for
- * a subset — e.g. `layout`'s outline nav, which only cares about headings
- * — can narrow it (`'h1[data-line], h2[data-line], h3[data-line]'`) and
- * get the exact same measuring/monotonic-filtering logic for free, rather
- * than re-implementing this read loop against a different element set.
  */
-export function buildAnchorTable(
-  scroller: HTMLElement,
-  contentRoot: HTMLElement,
-  selector = '[data-line]',
-): ScrollAnchor[] {
+const ANCHOR_SELECTOR = '[data-line]'
+
+export function buildAnchorTable(scroller: HTMLElement, contentRoot: HTMLElement): ScrollAnchor[] {
   // A pane can be present in the DOM but hidden (`display: none`, e.g. the
   // inactive tab on mobile below the `md` breakpoint). Its scroller then
   // reports `clientHeight === 0` and every element's
@@ -48,7 +39,7 @@ export function buildAnchorTable(
   // instead of building garbage from a pane that isn't actually laid out.
   if (scroller.clientHeight === 0) return []
 
-  const elements = contentRoot.querySelectorAll<HTMLElement>(selector)
+  const elements = contentRoot.querySelectorAll<HTMLElement>(ANCHOR_SELECTOR)
   if (elements.length === 0) return []
 
   const scrollerRect = scroller.getBoundingClientRect()

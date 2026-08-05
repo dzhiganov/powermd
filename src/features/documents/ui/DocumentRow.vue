@@ -143,9 +143,24 @@ function handleMenuKeydown(event: KeyboardEvent) {
 
 <template>
   <div
-    class="group doc-row flex w-full items-center gap-1 p-0"
-    :class="active ? 'bg-primary/15' : ''"
+    class="group doc-row flex h-8 w-full items-center gap-0.5 rounded-field p-0"
+    :style="active ? { background: 'var(--md-sel, var(--color-base-200))' } : undefined"
   >
+    <!-- Active-document accent bar (Phase 4 visual redesign, matching the
+         reference design's `barStyle`) — a bare colour indicator, not a
+         fill anything sits on top of, so it reads `--color-primary`
+         directly (the darker "surface" role — see "PRIMARY SURFACE/ACCENT
+         SPLIT — Phase 4" in `app/styles/main.css`; measured 3.363:1+
+         against every dark-theme background it can sit on, clearing the
+         3:1 non-text-UI floor a decorative indicator needs). Always
+         present (not `v-if`) so the row's own width/gap never shifts
+         between active and inactive — only its own background colour
+         toggles. -->
+    <span
+      class="ml-1 h-[15px] w-[3px] shrink-0 rounded-full"
+      :style="{ background: active ? 'var(--color-primary)' : 'transparent' }"
+      aria-hidden="true"
+    />
     <input
       v-if="renaming"
       ref="renameInputRef"
@@ -160,13 +175,13 @@ function handleMenuKeydown(event: KeyboardEvent) {
     <template v-else>
       <button
         type="button"
-        class="flex min-w-0 flex-1 items-center rounded-field px-3 py-2 text-left"
+        class="flex min-w-0 flex-1 items-center rounded-field px-2 py-1.5 text-left"
         :class="active ? 'cursor-text' : ''"
         :aria-current="active ? 'true' : undefined"
         :title="showTooltips && active ? 'Click to rename' : undefined"
         @click="handleTitleClick"
       >
-        <span class="truncate text-sm">
+        <span class="truncate text-sm" :class="active ? 'font-medium' : ''">
           <HighlightedText v-if="query" :text="doc.title || 'Untitled'" :query="query" />
           <template v-else>{{ doc.title || 'Untitled' }}</template>
         </span>

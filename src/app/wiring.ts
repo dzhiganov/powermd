@@ -17,7 +17,7 @@ import {
   lineWrapChanged,
 } from '@/features/editor'
 import { sourceReceived, renderMarkdownForExport } from '@/features/preview'
-import { initScrollSync } from '@/features/scroll-sync'
+import { initScrollSync, scrollSyncEnabledChanged } from '@/features/scroll-sync'
 import {
   initDocuments,
   activeDocumentEdited,
@@ -48,6 +48,7 @@ import type { ViewMode } from '@/features/layout'
 import {
   $lineWrapEnabled as $lineWrapPreference,
   $autosaveDebounceMs,
+  $scrollSyncEnabled,
   helpOpened,
 } from '@/features/settings'
 
@@ -80,6 +81,15 @@ sourceReceived($content.getState())
 // and layout features (view mode), so it lives here rather than inside any
 // one of them. See `features/scroll-sync/model/scrollSync.ts`.
 initScrollSync()
+
+// Scroll sync is a `settings`-owned persisted preference, defaulted OFF —
+// same one-kick-then-sample shape as `$lineWrapPreference`/
+// `$autosaveDebounceMs` below: `scroll-sync` keeps its own live mirror
+// store (`$scrollSyncEnabled` in `model/scrollSync.ts`) rather than reading
+// `settings` directly, so the initial persisted/default value has to be
+// pushed in explicitly before anything reacts to later toggles.
+scrollSyncEnabledChanged($scrollSyncEnabled.getState())
+sample({ clock: $scrollSyncEnabled, target: scrollSyncEnabledChanged })
 
 // --- documents <-> editor -------------------------------------------------
 //

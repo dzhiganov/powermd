@@ -211,11 +211,11 @@ function handleKeydown(event: KeyboardEvent) {
 .splitter:hover .line,
 .splitter:focus-visible .line,
 .splitter.dragging .line {
-  background-color: var(--color-primary);
+  background-color: var(--md-accent);
 }
 
 .splitter:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--md-accent);
   outline-offset: -2px;
 }
 </style>

@@ -91,7 +91,7 @@ function handleChange(event: Event): void {
 }
 
 .more-menu-item:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--md-accent);
   outline-offset: -2px;
 }
 </style>

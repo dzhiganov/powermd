@@ -302,6 +302,22 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
             >
               <XMarkIcon class="h-3 w-3" />
             </button>
+            <!-- Decorative shortcut hint (Phase 4 visual redesign, matching
+                 the reference design's `⌘K` chip) — shown only while the
+                 field is empty (the clear button above takes this same slot
+                 once there's a query, so the two never overlap). `Mod-k` is
+                 already bound inside the editor to "Insert link" (see
+                 `features/editor/lib/shortcuts.ts`), so this is a visual
+                 affordance only, not a new global keybinding that would
+                 shadow it. -->
+            <span
+              v-else
+              class="shrink-0 font-mono text-[10.5px] tracking-wide"
+              style="color: var(--md-t4, var(--color-base-content))"
+              aria-hidden="true"
+            >
+              ⌘K
+            </span>
           </div>
 
           <div class="flex items-center gap-1.5">
@@ -608,7 +624,7 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
 }
 
 .dock-btn:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--md-accent);
   outline-offset: -2px;
 }
 </style>

@@ -111,7 +111,7 @@ function cancelRename() {
     <span
       v-if="showUnsavedDot"
       class="h-[5px] w-[5px] shrink-0 rounded-full"
-      style="background: var(--color-primary)"
+      style="background: var(--md-accent)"
       title="Unsaved changes"
       aria-hidden="true"
     />
