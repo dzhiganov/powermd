@@ -183,6 +183,10 @@ function commitMessageFor(dirty: DirtyDoc[]): string {
 
 const MAX_PUSH_ATTEMPTS = 4
 
+/** Multiplied by the attempt number, so retries wait ~0.5s, 1s, 1.5s rather
+ * than all firing inside the same tick against an unchanged ref. */
+const RETRY_BACKOFF_MS = 500
+
 /** Refetches the branch ref/base tree and builds+commits a fresh tree on top
  * of it, then moves the ref. On a non-fast-forward rejection (the ref moved
  * since this attempt started, i.e. a concurrent writer), refetches and
@@ -244,6 +248,11 @@ async function pushBatch(
     // a concurrent writer. Refetch and rebuild against the new base rather
     // than ever force-pushing over their commit.
     if (error instanceof GitHubRefConflictError && attempt < MAX_PUSH_ATTEMPTS) {
+      // Back off before rebuilding. A ref read immediately after a write can
+      // still return the previous tip, so retrying with no delay just rebuilds
+      // on the same stale base and fails identically — the retries burn out
+      // in milliseconds without ever seeing the commit that was just made.
+      await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS * attempt))
       return pushBatch(token, connection, dirty, attempt + 1)
     }
     throw error

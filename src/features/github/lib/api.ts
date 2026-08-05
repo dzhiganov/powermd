@@ -441,7 +441,8 @@ export async function getBranchRef(
 ): Promise<{ sha: string } | null> {
   try {
     const response = await githubRequest(
-      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/ref/${encodeURIComponent(`heads/${branch}`)}`,
+      // See `updateRef`: `heads/` is a separator here, not part of the name.
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/ref/heads/${encodeURIComponent(branch)}`,
       token,
     )
     const raw = (await response.json()) as RawRef
@@ -663,7 +664,10 @@ export async function updateRef(
 ): Promise<void> {
   try {
     await githubRequest(
-      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/refs/${encodeURIComponent(`heads/${branch}`)}`,
+      // `heads/` is a path separator in this endpoint, not part of the ref
+      // name, so only the branch itself is escaped. Encoding the whole string
+      // yields `heads%2Fmain`, which GitHub resolves but should not be sent.
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/refs/heads/${encodeURIComponent(branch)}`,
       token,
       {
         method: 'PATCH',
