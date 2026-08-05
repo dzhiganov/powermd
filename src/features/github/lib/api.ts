@@ -136,6 +136,12 @@ async function githubRequest(
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...init,
+      // GitHub sends validators on GETs, so the browser will happily serve a
+      // cached ref lookup — returning a tip from before this app's own last
+      // push. Every commit then gets built on a stale parent and rejected as
+      // not a fast forward, identically on every retry, since the retry
+      // re-reads the same cached response rather than the moved branch.
+      cache: 'no-store',
       headers: {
         Accept: 'application/vnd.github+json',
         Authorization: `Bearer ${token}`,
