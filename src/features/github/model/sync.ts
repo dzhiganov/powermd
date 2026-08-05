@@ -185,10 +185,12 @@ const MAX_PUSH_ATTEMPTS = 4
 
 /** Refetches the branch ref/base tree and builds+commits a fresh tree on top
  * of it, then moves the ref. On a non-fast-forward rejection (the ref moved
- * since this attempt started — including the tiny "another writer created
- * the branch between our `getBranchRef` and our `createRef`" race for a
- * previously-empty repo), refetches and retries from scratch against the new
- * base — never force-pushes — up to `MAX_PUSH_ATTEMPTS` times. */
+ * since this attempt started, i.e. a concurrent writer), refetches and
+ * retries from scratch against the new base — never force-pushes — up to
+ * `MAX_PUSH_ATTEMPTS` times.
+ *
+ * A repository with no commits is handled first and separately: see the
+ * bootstrap branch below, which is also what makes this recursive. */
 async function pushBatch(
   token: string,
   connection: SyncConfig,
