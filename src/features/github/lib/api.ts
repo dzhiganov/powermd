@@ -135,7 +135,11 @@ async function githubRequest(
     throw new GitHubNotFoundError('Not found on GitHub, or this token cannot see it.')
   }
   if (response.status === 409) {
-    throw new GitHubConflictError('The file changed on GitHub since it was opened.')
+    // 409 is overloaded on the git endpoints. Notably GitHub answers a ref
+    // lookup on a repository with zero commits with 409 "Git Repository is
+    // empty." rather than 404, so `getBranchRef` treats this as "no ref yet"
+    // instead of an error — see its catch block.
+    throw new GitHubConflictError('GitHub reported a conflict for this request.')
   }
   if (response.status === 403 || response.status === 429) {
     const remaining = response.headers.get('x-ratelimit-remaining')
@@ -394,7 +398,13 @@ export async function getBranchRef(
     const raw = (await response.json()) as RawRef
     return { sha: raw.object.sha }
   } catch (error) {
+    // A repository with zero commits has no branch yet. GitHub reports that
+    // inconsistently: 404 when the repo exists but the branch does not, and
+    // 409 "Git Repository is empty." when the repo has never been committed
+    // to at all. Both mean the same thing here — there is no ref to build on
+    // — so both resolve to `null` and let the caller create the first commit.
     if (error instanceof GitHubNotFoundError) return null
+    if (error instanceof GitHubConflictError) return null
     throw error
   }
 }
