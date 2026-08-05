@@ -55,47 +55,41 @@ export const documentDuplicated = createEvent<string>()
  */
 export const documentImported = createEvent<{ title: string; content: string }>()
 /**
- * Open an externally-sourced file (currently only GitHub — see
- * `features/github`) as a brand-new document and make it active. Same
- * "always additive, never overwrites the active document" rule as
- * `documentImported` above, and reuses the same internal `documentAdded`
- * pipeline (prepend + activate + persist + load into editor) — it just
- * carries the file's `origin` through instead of always `null`, and lands at
- * root (`folderId: null`) for the same reason imports do: an externally
- * opened file has no "current folder" to inherit from. Fired from
- * `src/app/wiring.ts` off `features/github`'s `fileOpened`.
+ * First-connect GitHub sync import: every markdown file in the connected
+ * repo (under the configured subfolder) that isn't already linked to a local
+ * document becomes a brand-new one, pre-linked to the exact remote path it
+ * came from (so a later sync re-check never re-imports it — see
+ * `features/github/model/import.ts`). `dirPath`, if non-null, is the
+ * (possibly multi-segment, e.g. `"notes/2024"`) repo directory the file
+ * lived in relative to the subfolder root; a folder whose `syncDirPath`
+ * already equals it is reused, otherwise a new one is created and given that
+ * `syncDirPath` — same one-flat-level-per-directory-string simplification as
+ * every other folder in this app (see `Folder`'s doc comment: folders don't
+ * nest, so a nested repo directory becomes one folder named after its full
+ * relative path rather than a chain of nested folders). Fired from
+ * `src/app/wiring.ts` off `features/github`'s `importCompleted`.
  */
-export const documentOpenedFromOrigin = createEvent<{
-  title: string
-  content: string
-  origin: GitHubOrigin
-}>()
+export const documentsBulkImported =
+  createEvent<{ title: string; content: string; dirPath: string | null; origin: GitHubOrigin }[]>()
 /**
- * After a successful commit back to GitHub, catch this document's recorded
- * origin up to the new blob sha in place. Metadata only — deliberately does
- * *not* bump `updatedAt` (same reasoning as `documentMoveRequested`: the
- * content didn't change, so the most-recently-updated sort order must not
- * reshuffle) and never touches the editor or the active document. Fired from
- * `src/app/wiring.ts` off `features/github`'s `commitSucceeded`.
+ * Bulk write-back of newly-assigned (or hash-refreshed) GitHub origins —
+ * covers both "this document had no sync slot yet, here's the one it now
+ * owns forever" and "this document was just pushed, here's its new
+ * `syncedHash`". Metadata only in both cases — deliberately does *not* bump
+ * `updatedAt` (same reasoning as `documentMoveRequested`: assigning or
+ * confirming a sync slot isn't a content edit, so the most-recently-updated
+ * sort order must not reshuffle because of it) and never touches the editor.
+ * Fired from `src/app/wiring.ts` off `features/github`'s `originsAssigned`
+ * (path assignment) and `pushCompleted` (hash refresh after a commit).
  */
-export const documentGithubSynced = createEvent<{ id: string; origin: GitHubOrigin }>()
+export const documentGithubOriginsApplied = createEvent<{ id: string; origin: GitHubOrigin }[]>()
 /**
- * The "reload remote, discard local edits" conflict-resolution choice —
- * overwrite this document's `content` and `origin` with the freshly-fetched
- * remote version. This is a deliberate, explicit content replacement (the
- * user picked it in the conflict dialog), so it bypasses the pending-save/
- * autosave debounce entirely, persists immediately, bumps `updatedAt` (the
- * content genuinely changed), reloads the editor if this is the active
- * document, and clears any pending save for this id — the one place
- * discarding a pending local edit is correct, because it's an explicit user
- * choice, never automatic. Fired from `src/app/wiring.ts` off
- * `features/github`'s `remoteReloadRequested`.
+ * Bulk write-back of newly-assigned folder `syncDirPath`s — same "assigned
+ * once, fixed forever, metadata only" shape as
+ * `documentGithubOriginsApplied` above, just for folders. Fired from
+ * `src/app/wiring.ts` off `features/github`'s `folderDirsAssigned`.
  */
-export const documentRemoteApplied = createEvent<{
-  id: string
-  content: string
-  origin: GitHubOrigin
-}>()
+export const folderSyncDirPathsApplied = createEvent<{ id: string; syncDirPath: string }[]>()
 /** Ask to delete a document — opens the confirmation step, deletes nothing
  * yet (deletion is irreversible, so it always requires confirmation). */
 export const documentDeleteRequested = createEvent<string>()
@@ -181,17 +175,16 @@ const folderRenameApplied = createEvent<Folder>()
 // `updatedAt` is deliberately *not* bumped, see `documentMoveRequested`'s
 // sample below). Same "resolve then apply" shape as `documentRenameApplied`.
 const documentMoveApplied = createEvent<MarkdownDocument>()
-// A GitHub-sync origin update applied as a full document snapshot (only
-// `origin` changes — `updatedAt` is deliberately *not* bumped, same as
-// `documentMoveApplied`). Same "resolve then apply" shape as
-// `documentRenameApplied`.
-const documentOriginApplied = createEvent<MarkdownDocument>()
-// A remote-reload applied as a full document snapshot (`content` + `origin`
-// replaced, `updatedAt` bumped since the content genuinely changed). Same
-// "resolve then apply" shape, but unlike a move/rename this one also clears
-// the pending save and reloads the editor when active — see
-// `documentRemoteApplied`'s doc comment.
-const documentRemoteContentApplied = createEvent<MarkdownDocument>()
+// GitHub-sync origin updates resolved against current state, as the full set
+// of changed document snapshots — bulk counterpart of `documentMoveApplied`
+// above, same "origin changes, `updatedAt` doesn't" reasoning.
+const documentOriginsResolved = createEvent<MarkdownDocument[]>()
+// Same shape, for folders' `syncDirPath`.
+const folderSyncDirPathsResolved = createEvent<Folder[]>()
+// A first-connect import batch resolved into the brand-new folders and
+// documents it needs to create — see `resolveBulkImport` and the
+// `documentsBulkImported` sample below.
+const bulkImportResolved = createEvent<{ newFolders: Folder[]; newDocs: MarkdownDocument[] }>()
 
 interface AfterDelete {
   documents: MarkdownDocument[]
@@ -249,11 +242,71 @@ function makeFolder(name: string): Folder {
     id: createId(),
     name: trimmed === '' ? 'Untitled folder' : trimmed,
     createdAt: Date.now(),
+    // A folder created by hand has no remote directory yet — GitHub sync
+    // assigns one lazily, the first time a document inside it is synced.
+    syncDirPath: null,
   }
 }
 
 function mostRecent(docs: MarkdownDocument[]): MarkdownDocument {
   return docs.reduce((latest, doc) => (doc.updatedAt > latest.updatedAt ? doc : latest))
+}
+
+/**
+ * Resolves one first-connect import batch (see `documentsBulkImported`'s doc
+ * comment) into the brand-new folders and documents it needs, in a single
+ * pure pass against the *current* folder list — so that when two imported
+ * files share the same `dirPath` (e.g. `notes/2024/a.md` and
+ * `notes/2024/b.md`), they resolve to the one new folder created for
+ * `"notes/2024"` rather than each creating (and orphaning) their own. Folders
+ * already carrying that `syncDirPath` (an already-imported directory, or one
+ * a local folder happened to already own) are reused instead of duplicated.
+ */
+function resolveBulkImport(
+  existingFolders: Folder[],
+  items: { title: string; content: string; dirPath: string | null; origin: GitHubOrigin }[],
+): { newFolders: Folder[]; newDocs: MarkdownDocument[] } {
+  const dirPathToFolderId = new Map(
+    existingFolders
+      .filter((folder): folder is Folder & { syncDirPath: string } => folder.syncDirPath !== null)
+      .map((folder) => [folder.syncDirPath, folder.id]),
+  )
+  const newFolders: Folder[] = []
+  const newDocs: MarkdownDocument[] = []
+
+  for (const item of items) {
+    let folderId: string | null = null
+    if (item.dirPath !== null) {
+      const existingId = dirPathToFolderId.get(item.dirPath)
+      if (existingId !== undefined) {
+        folderId = existingId
+      } else {
+        const now = Date.now()
+        const folder: Folder = {
+          id: createId(),
+          name: item.dirPath,
+          createdAt: now,
+          syncDirPath: item.dirPath,
+        }
+        newFolders.push(folder)
+        dirPathToFolderId.set(item.dirPath, folder.id)
+        folderId = folder.id
+      }
+    }
+    const now = Date.now()
+    const trimmed = item.title.trim()
+    newDocs.push({
+      id: createId(),
+      title: trimmed === '' ? 'Untitled' : trimmed,
+      content: item.content,
+      createdAt: now,
+      updatedAt: now,
+      folderId,
+      origin: item.origin,
+    })
+  }
+
+  return { newFolders, newDocs }
 }
 
 /** The drawer defaults to *open* (see `DocumentDrawer.vue`'s docked/overlay
@@ -321,16 +374,19 @@ function readPendingMirror(): MarkdownDocument | null {
 function coerceOrigin(value: unknown): GitHubOrigin | null {
   if (typeof value !== 'object' || value === null) return null
   const raw = value as Record<string, unknown>
-  const fields = ['owner', 'repo', 'branch', 'path', 'sha'] as const
-  for (const field of fields) {
+  const stringFields = ['owner', 'repo', 'branch', 'path'] as const
+  for (const field of stringFields) {
     if (typeof raw[field] !== 'string' || raw[field] === '') return null
+  }
+  if (raw.syncedHash !== null && (typeof raw.syncedHash !== 'string' || raw.syncedHash === '')) {
+    return null
   }
   return {
     owner: raw.owner as string,
     repo: raw.repo as string,
     branch: raw.branch as string,
     path: raw.path as string,
-    sha: raw.sha as string,
+    syncedHash: raw.syncedHash as string | null,
   }
 }
 
@@ -440,6 +496,18 @@ const saveDocumentFx = createEffect(({ doc, base }: SavePayload) => db.putDocume
 const deleteDocumentFx = createEffect((id: string) => db.deleteDocument(id))
 const persistActiveIdFx = createEffect((id: string) => db.setActiveId(id))
 const saveFolderFx = createEffect((folder: Folder) => db.putFolder(folder))
+// Plural counterparts of `saveDocumentFx`/`saveFolderFx` for the GitHub sync
+// bulk-write flows (origin/syncDirPath assignment, first-connect import) —
+// same per-record staleness guard as `saveDocumentFx` (via `db.putDocument`'s
+// own `base` check), just batched into one effect call instead of N so
+// `$knownDiskUpdatedAt`/`$persistError` only have to react to one settle per
+// batch rather than racing N independent ones.
+const saveManyDocumentsFx = createEffect((payloads: SavePayload[]) =>
+  Promise.all(payloads.map(({ doc, base }) => db.putDocument(doc, base))),
+)
+const saveManyFoldersFx = createEffect((folders: Folder[]) =>
+  Promise.all(folders.map((folder) => db.putFolder(folder))),
+)
 // Returns the documents that were moved to root, so `$documents` can be
 // updated from the actual write result rather than re-deriving it — see the
 // `deleteFolderFx.done` handlers below.
@@ -539,8 +607,26 @@ const loadFx = createEffect(
 // --- Persistence error tracking ------------------------------------------
 
 $persistError
-  .on([saveDocumentFx.fail, deleteDocumentFx.fail, persistActiveIdFx.fail], () => true)
-  .on([saveDocumentFx.done, deleteDocumentFx.done, persistActiveIdFx.done], () => false)
+  .on(
+    [
+      saveDocumentFx.fail,
+      deleteDocumentFx.fail,
+      persistActiveIdFx.fail,
+      saveManyDocumentsFx.fail,
+      saveManyFoldersFx.fail,
+    ],
+    () => true,
+  )
+  .on(
+    [
+      saveDocumentFx.done,
+      deleteDocumentFx.done,
+      persistActiveIdFx.done,
+      saveManyDocumentsFx.done,
+      saveManyFoldersFx.done,
+    ],
+    () => false,
+  )
   .on(loadFx.doneData, (_, { persistent }) => !persistent)
 
 // True while the initial open is being held up by another tab still
@@ -568,6 +654,11 @@ $knownDiskUpdatedAt
     Object.fromEntries(documents.map((doc) => [doc.id, doc.updatedAt])),
   )
   .on(saveDocumentFx.done, (known, { result }) => ({ ...known, [result.id]: result.diskUpdatedAt }))
+  .on(saveManyDocumentsFx.done, (known, { result }) => {
+    const next = { ...known }
+    for (const putResult of result) next[putResult.id] = putResult.diskUpdatedAt
+    return next
+  })
   .on(deleteDocumentFx.done, (known, { params: id }) => {
     if (!(id in known)) return known
     const rest = { ...known }
@@ -667,6 +758,17 @@ $pendingSave.on(saveDocumentFx.done, (pending, { params, result }) =>
     ? null
     : pending,
 )
+// Same clearing rule as above, for the plural bulk-write path — a GitHub
+// sync metadata write can incidentally persist a document's latest in-memory
+// content too (it reads from `$documents`, which already has any pending
+// edit applied), so the pending marker has to be able to clear from this
+// path as well, not just `saveDocumentFx.done`.
+$pendingSave.on(saveManyDocumentsFx.done, (pending, { params, result }) => {
+  if (pending === null) return pending
+  const index = params.findIndex((payload) => payload.doc.id === pending.id)
+  if (index === -1) return pending
+  return result[index].diskUpdatedAt >= pending.updatedAt ? null : pending
+})
 
 // --- Immediate save (Mod-S) -------------------------------------------------
 //
@@ -935,33 +1037,9 @@ sample({
       // folder" to inherit from (it can arrive via drag-drop anywhere in
       // the window), unlike `documentCreated`/`documentDuplicated` above.
       folderId: null,
-      // An imported file is a local document — it has no GitHub origin (that
-      // path is `documentOpenedFromOrigin`, below).
+      // An imported (drag-drop / file picker) document is always local-only —
+      // GitHub sync's own import path is `documentsBulkImported`, below.
       origin: null,
-    }
-  },
-  target: documentAdded,
-})
-
-// Opening a file from GitHub: same "build a brand-new document, then hand it
-// to the shared `documentAdded` pipeline (prepend + activate + persist +
-// load)" shape as `documentImported` above, but carrying the file's `origin`
-// through instead of always `null`, and titled from the given basename.
-sample({
-  clock: documentOpenedFromOrigin,
-  fn: ({ title, content, origin }): MarkdownDocument => {
-    const now = Date.now()
-    const trimmed = title.trim()
-    return {
-      id: createId(),
-      title: trimmed === '' ? 'Untitled' : trimmed,
-      content,
-      createdAt: now,
-      updatedAt: now,
-      // Externally opened files always land at root — no "current folder" to
-      // inherit from, same reasoning as `documentImported` above.
-      folderId: null,
-      origin,
     }
   },
   target: documentAdded,
@@ -1198,80 +1276,100 @@ sample({
 // has no reducer keyed on `documentMoveApplied` — so it stays active across
 // a move, whether or not it's the document being moved.
 
-// --- GitHub: origin sync after a successful commit ------------------------
+// --- GitHub sync: bulk origin / syncDirPath write-back ---------------------
 //
-// Same shape as a move: resolve against current state, apply as one full
-// snapshot, persist immediately and independently of the active document's
-// content autosave. `updatedAt` is deliberately left unchanged — advancing
-// the recorded sha is metadata catching up to reality (the content is
-// already what's on GitHub), not a user edit, so touching `updatedAt` would
-// wrongly reshuffle the most-recently-updated sort order. Ids that no longer
-// resolve to a document (deleted between commit and this) are filtered out.
+// `documentGithubOriginsApplied` covers two cases from `features/github`'s
+// sync engine, both metadata-only writes with `updatedAt` deliberately left
+// unchanged (same reasoning as `documentMoveApplied` above — neither is a
+// content edit, so neither should reshuffle the most-recently-updated sort
+// order): a document being assigned its fixed sync path for the very first
+// time, and an already-assigned document's `syncedHash` catching up after a
+// successful push. Ids that no longer resolve to a document (deleted between
+// the sync engine reading its snapshot and this landing) are silently
+// dropped — same as every other "resolve against current state" flow here.
 sample({
-  clock: documentGithubSynced,
+  clock: documentGithubOriginsApplied,
   source: $documents,
-  filter: (docs, { id }) => docs.some((doc) => doc.id === id),
-  fn: (docs, { id, origin }): MarkdownDocument => {
-    const existing = docs.find((doc) => doc.id === id) as MarkdownDocument
-    return { ...existing, origin }
+  fn: (docs, updates): MarkdownDocument[] => {
+    const byId = new Map(updates.map((update) => [update.id, update.origin]))
+    return docs.reduce<MarkdownDocument[]>((changed, doc) => {
+      const origin = byId.get(doc.id)
+      if (origin !== undefined) changed.push({ ...doc, origin })
+      return changed
+    }, [])
   },
-  target: documentOriginApplied,
+  target: documentOriginsResolved,
 })
 
-$documents.on(documentOriginApplied, (docs, applied) =>
-  docs.map((doc) => (doc.id === applied.id ? applied : doc)),
-)
+$documents.on(documentOriginsResolved, (docs, updated) => {
+  const byId = new Map(updated.map((doc) => [doc.id, doc]))
+  return docs.map((doc) => byId.get(doc.id) ?? doc)
+})
 sample({
-  clock: documentOriginApplied,
+  clock: documentOriginsResolved,
   source: $knownDiskUpdatedAt,
-  fn: (known, applied): SavePayload => ({ doc: applied, base: known[applied.id] ?? 0 }),
-  target: saveDocumentFx,
+  fn: (known, updated): SavePayload[] => updated.map((doc) => ({ doc, base: known[doc.id] ?? 0 })),
+  target: saveManyDocumentsFx,
 })
 
-// --- GitHub: reload remote, discard local edits ---------------------------
+// Same shape, for folders — a folder's `syncDirPath` assigned once and never
+// again, metadata only.
+sample({
+  clock: folderSyncDirPathsApplied,
+  source: $folders,
+  fn: (folders, updates): Folder[] => {
+    const byId = new Map(updates.map((update) => [update.id, update.syncDirPath]))
+    return folders.reduce<Folder[]>((changed, folder) => {
+      const syncDirPath = byId.get(folder.id)
+      if (syncDirPath !== undefined) changed.push({ ...folder, syncDirPath })
+      return changed
+    }, [])
+  },
+  target: folderSyncDirPathsResolved,
+})
+
+$folders.on(folderSyncDirPathsResolved, (folders, updated) => {
+  const byId = new Map(updated.map((folder) => [folder.id, folder]))
+  return folders.map((folder) => byId.get(folder.id) ?? folder)
+})
+sample({ clock: folderSyncDirPathsResolved, target: saveManyFoldersFx })
+
+// --- GitHub sync: first-connect import --------------------------------------
 //
-// The explicit "their version wins" conflict choice — see
-// `documentRemoteApplied`'s doc comment. Unlike a move/sync above, this
-// genuinely replaces content, so `updatedAt` *is* bumped. Ids that no longer
-// resolve to a document are filtered out.
+// Every remote markdown file not already linked to a local document (see
+// `features/github/model/import.ts` for the de-dup check against existing
+// origins, which is what makes this safe to fire again on a reconnect
+// without duplicating anything) becomes a brand-new document here, in one
+// atomic resolve step against the current folder list so that two imported
+// files under the same new remote directory share one new folder rather than
+// each creating their own — see `resolveBulkImport`'s doc comment.
 sample({
-  clock: documentRemoteApplied,
-  source: $documents,
-  filter: (docs, { id }) => docs.some((doc) => doc.id === id),
-  fn: (docs, { id, content, origin }): MarkdownDocument => {
-    const existing = docs.find((doc) => doc.id === id) as MarkdownDocument
-    return { ...existing, content, origin, updatedAt: Date.now() }
-  },
-  target: documentRemoteContentApplied,
+  clock: documentsBulkImported,
+  source: $folders,
+  fn: (folders, items) => resolveBulkImport(folders, items),
+  target: bulkImportResolved,
 })
 
-$documents.on(documentRemoteContentApplied, (docs, applied) =>
-  docs.map((doc) => (doc.id === applied.id ? applied : doc)),
-)
+$folders.on(bulkImportResolved, (folders, { newFolders }) => [...folders, ...newFolders])
+// Prepended like `documentAdded`, but — unlike every other add flow — this
+// one deliberately does NOT touch `$activeId`: many documents can arrive at
+// once, and there is no single "the one the user just created" to activate,
+// so whatever was already active stays active.
+$documents.on(bulkImportResolved, (docs, { newDocs }) => [...newDocs, ...docs])
+
 sample({
-  clock: documentRemoteContentApplied,
-  source: $knownDiskUpdatedAt,
-  fn: (known, applied): SavePayload => ({ doc: applied, base: known[applied.id] ?? 0 }),
-  target: saveDocumentFx,
+  clock: bulkImportResolved,
+  filter: ({ newFolders }) => newFolders.length > 0,
+  fn: ({ newFolders }) => newFolders,
+  target: saveManyFoldersFx,
 })
-// The user explicitly chose to discard local edits, so clear any pending
-// save for this id (the one place doing so is correct — a deliberate user
-// choice, never automatic). Leaves a pending save for any *other* document
-// untouched. When this document is the active one, the `activeDocumentLoaded`
-// below also runs, whose own `$pendingSave.reset` clears it regardless — this
-// covers the non-active case.
-$pendingSave.on(documentRemoteContentApplied, (pending, applied) =>
-  pending !== null && pending.id === applied.id ? null : pending,
-)
-// Reload the editor only when the replaced document is the active one — the
-// same content-replacing "rebuild CodeMirror state" path every other load
-// takes. A non-active document's replacement lands silently in `$documents`.
 sample({
-  clock: documentRemoteContentApplied,
-  source: $activeId,
-  filter: (activeId, applied) => activeId === applied.id,
-  fn: (_, applied) => applied.content,
-  target: activeDocumentLoaded,
+  clock: bulkImportResolved,
+  filter: ({ newDocs }) => newDocs.length > 0,
+  // Brand-new ids, nothing on disk yet — same as `documentAdded`, base 0
+  // always satisfies the guard.
+  fn: ({ newDocs }): SavePayload[] => newDocs.map((doc) => ({ doc, base: 0 })),
+  target: saveManyDocumentsFx,
 })
 
 // --- Folders: cross-tab sync -----------------------------------------------

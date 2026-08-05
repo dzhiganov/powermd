@@ -11,7 +11,7 @@ import {
   $drawerSide,
   drawerSideChanged,
 } from '@/features/settings'
-import { GitHubModal, CommitDialog } from '@/features/github'
+import { GitHubModal } from '@/features/github'
 import { WordCount } from '@/features/editor'
 
 import Toolbar from './Toolbar.vue'
@@ -71,7 +71,6 @@ const centered = true
     <SettingsModal />
     <ShortcutsModal />
     <GitHubModal />
-    <CommitDialog />
     <Toolbar :side="drawerSide" />
     <MobileTabs v-show="!isDesktop" />
     <!-- Fixed corner status indicator (see `SaveIndicator.vue`) — mounted

@@ -23,9 +23,9 @@ import {
   activeDocumentEdited,
   activeDocumentLoaded,
   documentImported,
-  documentOpenedFromOrigin,
-  documentGithubSynced,
-  documentRemoteApplied,
+  documentsBulkImported,
+  documentGithubOriginsApplied,
+  folderSyncDirPathsApplied,
   documentSelected,
   documentCreated,
   documentDuplicated,
@@ -34,14 +34,18 @@ import {
   autosaveIntervalChanged,
   $activeId,
   $activeDocument,
+  $documentList,
+  $folders,
 } from '@/features/documents'
 import { initTransfer, markdownFileImported, exportSourceChanged } from '@/features/transfer'
 import {
   initGithub,
-  fileOpened,
-  commitSucceeded,
-  remoteReloadRequested,
-  activeDocumentForCommitChanged,
+  documentsSnapshotChanged,
+  foldersSnapshotChanged,
+  importCompleted,
+  originsAssigned,
+  folderDirsAssigned,
+  pushCompleted,
 } from '@/features/github'
 import { $viewMode, viewModeChanged, $isDesktop } from '@/features/layout'
 import type { ViewMode } from '@/features/layout'
@@ -242,34 +246,54 @@ sample({ clock: helpRequested, target: helpOpened })
 // `github` may import `@/features/documents`'s public API (one-directional,
 // for the `GitHubOrigin` type); `documents` never imports `github`. As with
 // every other pair in this file, this is the one place that knows both, and
-// connects them.
+// connects them. Automatic one-way sync (every document, every folder) has
+// replaced the old per-file "Save/Commit to GitHub" flow this section used
+// to wire — see `features/github/model/sync.ts`'s doc comment for the full
+// design.
 
 // Re-validate any stored token on startup — same "plain function called once"
-// shape as `initDocuments`/`initTransfer` above.
+// shape as `initDocuments`/`initTransfer` above. `github`'s own
+// `$syncConnection` needs no equivalent kick (it seeds itself synchronously
+// from storage).
 initGithub()
 
-// Opening a file from GitHub always becomes a brand-new document, never
-// overwrites the active one — same additive rule as an import.
-sample({ clock: fileOpened, target: documentOpenedFromOrigin })
-
-// A landed commit catches the document's recorded origin up to the new blob
-// sha (metadata only — `documentGithubSynced` deliberately doesn't bump
-// `updatedAt`).
-sample({ clock: commitSucceeded, target: documentGithubSynced })
-
-// The "reload remote, discard local edits" conflict choice replaces the
-// document's content + origin with the fetched remote version.
-sample({ clock: remoteReloadRequested, target: documentRemoteApplied })
-
-// Project the active document down into `github`'s commit model — just
-// `{ id, content, origin }`, and only when it actually has a GitHub origin
-// (otherwise `null`). Same shape as the `exportSourceChanged` projection
-// above.
+// `github`'s sync engine needs a live projection of every document/folder —
+// not just the active one, unlike the old commit/save flow — down to just
+// what it needs to assign paths and detect changes. Fires on every
+// `$documentList`/`$folders` update; `github`'s own debounce (well past the
+// editor's autosave debounce) is what keeps this from pushing on every
+// keystroke.
 sample({
-  source: $activeDocument,
-  fn: (doc) =>
-    doc === null || doc.origin === null
-      ? null
-      : { id: doc.id, content: doc.content, origin: doc.origin },
-  target: activeDocumentForCommitChanged,
+  source: $documentList,
+  fn: (docs) =>
+    docs.map((doc) => ({
+      id: doc.id,
+      title: doc.title,
+      content: doc.content,
+      folderId: doc.folderId,
+      origin: doc.origin,
+    })),
+  target: documentsSnapshotChanged,
 })
+sample({
+  source: $folders,
+  fn: (folders) =>
+    folders.map((folder) => ({
+      id: folder.id,
+      name: folder.name,
+      syncDirPath: folder.syncDirPath,
+    })),
+  target: foldersSnapshotChanged,
+})
+
+// First-connect import: every remote markdown file not already linked to a
+// local document becomes a brand-new one.
+sample({ clock: importCompleted, target: documentsBulkImported })
+
+// Path/directory assignment write-backs (metadata only, `updatedAt`
+// untouched) and the hash refresh after a successful push both land on the
+// same `documentGithubOriginsApplied` event — see its doc comment in
+// `features/documents/model/documents.ts` for why one event covers both.
+sample({ clock: originsAssigned, target: documentGithubOriginsApplied })
+sample({ clock: pushCompleted, target: documentGithubOriginsApplied })
+sample({ clock: folderDirsAssigned, target: folderSyncDirPathsApplied })

@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { useUnit } from 'effector-vue/composition'
-import { CloudArrowUpIcon } from '@heroicons/vue/24/outline'
 
 import { ThemeToggle, $showTooltips } from '@/features/settings'
 import { DrawerToggleButton, DocumentTitle } from '@/features/documents'
 import { ExportMenu } from '@/features/transfer'
-import { $activeDocumentForCommit, commitDialogOpened } from '@/features/github'
+import { SyncStatusIndicator } from '@/features/github'
 
 import { $viewMode, viewModeChanged } from '../model/layout'
 import type { ViewMode } from '../model/layout'
@@ -19,10 +18,6 @@ withDefaults(defineProps<{ side?: 'left' | 'right' }>(), { side: 'right' })
 
 const viewMode = useUnit($viewMode)
 const showTooltips = useUnit($showTooltips)
-// Non-null only when the active document was opened from GitHub — drives the
-// "Commit to GitHub" control's visibility (read directly here, the same way
-// this header already reads several features' public stores).
-const activeDocumentForCommit = useUnit($activeDocumentForCommit)
 
 interface ViewModeOption {
   value: ViewMode
@@ -94,21 +89,13 @@ const viewModeOptions: ViewModeOption[] = [
 
     <!-- Instrument cluster — always right-pinned, regardless of `side`. -->
     <div class="flex flex-1 items-center justify-end gap-0.5">
-      <!-- Only shown when the active document was opened from GitHub — an
-           existing, conditional quick action kept in the header (rather
-           than folded into the More menu) since it's about *this specific
-           document*, not a general app action the way Import/Settings/
-           Shortcuts/Print are. -->
-      <button
-        v-if="activeDocumentForCommit !== null"
-        type="button"
-        class="btn btn-ghost btn-circle btn-xs"
-        aria-label="Commit to GitHub"
-        :title="showTooltips ? 'Commit to GitHub' : undefined"
-        @click="commitDialogOpened()"
-      >
-        <CloudArrowUpIcon class="h-4 w-4" />
-      </button>
+      <!-- Unobtrusive, always-visible sync state once a GitHub sync
+           connection exists (hidden entirely before then) — see its own
+           doc comment. Every document/folder syncs automatically in the
+           background now, so there's no more per-document "Commit"/"Save"
+           action to gate on the active document the way the old per-file
+           flow did. -->
+      <SyncStatusIndicator :show-tooltips="showTooltips" />
 
       <ThemeToggle />
       <ExportMenu />

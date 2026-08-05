@@ -70,6 +70,30 @@ export class GitHubTooLargeError extends Error {
   }
 }
 
+/** 422 — GitHub rejected the request as semantically invalid for this
+ * endpoint. `updateRef` gives this (and a 409) its own meaning: either is
+ * what a non-fast-forward ref move looks like, and `updateRef` translates it
+ * into the more specific `GitHubRefConflictError` for that case. */
+export class GitHubUnprocessableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'GitHubUnprocessableError'
+  }
+}
+
+/** `updateRef` was rejected because the branch moved since this sync cycle
+ * read it (a non-fast-forward update, or the ref itself changed under a
+ * concurrent writer) — GitHub reports this as either a 422 or a 409
+ * depending on exactly what moved. `model/sync.ts` catches this specifically
+ * to refetch the ref and base tree and retry the whole batch against the new
+ * base, rather than ever force-pushing over someone else's commit. */
+export class GitHubRefConflictError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'GitHubRefConflictError'
+  }
+}
+
 /** `fetch` itself threw — offline, DNS failure, CORS preflight failure, etc.
  * (as opposed to the server returning an error status). */
 export class GitHubNetworkError extends Error {
@@ -129,6 +153,9 @@ async function githubRequest(
       'GitHub denied this request — the token may lack the required repository permission.',
     )
   }
+  if (response.status === 422) {
+    throw new GitHubUnprocessableError('GitHub rejected this request (422 Unprocessable Entity).')
+  }
   if (!response.ok) {
     throw new Error(`GitHub request failed (status ${response.status}).`)
   }
@@ -173,10 +200,6 @@ interface RawContent {
 interface RawBlob {
   content?: string
   size?: number
-}
-
-interface RawCommitResult {
-  content: { sha: string }
 }
 
 function mapRepo(raw: RawRepo): GitHubRepo {
@@ -228,6 +251,32 @@ export async function getRepo(token: string, owner: string, repo: string): Promi
   )
   const raw = (await response.json()) as RawRepo
   return mapRepo(raw)
+}
+
+interface RawBranch {
+  name: string
+}
+
+const BRANCHES_PER_PAGE = 100
+const MAX_BRANCH_PAGES = 10
+
+/** Lists every branch name in a repo — the "Save to GitHub" flow's branch
+ * picker. Paginated the same way `listAllRepos` is. Never creates a branch;
+ * this only ever reads what already exists. */
+export async function listBranches(token: string, owner: string, repo: string): Promise<string[]> {
+  const branches: string[] = []
+  for (let page = 1; page <= MAX_BRANCH_PAGES; page += 1) {
+    const response = await githubRequest(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches?per_page=${BRANCHES_PER_PAGE}&page=${page}`,
+      token,
+    )
+    const rawPage = (await response.json()) as RawBranch[]
+    for (const raw of rawPage) {
+      branches.push(raw.name)
+    }
+    if (rawPage.length < BRANCHES_PER_PAGE) break
+  }
+  return branches
 }
 
 /** Fetches a repo's full recursive git tree at a branch. `truncated` is
@@ -309,32 +358,227 @@ export async function getFileContent(
   throw new GitHubTooLargeError('This file is too large to open in the editor.')
 }
 
-/**
- * Commits a file back via the Contents API. `sha` is the blob sha the edit
- * was made against — GitHub's optimistic-concurrency token — so a stale
- * write is refused with a 409, surfaced as `GitHubConflictError` and left to
- * propagate for the model layer to resolve (this function does not retry or
- * fall back). Returns the new blob sha.
- */
-export async function commitFile(
+// --- Git Data API — batched, multi-file commits ----------------------------
+//
+// The Contents API (`getFileContent` above) is one file per request, fine
+// for reading, but committing that way is one commit per file — with
+// autosave-driven background sync that's commit spam and burns the rate
+// limit fast. `model/sync.ts` instead batches every dirty document into one
+// commit using the lower-level Git Data API: read the branch tip, build a
+// new tree on top of it (via `base_tree`, so every untouched file is
+// preserved without being re-specified), commit that tree, then move the
+// branch ref to point at the new commit. These five functions are exactly
+// that sequence, one call each.
+
+interface RawRef {
+  object: { sha: string }
+}
+
+/** The branch's current commit sha, or `null` specifically when the ref
+ * doesn't exist — which this app only ever expects for a genuinely empty
+ * repository (zero commits, so no branch exists yet). `model/sync.ts` reacts
+ * to `null` by building the very first commit with no parent and no
+ * `base_tree`, then creating the ref (`createRef`) instead of moving an
+ * existing one (`updateRef`). */
+export async function getBranchRef(
   token: string,
   owner: string,
   repo: string,
-  path: string,
   branch: string,
-  content: string,
-  message: string,
+): Promise<{ sha: string } | null> {
+  try {
+    const response = await githubRequest(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/ref/${encodeURIComponent(`heads/${branch}`)}`,
+      token,
+    )
+    const raw = (await response.json()) as RawRef
+    return { sha: raw.object.sha }
+  } catch (error) {
+    if (error instanceof GitHubNotFoundError) return null
+    throw error
+  }
+}
+
+interface RawGitCommit {
+  tree: { sha: string }
+}
+
+/** The tree sha a commit points at — used to get the base tree for the next
+ * commit's `base_tree`. */
+export async function getCommit(
+  token: string,
+  owner: string,
+  repo: string,
   sha: string,
+): Promise<{ treeSha: string }> {
+  const response = await githubRequest(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/commits/${encodeURIComponent(sha)}`,
+    token,
+  )
+  const raw = (await response.json()) as RawGitCommit
+  return { treeSha: raw.tree.sha }
+}
+
+interface RawGitBlob {
+  sha: string
+}
+
+/** Creates a blob from UTF-8 text (via `utf8ToBase64` — the same
+ * correctness-critical encoding `getFileContent`/the old Contents-API write
+ * path used, unconditionally reused here) and returns its sha, ready to be
+ * referenced by path in `createTree`. */
+export async function createBlob(
+  token: string,
+  owner: string,
+  repo: string,
+  content: string,
 ): Promise<{ sha: string }> {
   const response = await githubRequest(
-    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodePath(path)}`,
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/blobs`,
     token,
     {
-      method: 'PUT',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, content: utf8ToBase64(content), sha, branch }),
+      body: JSON.stringify({ content: utf8ToBase64(content), encoding: 'base64' }),
     },
   )
-  const raw = (await response.json()) as RawCommitResult
-  return { sha: raw.content.sha }
+  const raw = (await response.json()) as RawGitBlob
+  return { sha: raw.sha }
+}
+
+export interface TreeEntryInput {
+  path: string
+  sha: string
+}
+
+interface RawGitTree {
+  sha: string
+}
+
+/**
+ * Creates a new tree containing exactly the given (changed) blob entries,
+ * layered on top of `baseTreeSha` via `base_tree` — every path from the base
+ * tree that isn't mentioned in `entries` is carried over unchanged, and
+ * every path that IS mentioned is added or overwritten. `baseTreeSha: null`
+ * builds a tree from scratch (the empty-repo initial-commit case — there is
+ * no base to layer on).
+ */
+export async function createTree(
+  token: string,
+  owner: string,
+  repo: string,
+  baseTreeSha: string | null,
+  entries: TreeEntryInput[],
+): Promise<{ sha: string }> {
+  const body: {
+    base_tree?: string
+    tree: { path: string; mode: string; type: string; sha: string }[]
+  } = {
+    tree: entries.map((entry) => ({
+      path: entry.path,
+      mode: '100644',
+      type: 'blob',
+      sha: entry.sha,
+    })),
+  }
+  if (baseTreeSha !== null) {
+    body.base_tree = baseTreeSha
+  }
+  const response = await githubRequest(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees`,
+    token,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  )
+  const raw = (await response.json()) as RawGitTree
+  return { sha: raw.sha }
+}
+
+interface RawGitCommitResult {
+  sha: string
+}
+
+/** Creates a commit object pointing at `treeSha` with the given `parents`
+ * (empty for the very first commit of an empty repo). Does not move any ref
+ * — that's `updateRef`/`createRef`, called separately once this succeeds. */
+export async function createCommit(
+  token: string,
+  owner: string,
+  repo: string,
+  message: string,
+  treeSha: string,
+  parents: string[],
+): Promise<{ sha: string }> {
+  const response = await githubRequest(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/commits`,
+    token,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, tree: treeSha, parents }),
+    },
+  )
+  const raw = (await response.json()) as RawGitCommitResult
+  return { sha: raw.sha }
+}
+
+/** Creates a brand-new branch ref pointing at `sha` — only used for the
+ * empty-repo initial commit, where the branch doesn't exist yet for
+ * `updateRef` to move. */
+export async function createRef(
+  token: string,
+  owner: string,
+  repo: string,
+  branch: string,
+  sha: string,
+): Promise<void> {
+  await githubRequest(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/refs`,
+    token,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref: `refs/heads/${branch}`, sha }),
+    },
+  )
+}
+
+/**
+ * Moves an existing branch ref to `sha` — always non-force (`force: false`),
+ * so GitHub itself refuses a non-fast-forward move rather than this app ever
+ * force-pushing over a commit it didn't know about. That refusal (422 or
+ * 409, depending on exactly what changed) is translated into
+ * `GitHubRefConflictError` specifically, distinct from every other 422/409
+ * this module can throw, so `model/sync.ts` can catch precisely this case
+ * and retry the whole batch against a freshly-fetched base rather than
+ * treating it as a generic failure.
+ */
+export async function updateRef(
+  token: string,
+  owner: string,
+  repo: string,
+  branch: string,
+  sha: string,
+): Promise<void> {
+  try {
+    await githubRequest(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/refs/${encodeURIComponent(`heads/${branch}`)}`,
+      token,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sha, force: false }),
+      },
+    )
+  } catch (error) {
+    if (error instanceof GitHubUnprocessableError || error instanceof GitHubConflictError) {
+      throw new GitHubRefConflictError(
+        'The branch moved on GitHub since this sync started — retrying against the latest version.',
+      )
+    }
+    throw error
+  }
 }

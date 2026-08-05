@@ -25,8 +25,26 @@ const DB_NAME = 'markdown-editor'
  * record is walked and given an explicit `origin: null`. A record still at
  * v1 when a v3 install first opens it is backfilled with *both* `folderId:
  * null` and `origin: null` in the same single pass.
+ *
+ * v3 -> v4: the old per-file "Save/Commit to GitHub" flow is replaced by
+ * automatic one-way sync of every document — see `GitHubOrigin`'s doc
+ * comment in `model/types.ts`. Two shape changes ride along:
+ *   - `GitHubOrigin` drops the old `sha` field (that flow's per-file
+ *     optimistic-concurrency token, meaningless to the new batched-commit
+ *     engine) and gains `syncedHash` (the content hash last pushed to
+ *     `path`). A v3 record's `origin`, if it has one, already carries the
+ *     right `owner`/`repo`/`branch`/`path` — those are kept as-is, so a
+ *     document already linked to a file keeps that same fixed path; only
+ *     `sha` is dropped and `syncedHash` seeded `null` (meaning "not
+ *     confirmed synced under the new engine yet" — the next sync cycle
+ *     re-pushes it, which is harmless: same path, same content, an
+ *     idempotent no-op commit at worst).
+ *   - Every folder gains a `syncDirPath` field (`null` until sync assigns
+ *     one), same "backfill on the existing cursor walk" treatment as
+ *     `folderId`/`origin` before it — folders have no version of their own
+ *     to bump independently, they ride the document store's version.
  */
-const DB_VERSION = 3
+const DB_VERSION = 4
 const DOC_STORE = 'documents'
 const META_STORE = 'meta'
 const FOLDER_STORE = 'folders'
@@ -168,18 +186,21 @@ function openDatabase(): Promise<IDBDatabase> {
 
       // Backfill new per-document fields on disk in a single cursor walk —
       // content, title, and both timestamps are left completely untouched,
-      // only missing fields are added. `tx` is the versionchange
-      // transaction driving this whole upgrade; it's still open here, so
-      // this walk is part of the same atomic upgrade as the store creation
-      // above (either all of it lands, or none of it does).
+      // only missing/outdated fields are added or reshaped. `tx` is the
+      // versionchange transaction driving this whole upgrade; it's still
+      // open here, so this walk is part of the same atomic upgrade as the
+      // store creation above (either all of it lands, or none of it does).
       //
-      // The walk runs whenever *any* new field could be missing (`oldVersion
-      // < 3` covers both the v1->v3 and v2->v3 jumps) and backfills whichever
-      // fields a given record actually lacks: a record created under v1 and
-      // opened for the first time under v3 gets *both* `folderId: null` (v2's
-      // field) and `origin: null` (v3's) in one pass, while a record already
-      // migrated to v2 only gains `origin: null`.
-      if (oldVersion < 3 && tx !== null) {
+      // The walk runs whenever *any* field could be missing or stale
+      // (`oldVersion < 4` covers the v1->v4, v2->v4, and v3->v4 jumps) and
+      // backfills/reshapes whichever fields a given record actually needs: a
+      // record created under v1 and opened for the first time under v4 gets
+      // `folderId: null` (v2's field) and a brand-new `origin: null` (v3/v4's
+      // field) in one pass; a record already migrated to v3 keeps its
+      // existing `owner`/`repo`/`branch`/`path` but has its old `sha` field
+      // dropped in favour of `syncedHash: null` (see the v3->v4 doc comment
+      // above `DB_VERSION`).
+      if (oldVersion < 4 && tx !== null) {
         const store = tx.objectStore(DOC_STORE)
         const cursorRequest = store.openCursor()
         cursorRequest.onsuccess = () => {
@@ -195,9 +216,34 @@ function openDatabase(): Promise<IDBDatabase> {
           if (typeof patched.origin === 'undefined') {
             patched.origin = null
             changed = true
+          } else if (patched.origin !== null && typeof patched.origin === 'object') {
+            const origin = patched.origin as Record<string, unknown>
+            if ('sha' in origin || !('syncedHash' in origin)) {
+              const rest: Record<string, unknown> = { ...origin }
+              delete rest.sha
+              patched.origin = { ...rest, syncedHash: null }
+              changed = true
+            }
           }
           if (changed) {
             cursor.update(patched)
+          }
+          cursor.continue()
+        }
+      }
+
+      // Folders have no version field of their own — they ride the document
+      // store's. Same walk shape as above: every existing folder record gets
+      // an explicit `syncDirPath: null` if it doesn't already have one.
+      if (oldVersion < 4 && oldVersion > 0 && tx !== null) {
+        const folderStore = tx.objectStore(FOLDER_STORE)
+        const folderCursorRequest = folderStore.openCursor()
+        folderCursorRequest.onsuccess = () => {
+          const cursor = folderCursorRequest.result
+          if (!cursor) return
+          const record = cursor.value as Record<string, unknown>
+          if (typeof record.syncDirPath === 'undefined') {
+            cursor.update({ ...record, syncDirPath: null })
           }
           cursor.continue()
         }
@@ -297,24 +343,28 @@ function transactionDone(tx: IDBTransaction): Promise<void> {
 }
 
 /** Returns a well-formed `GitHubOrigin` only when the raw value is an object
- * with `owner`, `repo`, `branch`, `path`, and `sha` all present as non-empty
- * strings; otherwise `null` (no origin). Same "drop anything malformed or
+ * with `owner`, `repo`, `branch`, and `path` all present as non-empty
+ * strings, and `syncedHash` present as either `null` or a non-empty string;
+ * otherwise `null` (no origin). Same "drop anything malformed or
  * future-shaped rather than throw" philosophy as every other field in
  * `normalizeDocument` — a document with a broken origin is treated as
- * local-only, never surfaced with a half-populated origin. */
+ * unassigned, never surfaced with a half-populated origin. */
 function normalizeOrigin(value: unknown): GitHubOrigin | null {
   if (typeof value !== 'object' || value === null) return null
   const raw = value as Record<string, unknown>
-  const fields = ['owner', 'repo', 'branch', 'path', 'sha'] as const
-  for (const field of fields) {
+  const stringFields = ['owner', 'repo', 'branch', 'path'] as const
+  for (const field of stringFields) {
     if (typeof raw[field] !== 'string' || raw[field] === '') return null
+  }
+  if (raw.syncedHash !== null && (typeof raw.syncedHash !== 'string' || raw.syncedHash === '')) {
+    return null
   }
   return {
     owner: raw.owner as string,
     repo: raw.repo as string,
     branch: raw.branch as string,
     path: raw.path as string,
-    sha: raw.sha as string,
+    syncedHash: raw.syncedHash as string | null,
   }
 }
 
@@ -438,6 +488,10 @@ function normalizeFolder(value: unknown): Folder | null {
     name: typeof raw.name === 'string' ? raw.name : 'Untitled folder',
     createdAt:
       typeof raw.createdAt === 'number' && Number.isFinite(raw.createdAt) ? raw.createdAt : now,
+    // A record with no `syncDirPath` predates the v4 migration and should
+    // already have been backfilled to `null` by `onupgradeneeded` — this is
+    // the second line of defense, same spirit as `normalizeOrigin` above.
+    syncDirPath: typeof raw.syncDirPath === 'string' ? raw.syncDirPath : null,
   }
 }
 
