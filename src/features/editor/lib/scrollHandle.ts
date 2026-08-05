@@ -1,5 +1,14 @@
 import type { EditorView } from '@codemirror/view'
 
+import { clearFlashEffect, flashLineEffect } from './jumpFlash'
+
+/** How long `flashLine` holds the highlight at full strength before
+ * clearing the decoration — matches `paneJump.ts`'s preview-side hold, so
+ * both panes' "landed here" confirmation reads as one consistent duration.
+ * The visible fade continues past this for however long `.cm-line`'s own
+ * `transition` (see `lib/theme.ts`) takes to settle. */
+const FLASH_HOLD_MS = 600
+
 export interface EditorLineBlock {
   /** Document-relative pixel offset of the block's top edge. */
   top: number
@@ -45,9 +54,22 @@ export interface EditorScrollHandle {
    * is clamped into the document's actual line range.
    */
   scrollTopForLine(line: number, fraction: number): number
+  /**
+   * Briefly highlights the 1-based line's background, then fades it back
+   * out — the modifier-click jump's visual confirmation of where it landed
+   * (see `src/app/paneJump.ts`). Line number is clamped into the document's
+   * actual range, same as `scrollTopForLine`. Purely cosmetic: never moves
+   * the cursor or the selection, and never marks the document dirty (the
+   * underlying `dispatch` carries no document change, so `useCodeMirror.ts`'s
+   * `updateListener` — which only reacts to `docChanged` — never fires for
+   * it).
+   */
+  flashLine(line: number): void
 }
 
 export function createEditorScrollHandle(view: EditorView): EditorScrollHandle {
+  let flashTimeout: ReturnType<typeof setTimeout> | null = null
+
   return {
     getScroller: () => view.scrollDOM,
     lineBlockAtScrollTop(scrollTop) {
@@ -66,6 +88,29 @@ export function createEditorScrollHandle(view: EditorView): EditorScrollHandle {
       const block = view.lineBlockAt(docLine.from)
       const top = block.top + fraction * (block.bottom - block.top)
       return top + view.documentPadding.top
+    },
+    flashLine(line) {
+      if (flashTimeout !== null) {
+        clearTimeout(flashTimeout)
+        flashTimeout = null
+      }
+      const clamped = Math.min(Math.max(line, 1), view.state.doc.lines)
+      const docLine = view.state.doc.line(clamped)
+      view.dispatch({ effects: flashLineEffect.of(docLine.from) })
+      flashTimeout = setTimeout(() => {
+        flashTimeout = null
+        // Guards a view torn down between the dispatch above and this
+        // timeout firing (e.g. a fast unmount right after a jump) —
+        // dispatching on a destroyed view throws. In the far more common
+        // case of a *document switch* mid-flash, `loadDocument`'s
+        // `setState` rebuild has already reset every `StateField` (this
+        // one included) back to its `create()` default, so this dispatch
+        // lands as a harmless no-op rather than clearing something that
+        // matters.
+        if (view.dom.isConnected) {
+          view.dispatch({ effects: clearFlashEffect.of(null) })
+        }
+      }, FLASH_HOLD_MS)
     },
   }
 }

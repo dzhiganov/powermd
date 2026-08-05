@@ -186,6 +186,28 @@ const previewMaxWidth = 'min(680px, var(--md-reading-width, 75ch))'
   word-break: break-word;
 }
 
+/* Modifier-click pane-jump's "landed here" flash (`src/app/paneJump.ts`,
+ * toggles `.jump-flash` on the target `[data-line]` element). The
+ * transition lives permanently on every `[data-line]` element — not scoped
+ * to `.jump-flash` itself — so it's already active on both sides of the
+ * class being added (fade in) and removed (fade out); scoping it inside
+ * `.jump-flash` alone would mean it vanishes the instant that class is
+ * removed, exactly when the fade-out needs it. `[data-line]` elements never
+ * otherwise set a background, so the dormant `transition` here has nothing
+ * else to affect. Gated behind `prefers-reduced-motion: no-preference` —
+ * same rule, same reasoning, as the editor side's flash in
+ * `features/editor/lib/theme.ts`. */
+@media (prefers-reduced-motion: no-preference) {
+  .markdown-preview :deep([data-line]) {
+    transition: background-color 500ms ease-out;
+  }
+}
+
+.markdown-preview :deep(.jump-flash) {
+  background-color: color-mix(in oklab, var(--color-primary) 35%, transparent);
+  border-radius: var(--radius-field, 0.375rem);
+}
+
 /* Wide tables (many columns, or a narrow split-view pane) scroll inside
  * themselves instead of forcing the whole preview pane to scroll
  * sideways and drag headings/paragraphs out of view — the same

@@ -8,6 +8,7 @@ import { languages } from '@codemirror/language-data'
 import { daisyMarkdownTheme } from './theme'
 import { imagePasteHandler } from './imagePaste'
 import { editorShortcutsKeymap } from './shortcuts'
+import { jumpFlashField } from './jumpFlash'
 
 /**
  * Marks a dispatched transaction as programmatic so the update listener can
@@ -77,6 +78,7 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         }),
         daisyMarkdownTheme,
         imagePasteHandler,
+        jumpFlashField,
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return
           // A `view.setState` rebuild (document load, see `loadDocument`)

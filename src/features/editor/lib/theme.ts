@@ -61,6 +61,25 @@ export const daisyEditorTheme = EditorView.theme({
   '&.cm-focused': {
     outline: 'none',
   },
+  // Modifier-click pane-jump's "landed here" flash (`lib/jumpFlash.ts`,
+  // `src/app/paneJump.ts`). The transition lives permanently on `.cm-line`
+  // itself — not scoped to `.cm-jump-flash` — so it's already in effect on
+  // *both* sides of the class being added (fade in) and removed (fade
+  // out); a transition declared only inside `.cm-jump-flash` would vanish
+  // the instant that class is removed, which is exactly the moment the
+  // fade-out needs it. Gated behind `prefers-reduced-motion: no-preference`
+  // so a reduced-motion user gets an instant on/off instead of an animated
+  // fade — the highlight itself still appears and clears either way (see
+  // `flashLine`'s hold timer in `lib/scrollHandle.ts`), only the motion is
+  // skipped.
+  '@media (prefers-reduced-motion: no-preference)': {
+    '.cm-line': {
+      transition: 'background-color 500ms ease-out',
+    },
+  },
+  '.cm-jump-flash': {
+    backgroundColor: 'color-mix(in oklab, var(--color-primary) 35%, transparent)',
+  },
 })
 
 /**

@@ -52,6 +52,9 @@ import {
   helpOpened,
 } from '@/features/settings'
 
+import { initUrlSync } from './urlSync'
+import { initPaneJump } from './paneJump'
+
 import '@/features/settings'
 import '@/features/editor'
 import '@/features/preview'
@@ -91,6 +94,13 @@ initScrollSync()
 scrollSyncEnabledChanged($scrollSyncEnabled.getState())
 sample({ clock: $scrollSyncEnabled, target: scrollSyncEnabledChanged })
 
+// Modifier-click pane jump (editor <-> preview, via `scroll-sync`'s
+// anchor/interpolation functions) — a separate, one-off counterpart to the
+// continuous sync just above, deliberately independent of
+// `$scrollSyncEnabled`. See `src/app/paneJump.ts` for why it doesn't need a
+// `SyncSession` to exist.
+initPaneJump()
+
 // --- documents <-> editor -------------------------------------------------
 //
 // The documents feature never imports the editor (or vice versa); this is
@@ -98,6 +108,16 @@ sample({ clock: $scrollSyncEnabled, target: scrollSyncEnabledChanged })
 // from the editor's public API, so `documents` stays free of any editor seed
 // content.
 initDocuments({ welcomeContent: WELCOME_CONTENT })
+
+// Puts the active document's id in the URL and keeps it there — see
+// `src/app/urlSync.ts` for the routing-approach writeup (query param +
+// History API, no router) and the URL-vs-persisted-`activeId` precedence
+// rule. Depends only on `documents`' public API, but lives here rather than
+// inside that feature: `documents` has no notion of the browser's URL/
+// History any more than it has a notion of `layout` or `editor`, and every
+// other "feature's state meets something outside its own concern" link in
+// this file already lives here for the same reason.
+initUrlSync()
 
 // A genuine user edit updates the active document. The active id is read
 // here and travels with the payload, so the autosave/flush logic downstream
