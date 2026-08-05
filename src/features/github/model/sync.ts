@@ -255,6 +255,18 @@ async function pushBatch(
       await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS * attempt))
       return pushBatch(token, connection, dirty, attempt + 1)
     }
+    // A non-fast-forward that survives every retry is not a passing race, so
+    // report the identities involved rather than the status alone. The tip
+    // this attempt built on, the commit it produced, and that commit's parent
+    // are the three values that distinguish "the branch really moved" from
+    // "the ref we read was never the tip" — indistinguishable otherwise.
+    if (error instanceof GitHubRefConflictError) {
+      throw new GitHubRefConflictError(
+        `${error.message} (read tip ${ref.sha.slice(0, 8)}, built commit ` +
+          `${commit.sha.slice(0, 8)} on parent ${ref.sha.slice(0, 8)}, ` +
+          `after ${attempt} attempt(s))`,
+      )
+    }
     throw error
   }
 
