@@ -619,18 +619,17 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
 }
 
 /* Convex treatment (see main.css's "CONVEX BUTTON TREATMENT" comment for
- * the token rationale) — same three-layer bevel as `.btn` and
+ * the token rationale) — same two-layer bevel as `.btn` and
  * `.view-tab-active` (`Toolbar.vue`), read from the same shared
  * `--md-btn-*` tokens rather than a one-off value, since this is another
- * hand-rolled control that predates `.btn`. */
+ * hand-rolled control that predates `.btn`. No drop shadow (see main.css's
+ * "DROP SHADOW REMOVED" comment on `.btn`; this hand-rolled control
+ * follows the same removal). */
 .dock-btn-active {
   background: var(--md-seg-active, var(--color-base-100));
   background-image: linear-gradient(to bottom, var(--md-btn-sheen), transparent 65%);
   color: var(--color-base-content);
-  box-shadow:
-    inset 0 1px 0 0 var(--md-btn-highlight),
-    0 1px 1px 0 var(--md-btn-shadow-soft),
-    0 2px 4px 0 var(--md-btn-shadow);
+  box-shadow: inset 0 1px 0 0 var(--md-btn-highlight);
 }
 
 /* Pressed: flatten to a single inset shadow, same pattern as `.btn`'s

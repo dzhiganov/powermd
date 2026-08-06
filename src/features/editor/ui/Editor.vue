@@ -6,7 +6,7 @@ import { createEditorScrollHandle } from '../lib/scrollHandle'
 import { $content, contentChanged, loadContent } from '../model/content'
 import { editorScrollHandleMounted, editorScrollHandleUnmounted } from '../model/scrollHandle'
 import { editorViewMounted, editorViewDestroyed } from '../model/view'
-import { $lineWrapEnabled } from '../model/editorEvents'
+import { $lineWrapEnabled, editorFontMetricsChanged } from '../model/editorEvents'
 
 defineProps<{
   /** Constrains and centres `.cm-content` to a comfortable reading width
@@ -17,7 +17,7 @@ defineProps<{
 
 const container = ref<HTMLDivElement | null>(null)
 
-const { loadDocument, setLineWrap } = useCodeMirror(container, {
+const { loadDocument, setLineWrap, requestMeasure } = useCodeMirror(container, {
   // Read once, synchronously, at mount. If the restored/seeded document has
   // already been pushed into `$content` by then, the view opens with it;
   // otherwise it opens empty and the `loadContent` subscription below fills
@@ -61,6 +61,16 @@ onUnmounted(contentSubscription.unsubscribe)
 // than a state rebuild.
 const wrapSubscription = $lineWrapEnabled.watch((enabled) => setLineWrap(enabled))
 onUnmounted(wrapSubscription.unsubscribe)
+
+// Settings feature owns the persisted font size/family preferences too;
+// `wiring.ts` mirrors a change into this feature's own
+// `editorFontMetricsChanged` event (see its doc comment in
+// `model/editorEvents.ts`) rather than this component reading the settings
+// store directly. Both preferences already repaint `.cm-scroller` on their
+// own via CSS custom properties — this only nudges CodeMirror to re-measure
+// the layout that repaint just changed.
+const fontMetricsSubscription = editorFontMetricsChanged.watch(() => requestMeasure())
+onUnmounted(fontMetricsSubscription.unsubscribe)
 </script>
 
 <template>

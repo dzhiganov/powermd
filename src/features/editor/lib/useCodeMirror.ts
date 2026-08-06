@@ -198,5 +198,20 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
     })
   }
 
-  return { loadDocument, setLineWrap }
+  /**
+   * Asks CodeMirror to re-measure its own layout (line heights, cursor
+   * coordinates) without touching the document, cursor, or scroll position
+   * — the same call the `document.fonts.ready` handler above already makes
+   * for the self-hosted font's async swap. The settings feature's editor
+   * font-size/family preferences (`editorFontMetricsChanged`, mirrored in
+   * via `wiring.ts`) are the other caller: both change `.cm-scroller`'s
+   * rendered line height purely through a CSS custom property, which never
+   * fires the container `ResizeObserver` above, so CodeMirror would
+   * otherwise never notice.
+   */
+  function requestMeasure() {
+    view.value?.requestMeasure()
+  }
+
+  return { loadDocument, setLineWrap, requestMeasure }
 }

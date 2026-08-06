@@ -204,7 +204,13 @@ body {
    * 2.952:1 at that point — well under the 4.5:1 floor. 15% keeps
    * 5.079:1 at the same point (6.354:1 at the text's own bottom edge,
    * matching the pre-existing unsheened value), comfortable margin above
-   * the floor while still visibly lighter at the top than the bottom. */
+   * the floor while still visibly lighter at the top than the bottom.
+   *
+   * `--md-btn-shadow`/`-soft` are currently UNUSED (button drop shadow
+   * removed per user request — see the "DROP SHADOW REMOVED" comment
+   * further down): kept defined, not deleted, since they're still a
+   * measured, valid value pair should a future pass want an outer shadow
+   * back on some element; nothing reads them today. */
   --md-btn-sheen: color-mix(in oklab, white 15%, transparent);
   --md-btn-sheen-soft: color-mix(in oklab, white 22%, transparent);
   --md-btn-highlight: color-mix(in oklab, white 90%, transparent);
@@ -448,19 +454,19 @@ body {
  * restates the flatten (and additionally drops the gradient, which
  * daisyUI's own rule never touched).
  *
- * Three faint layers per the design brief: (1) `background-image` — a
- * top-to-bottom gradient, marginally lighter at the top, which is what
- * reads as "convex" rather than flat; (2) `--btn-inset` — a 1px inset
- * highlight on the top edge, the strongest and cheapest convexity cue;
- * (3) `--btn-shadow` — a low, soft, two-layer drop shadow underneath.
- * `.btn-ghost` (transparent at rest by design — most toolbar icon
- * buttons: `MoreMenu`, `DrawerToggleButton`, `ThemeToggle`, `ExportMenu`,
- * `HelpButton`, `SettingsButton`, `ImportButton`, `FormattingToolbar`,
- * `ToastHost`, dialog close buttons) gets the `-soft` token pair so a
- * whole row of them doesn't read as a row of raised chips at rest —
- * everything with a solid fill of its own (`.btn`, `.btn-primary`,
- * `.btn-outline`, `.btn-error`, the sidebar's "New file") gets the
- * stronger pair, since a bevel needs a surface to sit on to read clearly.
+ * Two faint layers per the design brief (revised — see "DROP SHADOW
+ * REMOVED" below): (1) `background-image` — a top-to-bottom gradient,
+ * marginally lighter at the top, which is what reads as "convex" rather
+ * than flat; (2) `--btn-inset` — a 1px inset highlight on the top edge,
+ * the strongest and cheapest convexity cue. `.btn-ghost` (transparent at
+ * rest by design — most toolbar icon buttons: `MoreMenu`,
+ * `DrawerToggleButton`, `ThemeToggle`, `ExportMenu`, `HelpButton`,
+ * `SettingsButton`, `ImportButton`, `FormattingToolbar`, `ToastHost`,
+ * dialog close buttons) gets the `-soft` token pair so a whole row of them
+ * doesn't read as a row of raised chips at rest — everything with a solid
+ * fill of its own (`.btn`, `.btn-primary`, `.btn-outline`, `.btn-error`,
+ * the sidebar's "New file") gets the stronger pair, since a bevel needs a
+ * surface to sit on to read clearly.
  *
  * The two hand-rolled segmented controls that predate `.btn` — the
  * Write/Split/Read view switcher (`.view-tab-active`,
@@ -469,17 +475,73 @@ body {
  * these same tokens directly in their own `<style scoped>` blocks rather
  * than duplicating the values, but aren't `.btn` and so aren't touched by
  * the rules below.
- */
+ *
+ * DROP SHADOW REMOVED (user request: "buttons shouldn't have shadow (only
+ * inner shadow maybe)") — `--btn-shadow` (the outer, non-inset half of
+ * daisyUI's `box-shadow: var(--btn-inset) inset, var(--btn-shadow)`
+ * composition) is explicitly zeroed below for every rest state, so no
+ * `.btn`/`.btn-ghost` casts a drop shadow onto the surface behind it.
+ * Omitting the property entirely here (rather than zeroing it) would NOT
+ * have been enough — cascade layers only let this unlayered block beat
+ * daisyUI's own layered rule property-by-property, so any custom property
+ * this block doesn't set falls back to daisyUI's own default `--btn-shadow`
+ * (itself a two-layer drop shadow), silently reintroducing the shadow this
+ * change removes. Only `--btn-inset` (always genuinely `inset`) keeps a
+ * real value. The `:active` rule further down still applies its own inset
+ * "pressed" shadow via `--btn-inset` — that one was never an outer shadow
+ * to begin with, so it stays exactly as before. */
 .btn {
   background-image: linear-gradient(to bottom, var(--md-btn-sheen), transparent 65%);
   --btn-inset: 0 1px 0 0 var(--md-btn-highlight);
-  --btn-shadow: 0 1px 1px 0 var(--md-btn-shadow-soft), 0 2px 5px 0 var(--md-btn-shadow);
+  --btn-shadow: 0 0 0 0 transparent;
 }
 
 .btn-ghost {
   background-image: linear-gradient(to bottom, var(--md-btn-sheen-soft), transparent 65%);
   --btn-inset: 0 1px 0 0 var(--md-btn-highlight-soft);
-  --btn-shadow: 0 1px 2px 0 var(--md-btn-shadow-soft);
+  --btn-shadow: 0 0 0 0 transparent;
+}
+
+/* PRIMARY BUTTON <-> ACTIVE SEGMENT MATCH — dark theme only (user request:
+ * "New file" and the Write/Split/Read switcher's active segment
+ * (`--md-seg-active`, `.view-tab-active` above) read as two different
+ * colours in dark mode; they should be the same).
+ *
+ * Overrides `--btn-color` (daisyUI's `.btn-primary` sets
+ * `--btn-color: var(--color-primary)`, which `--btn-bg`/`--btn-border` both
+ * derive from — see `node_modules/daisyui/components/button.css`) rather
+ * than repointing the shared `--color-primary` token itself. `--color-primary`
+ * is the SURFACE role documented under "PRIMARY SURFACE/ACCENT SPLIT — Phase
+ * 4" above and feeds several OTHER already-measured indicators besides the
+ * primary button — the sidebar's active-document accent bar
+ * (`DocumentRow.vue`, measured 3.363:1+ against this theme's backgrounds as
+ * a bare colour swatch), the modifier-click jump-flash highlight
+ * (`editor/lib/theme.ts`, `preview/ui/Preview.vue`), and the search-match
+ * highlight (`HighlightedText.vue`), all at `color-mix(... 30-35%,
+ * transparent)`. `--md-seg-active` (#22252a) sits far closer in luminance to
+ * this theme's near-black surfaces than the old #6a6660 did (by design — see
+ * `.view-tab-active`'s own "neutral raised chip" comment above); repointing
+ * `--color-primary` itself would have flattened all of those into
+ * near-invisibility. Scoping the override to `.btn-primary`'s own
+ * `--btn-color` changes only the primary button (and anything else that
+ * genuinely wants `.btn-primary`, e.g. `GitHubModal.vue`'s "Connect") while
+ * leaving every other `--color-primary` consumer exactly as already
+ * measured.
+ *
+ * `--btn-fg` (`.btn-primary`'s text colour) stays `--color-primary-content`
+ * (white) — unaffected by this override, and still correct: measured
+ * 15.372:1 against the new #22252a fill (only *more* contrast than the
+ * 5.703:1 it cleared against the old, lighter #6a6660).
+ *
+ * Light theme untouched — its primary button (#635f57) and its active
+ * segment (`--md-seg-active: #ffffff`) were never reported as a problem.
+ * Checked here anyway per the task: they ARE two different colours
+ * (measured 6.354:1 apart), but that's the reference design's original,
+ * intentional "neutral raised chip, not accent-tinted" call for the active
+ * segment (see `.view-tab-active`'s own comment) — not a regression to fix,
+ * and left exactly as measured under "GREY ACCENT — Phase 2" above. */
+[data-theme='dark'] .btn-primary {
+  --btn-color: var(--md-seg-active);
 }
 
 /* Pressed: flatten the gradient and swap the two outer shadows for a

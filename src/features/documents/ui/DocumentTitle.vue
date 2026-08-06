@@ -12,17 +12,21 @@ const active = useUnit($activeDocument)
 const folders = useUnit($folders)
 const saveStatus = useUnit($saveStatus)
 
-// Header breadcrumb (Phase 2 visual redesign): folder name, a `/`
-// separator, then the document title — `DocumentTitle` already owned the
-// title + its rename interaction, so the breadcrumb is built here rather
-// than in a new component, keeping rename a single source of truth. A
-// root-level document (`folderId === null`) — or one whose folder id no
-// longer resolves, same defensive fallback `$pendingFolderDeleteDoc` etc.
-// already use elsewhere in this feature — reads as "Unfiled".
-const folderName = computed(() => {
+// Header breadcrumb (Phase 2 visual redesign, revised — user request): folder
+// name, a `/` separator, then the document title — `DocumentTitle` already
+// owned the title + its rename interaction, so the breadcrumb is built here
+// rather than in a new component, keeping rename a single source of truth.
+// A root-level document (`folderId === null`) — or one whose folder id no
+// longer resolves, same defensive "can't show a folder that isn't there"
+// case — now resolves to `null` rather than the literal string "Unfiled":
+// the template below renders neither the folder segment nor the `/`
+// separator when this is `null`, so a root document's header reads as just
+// its title, with no dangling label or separator. A foldered document is
+// unaffected — it still reads `Folder / Title`.
+const folderName = computed<string | null>(() => {
   const doc = active.value
-  if (doc === null || doc.folderId === null) return 'Unfiled'
-  return folders.value.find((folder) => folder.id === doc.folderId)?.name ?? 'Unfiled'
+  if (doc === null || doc.folderId === null) return null
+  return folders.value.find((folder) => folder.id === doc.folderId)?.name ?? null
 })
 
 // The unsaved dot: pending/saving shows it, saved hides it. A save
@@ -72,19 +76,24 @@ function cancelRename() {
          see `app/styles/main.css`'s contrast-limitation note on those two
          tokens. Falls back to `base-content` if the custom property is ever
          unset, same defensive fallback pattern the reference design itself
-         uses. -->
-    <span
-      class="shrink-0 truncate text-[13px]"
-      style="color: var(--md-t3, var(--color-base-content))"
-    >
-      {{ folderName }}
-    </span>
-    <span
-      class="shrink-0 text-[13px]"
-      style="color: var(--md-t4, var(--color-base-content))"
-      aria-hidden="true"
-      >/</span
-    >
+         uses. Both the folder label and its `/` separator are gated behind
+         `folderName !== null` as one unit — a root-level document renders
+         neither (just the title below), not a dangling separator with
+         nothing in front of it. -->
+    <template v-if="folderName !== null">
+      <span
+        class="shrink-0 truncate text-[13px]"
+        style="color: var(--md-t3, var(--color-base-content))"
+      >
+        {{ folderName }}
+      </span>
+      <span
+        class="shrink-0 text-[13px]"
+        style="color: var(--md-t4, var(--color-base-content))"
+        aria-hidden="true"
+        >/</span
+      >
+    </template>
 
     <input
       v-if="renaming"

@@ -3,7 +3,7 @@ import { useUnit } from 'effector-vue/composition'
 
 import { ThemeToggle, $showTooltips } from '@/features/settings'
 import { DrawerToggleButton, DocumentTitle } from '@/features/documents'
-import { ExportMenu } from '@/features/transfer'
+import { ExportMenu, ImportButton } from '@/features/transfer'
 import { SyncStatusIndicator } from '@/features/github'
 
 import { $viewMode, viewModeChanged } from '../model/layout'
@@ -45,10 +45,18 @@ const viewModeOptions: ViewModeOption[] = [
        theme, export, more) always sits at the right end. This used to mirror
        the whole header layout with `side` — the user asked for that
        removed, since a header that rearranges itself based on a setting
-       read poorly; only the toggle button itself was asked to move. Fixed
-       52px height per the reference design (was 48px/`h-12` pre-redesign). -->
+       read poorly; only the toggle button itself was asked to move.
+       46px height (user request: "slightly shorter" than the reference
+       design's original 52px, was 48px/`h-12` pre-redesign) — a modest
+       6px trim, not a redesign. `items-center` keeps every child
+       vertically centred regardless of the header's own height; the
+       tallest child still fitting inside it is the view-mode switcher
+       (`.view-tabs`: 24px buttons + 3px padding top/bottom = 30px), well
+       under 46px, so nothing clips. Every icon button in this header
+       stays `btn-xs` (24x24, daisyUI's `--size-field` scale), meeting the
+       24x24 minimum hit target regardless of the header's own height. -->
   <header
-    class="flex h-[52px] shrink-0 items-center gap-4 border-b border-base-300 px-3.5 print:hidden"
+    class="flex h-[46px] shrink-0 items-center gap-4 border-b border-base-300 px-3.5 print:hidden"
     style="background: var(--md-head, var(--color-base-200))"
   >
     <div class="flex min-w-0 flex-1 items-center gap-3">
@@ -98,13 +106,21 @@ const viewModeOptions: ViewModeOption[] = [
       <SyncStatusIndicator :show-tooltips="showTooltips" />
 
       <ThemeToggle />
+      <!-- Own toolbar icon (user request: no longer duplicated inside the
+           More menu below — its `menuItem` prop variant is unused now, see
+           `MoreMenu.vue`'s own comment). Sits beside `ExportMenu` as the
+           import/export pair. -->
+      <ImportButton />
       <ExportMenu />
       <!-- GitHub sync's own header icon (previously `GitHubButton`) folds
            into the More menu below — its "GitHub sync" item dispatches the
            exact same `githubModalOpened()` event that button used to, so
            the feature stays fully reachable, just consolidated with
-           Import/Settings/Shortcuts/Print rather than each getting its own
-           permanent header icon. -->
+           Settings/Shortcuts rather than each getting its own permanent
+           header icon (Import and Print each have their own dedicated
+           entry point elsewhere now — this toolbar button and `ExportMenu`'s
+           "Print / PDF" respectively — so neither needs a duplicate here
+           too). -->
       <MoreMenu :show-tooltips="showTooltips" />
 
       <template v-if="side === 'right'">
@@ -160,18 +176,15 @@ const viewModeOptions: ViewModeOption[] = [
  * the token rationale) — this hand-rolled active chip isn't a `.btn`, so
  * it reads the same `--md-btn-*` tokens directly rather than duplicating
  * the gradient/shadow values. A top-lightening gradient + a 1px inset
- * top-edge highlight + the pre-existing drop shadow (now split into a
- * tight coat and a soft one, matching `.btn`'s two-layer shadow) is the
- * same three-layer bevel every other button in the app gets. */
+ * top-edge highlight is the same two-layer bevel every other button in
+ * the app gets — no drop shadow (see main.css's "DROP SHADOW REMOVED"
+ * comment on `.btn`; this hand-rolled control follows the same removal). */
 .view-tab-active {
   background: var(--md-seg-active, var(--color-base-100));
   background-image: linear-gradient(to bottom, var(--md-btn-sheen), transparent 65%);
   color: var(--color-base-content);
   font-weight: 500;
-  box-shadow:
-    inset 0 1px 0 0 var(--md-btn-highlight),
-    0 1px 1px 0 var(--md-btn-shadow-soft),
-    0 2px 4px 0 var(--md-btn-shadow);
+  box-shadow: inset 0 1px 0 0 var(--md-btn-highlight);
 }
 
 /* Pressed: flatten to a single inset shadow, same pattern as `.btn`'s

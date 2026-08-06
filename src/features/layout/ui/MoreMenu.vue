@@ -1,16 +1,14 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import {
   EllipsisHorizontalIcon,
   Cog6ToothIcon,
   QuestionMarkCircleIcon,
-  PrinterIcon,
 } from '@heroicons/vue/24/outline'
 
 import { useDialogFocusTrap } from '@/shared/lib/useDialog'
 import { settingsOpened, helpOpened } from '@/features/settings'
 import { githubModalOpened } from '@/features/github'
-import { ImportButton, exportPdfRequested } from '@/features/transfer'
 
 // `showTooltips` comes in as a prop rather than a direct
 // `@/features/settings` import for the tooltip text specifically — this
@@ -29,23 +27,14 @@ withDefaults(defineProps<{ showTooltips?: boolean }>(), { showTooltips: false })
 const open = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
 const triggerRef = ref<HTMLButtonElement | null>(null)
+// The menu's first item ("GitHub sync") is a plain `<button>` now that
+// Import no longer occupies that slot (see the removed-entries note near
+// the template below), so this can be a direct template ref — the hook
+// itself already focuses it on open, no separate querySelector workaround
+// needed.
+const firstItemRef = ref<HTMLButtonElement | null>(null)
 
-// The hook's own "focus this on open" target wants a plain `HTMLElement`
-// ref — the menu's first item is `ImportButton` (a component, rendered via
-// its `menuItem` variant), and a template `ref` on a component resolves to
-// the component instance, not a DOM node, so it can't be handed to the hook
-// directly. Left permanently `null` (a harmless no-op for the hook) and
-// handled explicitly below instead, by querying the popover's own first
-// focusable element once it's actually in the DOM.
-const noComponentFirstFocusRef = ref<HTMLElement | null>(null)
-
-const { trapFocus } = useDialogFocusTrap(menuRef, open, noComponentFirstFocusRef)
-
-watch(open, async (isOpen) => {
-  if (!isOpen) return
-  await nextTick()
-  menuRef.value?.querySelector<HTMLElement>('button, [href], input, [tabindex]')?.focus()
-})
+const { trapFocus } = useDialogFocusTrap(menuRef, open, firstItemRef)
 
 function toggleMenu() {
   open.value = !open.value
@@ -87,14 +76,6 @@ function handleShortcuts() {
   helpOpened()
 }
 
-function handlePrint() {
-  closeMenu()
-  // Same event the Export menu's "Print / PDF" item fires — a quick-access
-  // duplicate entry point onto the one export/print pipeline
-  // (`features/transfer/model/transfer.ts`), not a second implementation.
-  exportPdfRequested()
-}
-
 function handleEscape() {
   closeMenu()
   triggerRef.value?.focus()
@@ -126,8 +107,22 @@ function handleEscape() {
       @keydown.esc="handleEscape"
       @keydown.tab="trapFocus"
     >
-      <ImportButton menu-item @picked="closeMenu" />
-      <button type="button" role="menuitem" class="more-menu-item" @click="handleGithubSync">
+      <!-- Import and Print used to live here too — both removed (user
+           request): Import duplicated the toolbar's own `ImportButton`
+           (`Toolbar.vue`, plain icon-button variant, added alongside
+           `ExportMenu`), and Print duplicated `ExportMenu`'s own
+           "Print / PDF" entry. Neither feature was removed, only this
+           second entry point onto it — `ImportButton.vue`'s `menuItem`
+           prop variant this popover used to render stays in that
+           component for the toolbar-vs-menu-item shape switch, even
+           though nothing here uses it anymore. -->
+      <button
+        ref="firstItemRef"
+        type="button"
+        role="menuitem"
+        class="more-menu-item"
+        @click="handleGithubSync"
+      >
         <svg
           viewBox="0 0 16 16"
           class="h-3.5 w-3.5 shrink-0"
@@ -147,11 +142,6 @@ function handleEscape() {
       <button type="button" role="menuitem" class="more-menu-item" @click="handleShortcuts">
         <QuestionMarkCircleIcon class="h-3.5 w-3.5 shrink-0" />
         Keyboard shortcuts
-      </button>
-      <div class="more-menu-sep" style="background: var(--color-base-300)" role="none" />
-      <button type="button" role="menuitem" class="more-menu-item" @click="handlePrint">
-        <PrinterIcon class="h-3.5 w-3.5 shrink-0" />
-        Print
       </button>
     </div>
   </div>
@@ -195,10 +185,5 @@ function handleEscape() {
 .more-menu-item:focus-visible {
   outline: 2px solid var(--md-accent);
   outline-offset: -2px;
-}
-
-.more-menu-sep {
-  height: 1px;
-  margin: 5px 0;
 }
 </style>

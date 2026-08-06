@@ -15,6 +15,7 @@ import {
   viewModeCycleRequested,
   helpRequested,
   lineWrapChanged,
+  editorFontMetricsChanged,
 } from '@/features/editor'
 import { sourceReceived, renderMarkdownForExport } from '@/features/preview'
 import { initScrollSync, scrollSyncEnabledChanged } from '@/features/scroll-sync'
@@ -53,6 +54,8 @@ import {
   $lineWrapEnabled as $lineWrapPreference,
   $autosaveDebounceMs,
   $scrollSyncEnabled,
+  $editorFontSize,
+  $editorFontFamily,
   helpOpened,
 } from '@/features/settings'
 
@@ -208,6 +211,32 @@ initTransfer({ renderMarkdown: renderMarkdownForExport })
 // later updates (same reasoning as the `sourceReceived` kick above).
 lineWrapChanged($lineWrapPreference.getState())
 sample({ clock: $lineWrapPreference, target: lineWrapChanged })
+
+// Editor font size/family: CodeMirror needs no Compartment reconfigure for
+// either (both already repaint `.cm-scroller` purely via the CSS custom
+// properties `editorPreferences.ts` applies to `<html>` — see
+// `editorFontMetricsChanged`'s doc comment in `features/editor/model/
+// editorEvents.ts`), only a nudge to re-measure the layout that repaint
+// just changed. No startup kick needed here (unlike every other mirror in
+// this section) — the view's very first measure at mount already reflects
+// whichever CSS custom property value was already applied before it mounted.
+//
+// `clock: [$editorFontSize, $editorFontFamily]` (an array of units, not a
+// `combine`) deliberately — a `combine(...)` whose `fn` always returns the
+// same constant (there's no real payload `editorFontMetricsChanged` needs)
+// is itself a derived *store*, and effector skips a store's own update
+// when the freshly computed value is `Object.is`-equal to what it already
+// held. Every recompute here would produce that same constant, so after
+// the very first one the derived store would stop emitting entirely and
+// `editorFontMetricsChanged` would silently never fire again — measured
+// while verifying this change (CodeMirror's height map went stale, exactly
+// the ~85%-off failure mode this event exists to prevent). An array clock
+// has no such store/equality semantics: `sample` re-fires on every update
+// of every listed unit, unconditionally.
+sample({
+  clock: [$editorFontSize, $editorFontFamily],
+  target: editorFontMetricsChanged,
+})
 
 // Autosave interval: same one-kick-then-sample shape, feeding
 // `documents`' own debounce store (`$autosaveIntervalMs` in

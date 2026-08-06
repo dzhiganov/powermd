@@ -9,6 +9,7 @@ export {
   viewModeCycleRequested,
   helpRequested,
   lineWrapChanged,
+  editorFontMetricsChanged,
 } from './model/editorEvents'
 export { EDITOR_SHORTCUTS } from './lib/shortcuts'
 export type { EditorShortcut } from './lib/shortcuts'

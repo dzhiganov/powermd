@@ -32,3 +32,22 @@ export const $lineWrapEnabled = createStore<boolean>(true).on(
   lineWrapChanged,
   (_, enabled) => enabled,
 )
+
+/**
+ * Fired whenever `features/settings`' persisted editor font size or font
+ * family preference changes (`wiring.ts` mirrors it in — same
+ * "settings owns the preference, the acting feature keeps its own mirror"
+ * shape as `lineWrapChanged` above). `Editor.vue` doesn't need the
+ * *value*: both preferences are already applied purely via CSS custom
+ * properties (`--md-editor-font-size`/`-family` on `<html>`, read by
+ * `.cm-scroller`'s inline theme styles in `lib/theme.ts`), no Compartment
+ * involved. This event is only a signal to call
+ * `EditorView.requestMeasure()` afterwards: CodeMirror's internal height
+ * map (cursor placement, scroll-into-view, `scroll-sync`'s proportional
+ * mapping) is keyed off measured line height, and a font-metric change
+ * never touches the editor's *container* — the one thing the existing
+ * `ResizeObserver` in `lib/useCodeMirror.ts` watches — so without this the
+ * height map goes stale. Same failure mode already documented there for
+ * the self-hosted font's async load (measured ~85% off before that fix).
+ */
+export const editorFontMetricsChanged = createEvent()

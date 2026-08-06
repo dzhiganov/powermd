@@ -157,6 +157,22 @@ const previewMaxWidth = 'min(680px, var(--md-reading-width, 75ch))'
  * never depends on what happens to be underneath.
  */
 .markdown-preview {
+  /* EDITOR FONT SIZE ALSO SCALES THE PREVIEW (user request) — driven from
+   * the same `--md-editor-font-size` custom property the editor's own
+   * `.cm-scroller` reads (`editor/lib/theme.ts`, applied to `<html>` by
+   * `settings/model/editorPreferences.ts`), rather than a second
+   * "preview font size" preference of its own. Overriding `font-size`
+   * directly on the element `prose`/`prose-sm` is already applied to
+   * (rather than, say, wrapping the content in an extra element) is
+   * Tailwind Typography's own documented way to rescale its whole type
+   * system: every heading/code/quote/list size the plugin sets is an `em`
+   * value relative to this element's own font-size, so one property here
+   * proportionally rescales the entire preview (headings included) instead
+   * of only the body text — nothing "blows up" independently of the rest.
+   * `14.5px` mirrors the editor's own fallback/default in
+   * `editorPreferences.ts` (`DEFAULT_FONT_SIZE`), so the two panes start in
+   * visual agreement even before that module's effect has run. */
+  font-size: var(--md-editor-font-size, 14.5px);
   --tw-prose-body: var(--color-base-content);
   --tw-prose-headings: var(--color-base-content);
   --tw-prose-lead: var(--color-base-content);
