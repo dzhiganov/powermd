@@ -145,6 +145,31 @@ const viewModeOptions: ViewModeOption[] = [
  * (`--md-seg-active`), not accent-tinted — matching `Splitter.vue`/
  * `MobileTabs.vue`'s existing convention of hand-rolled state colours for
  * small custom controls.
+ *
+ * FLAT, Linear-style pill (user request — see main.css's "FLAT BUTTON
+ * TREATMENT" comment for the full rationale/history): fully rounded ends
+ * (`border-radius: 999px` on both the outer track and each segment, rather
+ * than a value tied to the 24px segment height, so the pill stays fully
+ * rounded even if that height ever changes) and no gradient/inset
+ * highlight/shadow in any state. Active vs inactive is carried by fill +
+ * text alone now — not by weight/shadow decoration:
+ *   - fill: `--md-seg-active` vs the track's own `--md-seg` (measured
+ *     ~1.18-1.23:1 apart in both themes, an L* delta of ~7.4-8.3 — see
+ *     main.css's `--md-seg-fg` comment for the exact numbers);
+ *   - text colour: full `--color-base-content` (active) vs the muted
+ *     `--md-seg-fg` (inactive) — >=4.5:1 against `--md-seg` in both themes
+ *     (`--md-seg-fg`'s own comment in main.css has the measured numbers;
+ *     `--md-t3`, used here before, measured under the 4.5:1 floor in both
+ *     themes for this size of text);
+ *   - weight: 600 (active) vs 400 (inactive) — so the distinction never
+ *     rests on colour alone.
+ * Hover (inactive segments only — the active one already has its own
+ * stronger fill) is a flat fill change to `--md-hov`, the same hover token
+ * `ImportButton.vue`/`MoreMenu.vue`/`SyncStatusIndicator.vue` already use
+ * for their own ghost-button hover state. No separate `:active`/press rule
+ * — a click immediately swaps the segment's fill to `--md-seg-active` via
+ * `viewModeChanged`, so there's nothing useful for a transient press state
+ * to add.
  */
 .view-tabs {
   display: flex;
@@ -152,61 +177,37 @@ const viewModeOptions: ViewModeOption[] = [
   gap: 2px;
   padding: 3px;
   border: 1px solid;
-  border-radius: 9px;
+  border-radius: 999px;
 }
 
 .view-tab {
   height: 24px;
   padding: 0 13px;
   border: none;
-  border-radius: 6px;
+  border-radius: 999px;
   cursor: pointer;
   background: transparent;
-  color: var(--md-t3, var(--color-base-content));
+  color: var(--md-seg-fg, var(--color-base-content));
   font: inherit;
   font-size: 12.5px;
-  font-weight: 450;
+  font-weight: 400;
   transition:
     background 120ms ease,
-    color 120ms ease,
-    box-shadow 120ms ease;
+    color 120ms ease;
 }
 
-/* Convex treatment (see main.css's "CONVEX BUTTON TREATMENT" comment for
- * the token rationale) — this hand-rolled active chip isn't a `.btn`, so
- * it reads the same `--md-btn-*` tokens directly rather than duplicating
- * the gradient/shadow values. A top-lightening gradient + a 1px inset
- * top-edge highlight is the same two-layer bevel every other button in
- * the app gets — no drop shadow (see main.css's "DROP SHADOW REMOVED"
- * comment on `.btn`; this hand-rolled control follows the same removal). */
+.view-tab:not(.view-tab-active):hover {
+  background: var(--md-hov, var(--color-base-300));
+}
+
 .view-tab-active {
   background: var(--md-seg-active, var(--color-base-100));
-  background-image: linear-gradient(to bottom, var(--md-btn-sheen), transparent 65%);
   color: var(--color-base-content);
-  font-weight: 500;
-  box-shadow: inset 0 1px 0 0 var(--md-btn-highlight);
-}
-
-/* Pressed: flatten to a single inset shadow, same pattern as `.btn`'s
- * `:active:not(.btn-active)` rule in main.css. Applies to both the active
- * and inactive segments, since either can be the thing under the pointer
- * at the moment of the click. */
-.view-tab:active {
-  background-image: none;
-  box-shadow: inset 0 1px 2px 0 var(--md-btn-press);
+  font-weight: 600;
 }
 
 .view-tab:focus-visible {
   outline: 2px solid var(--md-accent);
   outline-offset: -2px;
-}
-
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .view-tab,
-  .view-tab-active,
-  .view-tab:active {
-    background-image: none;
-    box-shadow: none;
-  }
 }
 </style>

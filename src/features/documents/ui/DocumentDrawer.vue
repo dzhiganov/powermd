@@ -453,7 +453,7 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
         >
           <slot name="footer-extra" />
           <div
-            class="ml-auto flex items-center gap-0.5 rounded-md p-0.5"
+            class="ml-auto flex items-center gap-0.5 rounded-full p-0.5"
             role="group"
             aria-label="Documents panel side"
             style="background: var(--md-seg, var(--color-base-200))"
@@ -604,52 +604,51 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
 /* Footer dock-side segmented control — raw `var(--color-*)`/`--md-*`
  * rather than daisyUI's `join`/`btn-active` utilities, matching the
  * `Splitter.vue`/`MobileTabs.vue` convention of hand-rolled state colours
- * for small custom controls this codebase already follows elsewhere. */
+ * for small custom controls this codebase already follows elsewhere.
+ *
+ * FLAT, Linear-style pill (user request — see main.css's "FLAT BUTTON
+ * TREATMENT" comment for the full rationale/history, and `Toolbar.vue`'s
+ * `.view-tab`/`.view-tab-active` comment for the same pattern applied to
+ * the header's segmented control): fully rounded ends, no gradient/inset
+ * highlight/shadow in any state, active vs inactive carried by fill + the
+ * icon's own colour (there's no text label here, so weight isn't a lever —
+ * the fill delta and the icon-colour swap to full `--color-base-content`
+ * are what carry the state). `--md-t4` (used here before) is a non-text
+ * icon colour, so only needs to clear the 3:1 non-text floor rather than
+ * 4.5:1, but measured well under even that in both themes; `--md-seg-fg`
+ * (defined in main.css, shared with `.view-tab`'s text) clears 4.5:1 —
+ * comfortably past the lighter 3:1 bar an icon actually needs.
+ *
+ * `height: 24px` (was `20px`) — bumped while touching this rule anyway:
+ * the previous height fell under the 24x24 minimum hit-target size; the
+ * 32px-tall footer (`h-8` in the template) has room for it with its
+ * `p-0.5` wrapper unchanged. */
 .dock-btn {
   display: grid;
   place-items: center;
   width: 24px;
-  height: 20px;
+  height: 24px;
   border: none;
-  border-radius: 5px;
+  border-radius: 999px;
   cursor: pointer;
   background: transparent;
-  color: var(--md-t4, var(--color-base-content));
-  transition: box-shadow 120ms ease;
+  color: var(--md-seg-fg, var(--color-base-content));
+  transition:
+    background 120ms ease,
+    color 120ms ease;
 }
 
-/* Convex treatment (see main.css's "CONVEX BUTTON TREATMENT" comment for
- * the token rationale) — same two-layer bevel as `.btn` and
- * `.view-tab-active` (`Toolbar.vue`), read from the same shared
- * `--md-btn-*` tokens rather than a one-off value, since this is another
- * hand-rolled control that predates `.btn`. No drop shadow (see main.css's
- * "DROP SHADOW REMOVED" comment on `.btn`; this hand-rolled control
- * follows the same removal). */
+.dock-btn:not(.dock-btn-active):hover {
+  background: var(--md-hov, var(--color-base-300));
+}
+
 .dock-btn-active {
   background: var(--md-seg-active, var(--color-base-100));
-  background-image: linear-gradient(to bottom, var(--md-btn-sheen), transparent 65%);
   color: var(--color-base-content);
-  box-shadow: inset 0 1px 0 0 var(--md-btn-highlight);
-}
-
-/* Pressed: flatten to a single inset shadow, same pattern as `.btn`'s
- * `:active:not(.btn-active)` rule in main.css. */
-.dock-btn:active {
-  background-image: none;
-  box-shadow: inset 0 1px 2px 0 var(--md-btn-press);
 }
 
 .dock-btn:focus-visible {
   outline: 2px solid var(--md-accent);
   outline-offset: -2px;
-}
-
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .dock-btn,
-  .dock-btn-active,
-  .dock-btn:active {
-    background-image: none;
-    box-shadow: none;
-  }
 }
 </style>
