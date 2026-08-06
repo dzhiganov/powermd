@@ -5,7 +5,6 @@ import { XMarkIcon } from '@heroicons/vue/24/outline'
 
 import { useDialogFocusTrap } from '@/shared/lib/useDialog'
 
-import ThemeToggle from './ThemeToggle.vue'
 import {
   $editorFontSize,
   $editorFontFamily,
@@ -35,6 +34,12 @@ import {
   $scrollSyncEnabled,
   scrollSyncToggled,
 } from '../model/uiPreferences'
+import {
+  $resetConfirmOpen,
+  resetRequested,
+  resetConfirmed,
+  resetCancelled,
+} from '../model/resetDefaults'
 
 const open = useUnit($settingsOpen)
 const fontSize = useUnit($editorFontSize)
@@ -50,6 +55,22 @@ const scrollSyncEnabled = useUnit($scrollSyncEnabled)
 const dialogRef = ref<HTMLElement | null>(null)
 const firstControlRef = ref<HTMLElement | null>(null)
 const { trapFocus } = useDialogFocusTrap(dialogRef, open, firstControlRef)
+
+// "Reset to defaults" confirmation — a second dialog layered above this
+// one (higher z-index, its own focus trap) rather than nested inside it:
+// nesting would put both dialogs' `@keydown.esc` listeners on the same
+// element/its ancestors, so one Escape press while the confirm dialog is
+// open would bubble up and close both at once. As a sibling, focus stays
+// inside `resetDialogRef` while it's open (the trap below enforces that),
+// so `dialogRef`'s own Escape/Tab handlers never see those keydowns.
+const resetConfirmOpen = useUnit($resetConfirmOpen)
+const resetDialogRef = ref<HTMLElement | null>(null)
+const resetCancelButtonRef = ref<HTMLButtonElement | null>(null)
+const { trapFocus: trapResetDialogFocus } = useDialogFocusTrap(
+  resetDialogRef,
+  resetConfirmOpen,
+  resetCancelButtonRef,
+)
 
 function handleFontSizeInput(event: Event) {
   editorFontSizeChanged(Number((event.target as HTMLInputElement).value))
@@ -91,16 +112,9 @@ function handleReadingWidthInput(event: Event) {
       </div>
 
       <div class="mt-4 flex flex-col gap-4">
-        <div class="flex items-center justify-between">
-          <!-- `ThemeToggle` already carries its own descriptive
-               `aria-label` ("Switch to light/dark theme") on its button
-               root, so this is a plain visual label rather than an
-               `aria-labelledby` target — the latter would override (not
-               combine with) that per-state label. -->
-          <span class="text-sm text-base-content">Theme</span>
-          <ThemeToggle />
-        </div>
-
+        <!-- No theme control here — the header's `ThemeToggle` (always
+             visible, next to the sync indicator) is the only one now. A
+             second copy in this modal was redundant with it. -->
         <label class="flex flex-col gap-1">
           <span class="text-sm text-base-content">Editor font size — {{ fontSize }}px</span>
           <input
@@ -240,6 +254,53 @@ function handleReadingWidthInput(event: Event) {
             </button>
           </div>
         </div>
+
+        <div class="mt-2 border-t border-base-300 pt-4">
+          <button type="button" class="btn btn-outline btn-sm w-full" @click="resetRequested()">
+            Reset to defaults
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- "Reset to defaults" confirmation. A sibling of the dialog above, not
+       nested inside it — see the `resetDialogRef` setup in the script for
+       why. States plainly that documents/folders/GitHub are untouched,
+       since "reset" reads as destructive and those are the things a user
+       would actually worry about losing. -->
+  <div
+    v-if="resetConfirmOpen"
+    ref="resetDialogRef"
+    class="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4 print:hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="reset-dialog-title"
+    tabindex="-1"
+    @keydown.esc="resetCancelled()"
+    @keydown.tab="trapResetDialogFocus"
+  >
+    <div class="w-full max-w-sm rounded-box bg-base-100 p-5 shadow-xl">
+      <h2 id="reset-dialog-title" class="text-base font-semibold text-base-content">
+        Reset settings to defaults?
+      </h2>
+      <p class="mt-2 text-sm text-base-content/70">
+        Restores font size, font family, line wrapping, autosave delay, reading width, tooltips,
+        formatting toolbar, documents panel side, scroll sync, and theme to their defaults. Your
+        documents, folders, and GitHub connection are not affected.
+      </p>
+      <div class="mt-5 flex justify-end gap-2">
+        <button
+          ref="resetCancelButtonRef"
+          type="button"
+          class="btn btn-ghost btn-sm"
+          @click="resetCancelled()"
+        >
+          Cancel
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" @click="resetConfirmed()">
+          Reset
+        </button>
       </div>
     </div>
   </div>

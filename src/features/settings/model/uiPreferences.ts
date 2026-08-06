@@ -1,6 +1,7 @@
 import { createEffect, createEvent, createStore, sample } from 'effector'
 
 import { readStorage, writeStorage } from '@/shared/lib/storage'
+import { defaultsRestored } from './resetDefaults'
 
 const SHOW_TOOLTIPS_KEY = 'markdown-editor:show-tooltips'
 const DRAWER_SIDE_KEY = 'markdown-editor:drawer-side'
@@ -8,6 +9,11 @@ const SHOW_FORMATTING_TOOLBAR_KEY = 'markdown-editor:show-formatting-toolbar'
 const SCROLL_SYNC_ENABLED_KEY = 'markdown-editor:scroll-sync-enabled'
 
 export type DrawerSide = 'left' | 'right'
+
+const DEFAULT_SHOW_TOOLTIPS = false
+const DEFAULT_DRAWER_SIDE: DrawerSide = 'right'
+const DEFAULT_SHOW_FORMATTING_TOOLBAR = false
+const DEFAULT_SCROLL_SYNC_ENABLED = false
 
 function readBoolean(key: string, fallback: boolean): boolean {
   const stored = readStorage(key)
@@ -21,7 +27,7 @@ function isDrawerSide(value: string | null): value is DrawerSide {
 
 function readDrawerSide(): DrawerSide {
   const stored = readStorage(DRAWER_SIDE_KEY)
-  return isDrawerSide(stored) ? stored : 'right'
+  return isDrawerSide(stored) ? stored : DEFAULT_DRAWER_SIDE
 }
 
 // One shared persistence effect, parameterised by key/value — same shape as
@@ -42,10 +48,11 @@ const persistFx = createEffect(({ key, value }: { key: string; value: string }) 
 // alongside a `aria-label` that is never conditional.
 
 export const showTooltipsToggled = createEvent()
-export const $showTooltips = createStore<boolean>(readBoolean(SHOW_TOOLTIPS_KEY, false)).on(
-  showTooltipsToggled,
-  (enabled) => !enabled,
+export const $showTooltips = createStore<boolean>(
+  readBoolean(SHOW_TOOLTIPS_KEY, DEFAULT_SHOW_TOOLTIPS),
 )
+  .on(showTooltipsToggled, (enabled) => !enabled)
+  .on(defaultsRestored, () => DEFAULT_SHOW_TOOLTIPS)
 
 sample({
   clock: $showTooltips,
@@ -62,10 +69,9 @@ sample({
 // directly and threads the value down.
 
 export const drawerSideChanged = createEvent<DrawerSide>()
-export const $drawerSide = createStore<DrawerSide>(readDrawerSide()).on(
-  drawerSideChanged,
-  (_, side) => side,
-)
+export const $drawerSide = createStore<DrawerSide>(readDrawerSide())
+  .on(drawerSideChanged, (_, side) => side)
+  .on(defaultsRestored, () => DEFAULT_DRAWER_SIDE)
 
 sample({
   clock: $drawerSide,
@@ -86,8 +92,10 @@ sample({
 
 export const showFormattingToolbarToggled = createEvent()
 export const $showFormattingToolbar = createStore<boolean>(
-  readBoolean(SHOW_FORMATTING_TOOLBAR_KEY, false),
-).on(showFormattingToolbarToggled, (enabled) => !enabled)
+  readBoolean(SHOW_FORMATTING_TOOLBAR_KEY, DEFAULT_SHOW_FORMATTING_TOOLBAR),
+)
+  .on(showFormattingToolbarToggled, (enabled) => !enabled)
+  .on(defaultsRestored, () => DEFAULT_SHOW_FORMATTING_TOOLBAR)
 
 sample({
   clock: $showFormattingToolbar,
@@ -108,8 +116,10 @@ sample({
 
 export const scrollSyncToggled = createEvent()
 export const $scrollSyncEnabled = createStore<boolean>(
-  readBoolean(SCROLL_SYNC_ENABLED_KEY, false),
-).on(scrollSyncToggled, (enabled) => !enabled)
+  readBoolean(SCROLL_SYNC_ENABLED_KEY, DEFAULT_SCROLL_SYNC_ENABLED),
+)
+  .on(scrollSyncToggled, (enabled) => !enabled)
+  .on(defaultsRestored, () => DEFAULT_SCROLL_SYNC_ENABLED)
 
 sample({
   clock: $scrollSyncEnabled,

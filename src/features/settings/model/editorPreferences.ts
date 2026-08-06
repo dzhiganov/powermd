@@ -1,6 +1,7 @@
 import { combine, createEffect, createEvent, createStore, sample } from 'effector'
 
 import { readStorage, writeStorage } from '@/shared/lib/storage'
+import { defaultsRestored } from './resetDefaults'
 
 export type EditorFontFamily = 'mono' | 'serif'
 
@@ -16,6 +17,8 @@ export const FONT_SIZE_MAX = 20
 // (`design-template.html`'s `<textarea>` rule) — still just the *default*
 // within the existing 12-20px user-adjustable range, not a new floor/ceiling.
 const DEFAULT_FONT_SIZE = 14.5
+
+const DEFAULT_LINE_WRAP = true
 
 export const AUTOSAVE_MS_MIN = 200
 export const AUTOSAVE_MS_MAX = 3000
@@ -53,13 +56,15 @@ function readBoolean(key: string, fallback: boolean): boolean {
   return stored === 'true'
 }
 
+const DEFAULT_FONT_FAMILY: EditorFontFamily = 'mono'
+
 function isFontFamily(value: string | null): value is EditorFontFamily {
   return value === 'mono' || value === 'serif'
 }
 
 function readFontFamily(): EditorFontFamily {
   const stored = readStorage(FONT_FAMILY_KEY)
-  return isFontFamily(stored) ? stored : 'mono'
+  return isFontFamily(stored) ? stored : DEFAULT_FONT_FAMILY
 }
 
 // One shared persistence effect, parameterised by key/value, rather than a
@@ -74,7 +79,9 @@ const persistFx = createEffect(({ key, value }: { key: string; value: string }) 
 export const editorFontSizeChanged = createEvent<number>()
 export const $editorFontSize = createStore<number>(
   readNumber(FONT_SIZE_KEY, DEFAULT_FONT_SIZE, FONT_SIZE_MIN, FONT_SIZE_MAX),
-).on(editorFontSizeChanged, (_, size) => clamp(size, FONT_SIZE_MIN, FONT_SIZE_MAX))
+)
+  .on(editorFontSizeChanged, (_, size) => clamp(size, FONT_SIZE_MIN, FONT_SIZE_MAX))
+  .on(defaultsRestored, () => DEFAULT_FONT_SIZE)
 
 sample({
   clock: $editorFontSize,
@@ -85,10 +92,9 @@ sample({
 // --- Font family ---------------------------------------------------------
 
 export const editorFontFamilyChanged = createEvent<EditorFontFamily>()
-export const $editorFontFamily = createStore<EditorFontFamily>(readFontFamily()).on(
-  editorFontFamilyChanged,
-  (_, family) => family,
-)
+export const $editorFontFamily = createStore<EditorFontFamily>(readFontFamily())
+  .on(editorFontFamilyChanged, (_, family) => family)
+  .on(defaultsRestored, () => DEFAULT_FONT_FAMILY)
 
 sample({
   clock: $editorFontFamily,
@@ -99,10 +105,9 @@ sample({
 // --- Line wrap ---------------------------------------------------------
 
 export const lineWrapToggled = createEvent()
-export const $lineWrapEnabled = createStore<boolean>(readBoolean(LINE_WRAP_KEY, true)).on(
-  lineWrapToggled,
-  (enabled) => !enabled,
-)
+export const $lineWrapEnabled = createStore<boolean>(readBoolean(LINE_WRAP_KEY, DEFAULT_LINE_WRAP))
+  .on(lineWrapToggled, (enabled) => !enabled)
+  .on(defaultsRestored, () => DEFAULT_LINE_WRAP)
 
 sample({
   clock: $lineWrapEnabled,
@@ -115,7 +120,9 @@ sample({
 export const autosaveDebounceChanged = createEvent<number>()
 export const $autosaveDebounceMs = createStore<number>(
   readNumber(AUTOSAVE_MS_KEY, DEFAULT_AUTOSAVE_MS, AUTOSAVE_MS_MIN, AUTOSAVE_MS_MAX),
-).on(autosaveDebounceChanged, (_, ms) => clamp(ms, AUTOSAVE_MS_MIN, AUTOSAVE_MS_MAX))
+)
+  .on(autosaveDebounceChanged, (_, ms) => clamp(ms, AUTOSAVE_MS_MIN, AUTOSAVE_MS_MAX))
+  .on(defaultsRestored, () => DEFAULT_AUTOSAVE_MS)
 
 sample({
   clock: $autosaveDebounceMs,
@@ -128,7 +135,9 @@ sample({
 export const readingWidthChanged = createEvent<number>()
 export const $readingWidthCh = createStore<number>(
   readNumber(READING_WIDTH_KEY, DEFAULT_READING_WIDTH, READING_WIDTH_MIN, READING_WIDTH_MAX),
-).on(readingWidthChanged, (_, width) => clamp(width, READING_WIDTH_MIN, READING_WIDTH_MAX))
+)
+  .on(readingWidthChanged, (_, width) => clamp(width, READING_WIDTH_MIN, READING_WIDTH_MAX))
+  .on(defaultsRestored, () => DEFAULT_READING_WIDTH)
 
 sample({
   clock: $readingWidthCh,

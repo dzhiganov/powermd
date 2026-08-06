@@ -6,11 +6,16 @@
     <title>Markdown Editor</title>
     <script>
       // Sets data-theme before first paint so the page doesn't flash the
-      // default theme then snap to the stored one. Must match
-      // THEME_STORAGE_KEY in src/shared/config/theme.ts — kept in sync by
-      // hand since this script runs before any JS module (and can't import
-      // it). Falls back to prefers-color-scheme, matching the DaisyUI
-      // config (light --default, dark --prefersdark). Wrapped in try/catch
+      // default theme then snap to the stored/resolved one. The stored
+      // value is the user's *choice* — 'light', 'dark', or 'system' — must
+      // match THEME_STORAGE_KEY / THEMES in src/shared/config/theme.ts, kept
+      // in sync by hand since this script runs before any JS module (and
+      // can't import it). 'system' (and anything missing/invalid, e.g. a
+      // first visit) resolves against prefers-color-scheme right here,
+      // matching what src/features/settings/model/theme.ts's
+      // `$resolvedTheme` computes once the app hydrates — that store also
+      // reacts live to prefers-color-scheme changing afterwards, but this
+      // script only ever runs once, before paint. Wrapped in try/catch
       // because localStorage can throw in private browsing modes.
       try {
         var stored = localStorage.getItem('markdown-editor:theme')
