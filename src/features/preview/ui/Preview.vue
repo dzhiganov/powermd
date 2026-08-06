@@ -86,7 +86,20 @@ onUnmounted(() => {
 
 // Bound into the scoped <style> below via `v-bind()` so the ratio behind
 // every one of these colours lives in exactly one place: `shared/lib/ink`.
-const linkColor = ink('--color-info')
+// ACCENT UNIFICATION (user feedback: bring links onto the same neutral-grey
+// accent as the button/focus-ring/active-bar system, "so the app reads as
+// one system rather than a button in its own palette") — previously
+// `ink('--color-info')`, DaisyUI's fixed blue semantic role (same hex in
+// both themes, unrelated to this app's per-theme grey accent), so a link
+// was the one accent-bearing element NOT reading `--md-accent`/
+// `--color-primary`. `--md-accent`, not `--color-primary`: a link is a bare
+// foreground text colour, not a fill something else sits on top of — the
+// TEXT role, matching every other foreground use of the accent (see
+// "PRIMARY SURFACE/ACCENT SPLIT — Phase 4" in `app/styles/main.css`).
+// `features/editor/lib/theme.ts`'s `t.link`/`t.url` were switched the same
+// way in the same pass, so a link reads identically whether it's being
+// typed or rendered, in split view exactly as before.
+const linkColor = ink('--md-accent')
 const codeColor = ink('--color-accent')
 // `--md-accent`, not `--color-primary`: this is accent-as-foreground-text,
 // the TEXT role — see "PRIMARY SURFACE/ACCENT SPLIT — Phase 4" in

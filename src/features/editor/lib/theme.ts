@@ -92,8 +92,13 @@ export const daisyHighlightStyle = HighlightStyle.define([
   { tag: t.strong, color: 'var(--color-base-content)', fontWeight: 'bold' },
   { tag: t.emphasis, color: 'var(--color-base-content)', fontStyle: 'italic' },
   { tag: t.strikethrough, textDecoration: 'line-through' },
-  { tag: t.link, color: ink('--color-info'), textDecoration: 'underline' },
-  { tag: t.url, color: ink('--color-info') },
+  // ACCENT UNIFICATION: a link now reads `--md-accent` (the TEXT/foreground
+  // role) instead of DaisyUI's fixed-blue `--color-info`, matching
+  // `preview/ui/Preview.vue`'s `linkColor` — see that file's comment for
+  // the full rationale. Kept as the same var in both places so a link is
+  // the same shade in split view whether it's being typed or rendered.
+  { tag: t.link, color: ink('--md-accent'), textDecoration: 'underline' },
+  { tag: t.url, color: ink('--md-accent') },
   { tag: t.quote, color: 'var(--color-base-content)', opacity: '0.7', fontStyle: 'italic' },
   { tag: t.monospace, color: ink('--color-accent') },
   { tag: t.processingInstruction, color: ink('--color-secondary') },

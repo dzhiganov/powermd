@@ -158,9 +158,18 @@ body {
    * Phase 4: dark theme's `--color-primary` split into a darker surface
    * role plus a separate `--md-accent` text/focus-ring role (see the
    * "PRIMARY SURFACE/ACCENT SPLIT — Phase 4" comment below) — light theme's
-   * value was never reported as "too light" and stays exactly as it was,
-   * so `--md-accent` here is simply the same hex as `--color-primary`: no
-   * visual change in this theme. */
+   * value was never reported as "too light" at the time and stayed exactly
+   * as it was, so `--md-accent` here is simply the same hex as
+   * `--color-primary`: no visual change in that phase.
+   *
+   * Phase 5 ("LIGHT PRIMARY BUTTON — Phase 5" comment further down): the
+   * *button* specifically (not this general surface token — the active-doc
+   * bar, the press tint, etc. all still read this value unchanged) was
+   * reported as reading "pale"/"washed out" next to the dark theme's
+   * confident solid button. `--color-primary` itself stays here at
+   * #635f57 — still correct for the bare-swatch/overlay roles that read it
+   * directly — while `.btn-primary` gets its own darker override, the same
+   * shape as the dark-theme override immediately below this block. */
   --color-primary: #635f57;
   /* White clears 4.5:1 (measured 6.354:1); black does not (3.305:1, below
    * the floor) — the opposite pairing from the gold accent this replaces. */
@@ -183,6 +192,11 @@ body {
   --md-line2: #eae7e1;
   /* Unchanged from `--color-primary` — see the comment above. */
   --md-accent: #635f57;
+  /* LIGHT PRIMARY BUTTON — Phase 5 (see the `--color-primary` comment
+   * above): a dedicated, much darker fill for `.btn-primary` only — see the
+   * `[data-theme='light'] .btn-primary` override near the bottom of this
+   * file for how it's wired in and the full measured rationale. */
+  --md-btn-primary: #38352f;
 
   /* CONVEX BUTTON TREATMENT tokens — see the file-level comment near the
    * bottom of this file for how these are consumed. Both pairs are
@@ -416,10 +430,13 @@ body {
  * `GitHubModal.vue`, `color-mix(... 30%, transparent)`) and the search
  * match highlight (`HighlightedText.vue`, `color-mix(... 35%, transparent)`).
  *
- * Light theme is untouched — its `--color-primary` (#635f57) was never
- * reported as a problem, stays exactly as measured under "GREY ACCENT —
- * Phase 2" above, and `--md-accent` there is simply the same hex (see the
- * light theme block's own comment).
+ * Light theme is untouched here — its `--color-primary` (#635f57) was never
+ * reported as a problem at this point, stays exactly as measured under
+ * "GREY ACCENT — Phase 2" above, and `--md-accent` there is simply the same
+ * hex (see the light theme block's own comment). Its *button* specifically
+ * gets its own darker override in a later pass — see "LIGHT PRIMARY
+ * BUTTON — Phase 5" further down; `--color-primary` itself, and every
+ * other role reading it in this theme, is still exactly this value.
  */
 
 @plugin '@tailwindcss/typography';
@@ -502,10 +519,13 @@ body {
   --btn-shadow: 0 0 0 0 transparent;
 }
 
-/* PRIMARY BUTTON <-> ACTIVE SEGMENT MATCH — dark theme only (user request:
+/* PRIMARY BUTTON <-> ACTIVE SEGMENT MATCH — dark theme (user request:
  * "New file" and the Write/Split/Read switcher's active segment
  * (`--md-seg-active`, `.view-tab-active` above) read as two different
- * colours in dark mode; they should be the same).
+ * colours in dark mode; they should be the same). The light-theme override
+ * immediately below this rule uses the identical mechanism
+ * (`.btn-primary`'s own `--btn-color`) for a different reason — see its own
+ * comment.
  *
  * Overrides `--btn-color` (daisyUI's `.btn-primary` sets
  * `--btn-color: var(--color-primary)`, which `--btn-bg`/`--btn-border` both
@@ -533,15 +553,67 @@ body {
  * 15.372:1 against the new #22252a fill (only *more* contrast than the
  * 5.703:1 it cleared against the old, lighter #6a6660).
  *
- * Light theme untouched — its primary button (#635f57) and its active
- * segment (`--md-seg-active: #ffffff`) were never reported as a problem.
- * Checked here anyway per the task: they ARE two different colours
- * (measured 6.354:1 apart), but that's the reference design's original,
- * intentional "neutral raised chip, not accent-tinted" call for the active
- * segment (see `.view-tab-active`'s own comment) — not a regression to fix,
- * and left exactly as measured under "GREY ACCENT — Phase 2" above. */
+ * Light theme's primary button and its active segment
+ * (`--md-seg-active: #ffffff`) are two different colours too (measured
+ * 6.354:1 apart before Phase 5, more now) — that's the reference design's
+ * original, intentional "neutral raised chip, not accent-tinted" call for
+ * the active segment (see `.view-tab-active`'s own comment), not a
+ * regression to fix; light theme's button gets its own override below for
+ * an unrelated reason (see its comment), not to chase this match. */
 [data-theme='dark'] .btn-primary {
   --btn-color: var(--md-seg-active);
+}
+
+/* LIGHT PRIMARY BUTTON — Phase 5 (user feedback: "back to the button -> i
+ * like your option - but not the light one. Looks weird... inspiration:
+ * Linear design"). Confirmed scope: keep the neutral grey palette (no hue
+ * shift), fix only the light theme's button fill/text, and match Linear's
+ * restraint (solid flat surface, no drop shadow, a hairline top-edge
+ * highlight, a crisp border, tight radius) rather than its colour — all of
+ * which this codebase's existing `.btn`/CONVEX BUTTON TREATMENT rules
+ * already give every button (border comes for free too: daisyUI derives
+ * `--btn-border` from `--btn-color` as `color-mix(in oklab, var(--btn-color),
+ * #000 calc(var(--depth) * 5%))`, i.e. always a touch darker than the fill —
+ * see `node_modules/daisyui/components/button.css`). The one thing actually
+ * wrong was the fill/text colour pairing itself.
+ *
+ * Root cause: unlike dark theme's button (overridden above to the
+ * near-black `--md-seg-active`, #22252a — only ~1.25:1 off its own
+ * background, reading as "confident" through uniformity + a crisp border
+ * rather than through brightness contrast), light theme's `.btn-primary`
+ * was reading the un-overridden `--color-primary` (#635f57) — a *mid*-tone
+ * warm grey (~37% lightness). Layering the same convex sheen
+ * (`--md-btn-sheen`, 15% white) over a mid-tone base is far more visible
+ * than over a near-black one: rasterised at the icon/text's actual position
+ * (canvas-composited, matching the method the Phase-1 sheen calibration
+ * comment above used), the sheen-lightened top of the old fill measured RGB
+ * (112, 108, 101) versus an unblended (98, 94, 87) at the bottom — a visible
+ * two-tone wash across exactly the area the eye lands on, which is what
+ * "pale"/"washed out" was actually describing, not a contrast-floor
+ * failure (white text on the old fill already cleared 4.5:1 comfortably at
+ * every point).
+ *
+ * Fix, mirroring the dark-theme override immediately above rather than
+ * touching `--color-primary` itself (same reasoning as that override's own
+ * comment: `--color-primary` also feeds the sidebar's active-doc bar, the
+ * row press tint, jump-flash, and search-match highlight in this theme —
+ * repointing the shared token would move all of those too, and none of
+ * them were reported as a problem): `.btn-primary` alone now reads a
+ * dedicated, much darker token, `--md-btn-primary` (#38352f, defined on the
+ * light theme block above) — the same warm-grey hue family as
+ * `--color-primary`, just far enough down the lightness ramp that the same
+ * 15% sheen no longer reads as a visible wash. Measured (canvas-composited,
+ * sRGB relative-luminance contrast):
+ *   - white text vs the sheen-lightened top of #38352f: 9.435:1
+ *   - white text vs the unblended bottom of #38352f: 12.220:1
+ *   - #38352f vs `--color-base-100` (#fbfaf8, the toolbar's surrounding
+ *     surface): 11.715:1 — well past the 3:1 non-text floor a button needs
+ *     to visually separate from its background, which is the actual
+ *     "confident solid surface" this phase was asked for.
+ * `--btn-fg` stays `--color-primary-content` (white) — already correct,
+ * and only gains contrast from the darker fill. */
+[data-theme='light'] .btn-primary {
+  --btn-color: var(--md-btn-primary);
 }
 
 /* Pressed: flatten the gradient and swap the two outer shadows for a
