@@ -152,18 +152,48 @@ const viewModeOptions: ViewModeOption[] = [
   font-weight: 450;
   transition:
     background 120ms ease,
-    color 120ms ease;
+    color 120ms ease,
+    box-shadow 120ms ease;
 }
 
+/* Convex treatment (see main.css's "CONVEX BUTTON TREATMENT" comment for
+ * the token rationale) — this hand-rolled active chip isn't a `.btn`, so
+ * it reads the same `--md-btn-*` tokens directly rather than duplicating
+ * the gradient/shadow values. A top-lightening gradient + a 1px inset
+ * top-edge highlight + the pre-existing drop shadow (now split into a
+ * tight coat and a soft one, matching `.btn`'s two-layer shadow) is the
+ * same three-layer bevel every other button in the app gets. */
 .view-tab-active {
   background: var(--md-seg-active, var(--color-base-100));
+  background-image: linear-gradient(to bottom, var(--md-btn-sheen), transparent 65%);
   color: var(--color-base-content);
   font-weight: 500;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 28%);
+  box-shadow:
+    inset 0 1px 0 0 var(--md-btn-highlight),
+    0 1px 1px 0 var(--md-btn-shadow-soft),
+    0 2px 4px 0 var(--md-btn-shadow);
+}
+
+/* Pressed: flatten to a single inset shadow, same pattern as `.btn`'s
+ * `:active:not(.btn-active)` rule in main.css. Applies to both the active
+ * and inactive segments, since either can be the thing under the pointer
+ * at the moment of the click. */
+.view-tab:active {
+  background-image: none;
+  box-shadow: inset 0 1px 2px 0 var(--md-btn-press);
 }
 
 .view-tab:focus-visible {
   outline: 2px solid var(--md-accent);
   outline-offset: -2px;
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .view-tab,
+  .view-tab-active,
+  .view-tab:active {
+    background-image: none;
+    box-shadow: none;
+  }
 }
 </style>

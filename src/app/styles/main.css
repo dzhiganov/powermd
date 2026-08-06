@@ -183,6 +183,35 @@ body {
   --md-line2: #eae7e1;
   /* Unchanged from `--color-primary` — see the comment above. */
   --md-accent: #635f57;
+
+  /* CONVEX BUTTON TREATMENT tokens — see the file-level comment near the
+   * bottom of this file for how these are consumed. Both pairs are
+   * `white`/`black` diluted toward `transparent` via `color-mix` (a
+   * translucent sheen/shadow layered over whatever surface/colour is
+   * already there), not an opaque theme hex — the unsuffixed pair is for
+   * buttons with a solid fill of their own (`.btn`, `.btn-primary`, the
+   * segmented controls' active chip); `-soft` is for `.btn-ghost`
+   * (background-less at rest — most toolbar icons) and the segmented
+   * controls' inactive segments, so a whole row of them doesn't read as a
+   * row of raised chips. Deliberately different percentages from dark
+   * theme's below.
+   *
+   * `--md-btn-sheen` measured (not guessed) against `.btn-primary`
+   * ("New file"), white-on-`--color-primary` text, rasterised at the
+   * actual glyph/icon extent (not just the button's vertical centre —
+   * the gradient is strongest near the top, so the *top* of the text is
+   * the binding constraint): a first pass at 55% white measured only
+   * 2.952:1 at that point — well under the 4.5:1 floor. 15% keeps
+   * 5.079:1 at the same point (6.354:1 at the text's own bottom edge,
+   * matching the pre-existing unsheened value), comfortable margin above
+   * the floor while still visibly lighter at the top than the bottom. */
+  --md-btn-sheen: color-mix(in oklab, white 15%, transparent);
+  --md-btn-sheen-soft: color-mix(in oklab, white 22%, transparent);
+  --md-btn-highlight: color-mix(in oklab, white 90%, transparent);
+  --md-btn-highlight-soft: color-mix(in oklab, white 55%, transparent);
+  --md-btn-shadow: color-mix(in oklab, black 16%, transparent);
+  --md-btn-shadow-soft: color-mix(in oklab, black 7%, transparent);
+  --md-btn-press: color-mix(in oklab, black 10%, transparent);
 }
 
 @plugin 'daisyui/theme' {
@@ -229,6 +258,20 @@ body {
    * 6.717:1 rail), so reusing it unchanged is exactly what "still clears
    * 4.5:1 for text and 3:1 for non-text UI" requires. */
   --md-accent: #9c968d;
+
+  /* CONVEX BUTTON TREATMENT tokens — see the light theme block's comment
+   * above for what these pairs are for. Dark theme's surfaces sit near
+   * black, so a "low-opacity white" sheen/highlight needs far less white
+   * than light theme's to register (over-doing it here reads as a glow,
+   * not a bevel), while the shadow needs *more* opacity than light theme's
+   * to be visible at all against a background that's already dark. */
+  --md-btn-sheen: color-mix(in oklab, white 10%, transparent);
+  --md-btn-sheen-soft: color-mix(in oklab, white 4%, transparent);
+  --md-btn-highlight: color-mix(in oklab, white 18%, transparent);
+  --md-btn-highlight-soft: color-mix(in oklab, white 9%, transparent);
+  --md-btn-shadow: color-mix(in oklab, black 45%, transparent);
+  --md-btn-shadow-soft: color-mix(in oklab, black 22%, transparent);
+  --md-btn-press: color-mix(in oklab, black 35%, transparent);
 }
 
 /*
@@ -374,3 +417,91 @@ body {
  */
 
 @plugin '@tailwindcss/typography';
+
+/*
+ * CONVEX BUTTON TREATMENT (glassmorphic bevel) — user request: "slight
+ * glassmorphic (shadow, gradient) effect... shadows to make buttons a bit
+ * convex... do not do too much." Every button in the app already resolves
+ * to daisyUI's `.btn` (grepped across `src/`: 16 files, no exceptions), so
+ * this is layered onto `.btn` itself rather than done per-component.
+ *
+ * Layered onto daisyUI's own `--btn-inset`/`--btn-shadow` custom
+ * properties rather than a fresh `box-shadow` declaration of ours:
+ * daisyUI's `.btn` rule already composes
+ * `box-shadow: var(--btn-inset) inset, var(--btn-shadow)`
+ * (`node_modules/daisyui/components/button.css`), so overriding just
+ * those two custom properties (plus `background-image` for the gradient,
+ * which daisyUI's `.btn` also already sets a base value for) is the
+ * smallest-surface-area way to plug in.
+ *
+ * This block is deliberately plain, UNLAYERED CSS (no `@layer`) — daisyUI
+ * ships its own rules inside `@layer utilities.daisyui...` (Tailwind v4 /
+ * `@plugin`), and per the CSS cascade-layers spec, unlayered rules always
+ * beat layered ones regardless of selector specificity or source order.
+ * That means the handful of rules below reliably override every `.btn`
+ * variant (`-ghost`, `-primary`, `-outline`, `-error`, `-active`, `-sm`,
+ * `-xs`, `-circle`, `-square`, ...) with no `!important` anywhere. It also
+ * means daisyUI's OWN `.btn:active:not(.btn-active)` rule (which zeroes
+ * `--btn-inset`/`--btn-shadow` back out — its layer's flatten-on-press)
+ * can no longer out-rank the values set below, since it's layered and
+ * these aren't — hence the explicit `:active` rule further down, which
+ * restates the flatten (and additionally drops the gradient, which
+ * daisyUI's own rule never touched).
+ *
+ * Three faint layers per the design brief: (1) `background-image` — a
+ * top-to-bottom gradient, marginally lighter at the top, which is what
+ * reads as "convex" rather than flat; (2) `--btn-inset` — a 1px inset
+ * highlight on the top edge, the strongest and cheapest convexity cue;
+ * (3) `--btn-shadow` — a low, soft, two-layer drop shadow underneath.
+ * `.btn-ghost` (transparent at rest by design — most toolbar icon
+ * buttons: `MoreMenu`, `DrawerToggleButton`, `ThemeToggle`, `ExportMenu`,
+ * `HelpButton`, `SettingsButton`, `ImportButton`, `FormattingToolbar`,
+ * `ToastHost`, dialog close buttons) gets the `-soft` token pair so a
+ * whole row of them doesn't read as a row of raised chips at rest —
+ * everything with a solid fill of its own (`.btn`, `.btn-primary`,
+ * `.btn-outline`, `.btn-error`, the sidebar's "New file") gets the
+ * stronger pair, since a bevel needs a surface to sit on to read clearly.
+ *
+ * The two hand-rolled segmented controls that predate `.btn` — the
+ * Write/Split/Read view switcher (`.view-tab-active`,
+ * `features/layout/ui/Toolbar.vue`) and the sidebar dock-side control
+ * (`.dock-btn-active`, `features/documents/ui/DocumentDrawer.vue`) — read
+ * these same tokens directly in their own `<style scoped>` blocks rather
+ * than duplicating the values, but aren't `.btn` and so aren't touched by
+ * the rules below.
+ */
+.btn {
+  background-image: linear-gradient(to bottom, var(--md-btn-sheen), transparent 65%);
+  --btn-inset: 0 1px 0 0 var(--md-btn-highlight);
+  --btn-shadow: 0 1px 1px 0 var(--md-btn-shadow-soft), 0 2px 5px 0 var(--md-btn-shadow);
+}
+
+.btn-ghost {
+  background-image: linear-gradient(to bottom, var(--md-btn-sheen-soft), transparent 65%);
+  --btn-inset: 0 1px 0 0 var(--md-btn-highlight-soft);
+  --btn-shadow: 0 1px 2px 0 var(--md-btn-shadow-soft);
+}
+
+/* Pressed: flatten the gradient and swap the two outer shadows for a
+ * single inset one, so the surface reads as pushed-in rather than static.
+ * `--btn-inset` (not `--btn-shadow`) carries it, since daisyUI's own
+ * `box-shadow` composition already appends the `inset` keyword after
+ * `var(--btn-inset)` for us — see the block comment above. */
+.btn:active:not(.btn-active) {
+  background-image: none;
+  --btn-inset: 0 1px 2px 0 var(--md-btn-press);
+  --btn-shadow: 0 0 0 0 transparent;
+}
+
+/* `prefers-reduced-transparency`/`prefers-contrast: more`: drop back to a
+ * flat surface — no gradient, no shadow — rather than a translucent bevel
+ * that fights either preference. */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .btn,
+  .btn-ghost,
+  .btn:active:not(.btn-active) {
+    background-image: none;
+    --btn-inset: 0 0 0 0 transparent;
+    --btn-shadow: 0 0 0 0 transparent;
+  }
+}

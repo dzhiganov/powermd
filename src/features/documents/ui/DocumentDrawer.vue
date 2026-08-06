@@ -615,16 +615,42 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
   cursor: pointer;
   background: transparent;
   color: var(--md-t4, var(--color-base-content));
+  transition: box-shadow 120ms ease;
 }
 
+/* Convex treatment (see main.css's "CONVEX BUTTON TREATMENT" comment for
+ * the token rationale) — same three-layer bevel as `.btn` and
+ * `.view-tab-active` (`Toolbar.vue`), read from the same shared
+ * `--md-btn-*` tokens rather than a one-off value, since this is another
+ * hand-rolled control that predates `.btn`. */
 .dock-btn-active {
   background: var(--md-seg-active, var(--color-base-100));
+  background-image: linear-gradient(to bottom, var(--md-btn-sheen), transparent 65%);
   color: var(--color-base-content);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 22%);
+  box-shadow:
+    inset 0 1px 0 0 var(--md-btn-highlight),
+    0 1px 1px 0 var(--md-btn-shadow-soft),
+    0 2px 4px 0 var(--md-btn-shadow);
+}
+
+/* Pressed: flatten to a single inset shadow, same pattern as `.btn`'s
+ * `:active:not(.btn-active)` rule in main.css. */
+.dock-btn:active {
+  background-image: none;
+  box-shadow: inset 0 1px 2px 0 var(--md-btn-press);
 }
 
 .dock-btn:focus-visible {
   outline: 2px solid var(--md-accent);
   outline-offset: -2px;
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .dock-btn,
+  .dock-btn-active,
+  .dock-btn:active {
+    background-image: none;
+    box-shadow: none;
+  }
 }
 </style>
