@@ -349,15 +349,16 @@ sample({ clock: pushCompleted, target: documentGithubOriginsApplied })
 sample({ clock: folderDirsAssigned, target: folderSyncDirPathsApplied })
 
 // The GitHub connection UI now lives inside the Settings dialog's own
-// "GitHub sync" category (`features/github/ui/GitHubSyncPanel.vue`, moved
-// there from the removed standalone `GitHubModal.vue`) rather than a
-// dedicated modal `github` owns. `github` still has no notion `settings`
-// exists — clicking the sync status pill (`SyncStatusIndicator.vue`) only
-// fires a plain intent event, resolved into `settings`' own
-// `settingsOpened('github')` here, the same fire-an-intent/let-wiring-
-// resolve-it shape as `helpRequested` -> `helpOpened` below.
+// "Sync" category (`features/github/ui/GitHubSyncPanel.vue`, moved there
+// from the removed standalone `GitHubModal.vue`, alongside the local
+// autosave interval) rather than a dedicated modal `github` owns. `github`
+// still has no notion `settings` exists — clicking the sync status pill
+// (`SyncStatusIndicator.vue`) only fires a plain intent event, resolved
+// into `settings`' own `settingsOpened('sync')` here, the same
+// fire-an-intent/let-wiring-resolve-it shape as `helpRequested` ->
+// `helpOpened` below.
 sample({
   clock: githubSettingsRequested,
-  fn: () => 'github' as const,
+  fn: () => 'sync' as const,
   target: settingsOpened,
 })

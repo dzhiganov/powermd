@@ -112,14 +112,18 @@ function handleSpellCheckLanguageChange(event: Event) {
 //
 // Three categories (down from five): Editor stays as-is; Appearance now
 // absorbs the old Layout and Documents categories too (reading width,
-// formatting toolbar, tooltips, documents panel side, scroll sync, autosave
-// interval — everything that's "how the app looks/behaves" rather than
-// "how the editor itself behaves" or "where documents sync to"); GitHub
-// sync is new, hosting the connection UI moved in from the removed
-// standalone `GitHubModal.vue` (see `GitHubSyncPanel.vue`). "Reset to
-// defaults" is no longer a category at all — it's the footer button below,
-// always reachable regardless of which category is active, rather than a
-// destination you have to navigate to.
+// formatting toolbar, tooltips, documents panel side, scroll sync —
+// everything that's "how the app looks/behaves" rather than "how the
+// editor itself behaves" or "where/how documents get saved"); Sync (renamed
+// from "GitHub sync") covers everywhere a document's bytes end up outside
+// the editor itself — the local autosave interval (moved in from
+// Appearance: it's about *saving*, not appearance) above the GitHub
+// connection UI moved in from the removed standalone `GitHubModal.vue` (see
+// `GitHubSyncPanel.vue`), the two split by their own sub-heading so "save
+// to this browser" and "sync to GitHub" are never confused for one setting.
+// "Reset to defaults" is no longer a category at all — it's the footer
+// button below, always reachable regardless of which category is active,
+// rather than a destination you have to navigate to.
 //
 // Category content is `v-if`-switched, not `v-show`: every category except
 // the active one is entirely absent from the DOM, so `trapFocus` above
@@ -134,7 +138,7 @@ interface Category {
 const categories: Category[] = [
   { id: 'editor', label: 'Editor' },
   { id: 'appearance', label: 'Appearance' },
-  { id: 'github', label: 'GitHub sync' },
+  { id: 'sync', label: 'Sync' },
 ]
 
 const activeCategory = ref<SettingsCategory>('editor')
@@ -172,7 +176,7 @@ function handleTabKeydown(event: KeyboardEvent, index: number) {
 
 // Reopens on whichever category `settingsOpened` was fired with (the
 // general "Settings" entry points pass `undefined`, resolving to Editor;
-// `SyncStatusIndicator.vue`'s click resolves to `'github'` — see
+// `SyncStatusIndicator.vue`'s click resolves to `'sync'` — see
 // `$settingsInitialCategory`'s own doc comment in `model/dialogs.ts`) —
 // never silently resumes wherever the dialog was left several sessions ago.
 const initialCategory = useUnit($settingsInitialCategory)
@@ -349,7 +353,7 @@ watch(open, (isOpen) => {
           </div>
 
           <!-- Appearance: reading width, formatting toolbar, tooltips,
-               documents panel side, scroll sync, autosave interval. -->
+               documents panel side, scroll sync. -->
           <div v-else-if="activeCategory === 'appearance'" class="flex flex-col gap-4">
             <label class="flex flex-col gap-1">
               <span class="text-sm text-base-content">Reading width — {{ readingWidth }}ch</span>
@@ -425,29 +429,50 @@ watch(open, (isOpen) => {
                 @change="scrollSyncToggled()"
               />
             </label>
-
-            <label class="flex flex-col gap-1">
-              <span class="text-sm text-base-content">Autosave delay — {{ autosaveMs }}ms</span>
-              <input
-                type="range"
-                class="range range-sm"
-                :min="AUTOSAVE_MS_MIN"
-                :max="AUTOSAVE_MS_MAX"
-                step="100"
-                :value="autosaveMs"
-                aria-label="Autosave delay in milliseconds"
-                @input="handleAutosaveInput"
-              />
-            </label>
           </div>
 
-          <!-- GitHub sync: the connection UI moved in from the removed
-               standalone `GitHubModal.vue` — see `GitHubSyncPanel.vue`.
-               UI move only: token storage, the push engine, error
-               handling, and the persisted connection config all behave
-               exactly as before. -->
+          <!-- Sync (renamed from "GitHub sync"): everywhere a document's
+               bytes end up outside the editor itself. Local autosave first
+               — moved in from Appearance, it's about *saving*, not
+               appearance — then the GitHub connection UI moved in from the
+               removed standalone `GitHubModal.vue` (see
+               `GitHubSyncPanel.vue`, UI move only: token storage, the push
+               engine, error handling, and the persisted connection config
+               all behave exactly as before). Each gets its own sub-heading
+               so "save to this browser" and "sync to GitHub" read as two
+               distinct things, not one setting. -->
           <div v-else class="flex flex-col gap-4">
-            <GitHubSyncPanel />
+            <div class="flex flex-col gap-3">
+              <h3 class="text-xs font-semibold tracking-wide text-base-content/70 uppercase">
+                Local autosave
+              </h3>
+              <label class="flex flex-col gap-1">
+                <span class="text-sm text-base-content">Autosave delay — {{ autosaveMs }}ms</span>
+                <input
+                  type="range"
+                  class="range range-sm"
+                  :min="AUTOSAVE_MS_MIN"
+                  :max="AUTOSAVE_MS_MAX"
+                  step="100"
+                  :value="autosaveMs"
+                  aria-label="Autosave delay in milliseconds"
+                  @input="handleAutosaveInput"
+                />
+                <p class="text-xs text-base-content/70">
+                  How long to wait after you stop typing before saving to this browser. Separate
+                  from GitHub sync below.
+                </p>
+              </label>
+            </div>
+
+            <div class="divider my-0"></div>
+
+            <div class="flex flex-col gap-3">
+              <h3 class="text-xs font-semibold tracking-wide text-base-content/70 uppercase">
+                GitHub sync
+              </h3>
+              <GitHubSyncPanel />
+            </div>
           </div>
         </div>
       </div>

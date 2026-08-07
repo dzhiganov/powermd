@@ -246,10 +246,21 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
    * attribute's effect immediately (browsers stop checking on the next
    * paint, no reload); a language change re-applies `lang`, which the
    * browser reads to pick a dictionary the *next* time it (re-)checks the
-   * content — already true of any `lang`/`spellcheck` change on a live
-   * `contenteditable` element, not something this app can force faster.
+   * content.
+   *
+   * That "next time it checks" is the catch the attribute flip alone can't
+   * fix: browsers only run their spellchecker as text is typed, or when an
+   * editable element is (re)initialised — never merely because `spellcheck`
+   * went back to `true`. So re-enabling (or changing the language while
+   * already on) would otherwise leave text that was on-screen *before* the
+   * change unchecked until the user edits it. `forceSpellcheckRescan` below
+   * is the deliberate nudge that closes that gap, run only on those two
+   * transitions (compared against `previous`, the value this function was
+   * last called with) — never on every reconfigure, so an unrelated
+   * settings change (or this same value being re-applied) can't trigger it.
    */
   function setSpellcheck(spellcheck: SpellcheckOptions) {
+    const previous = currentSpellcheck
     currentSpellcheck = spellcheck
     const current = view.value
     if (!current) return
@@ -258,6 +269,54 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         EditorView.contentAttributes.of(buildContentAttributes(spellcheck)),
       ),
     })
+
+    const turnedOn = spellcheck.enabled && !previous.enabled
+    const languageChangedWhileOn =
+      spellcheck.enabled && previous.enabled && spellcheck.language !== previous.language
+    if (turnedOn || languageChangedWhileOn) {
+      forceSpellcheckRescan(current)
+    }
+  }
+
+  /**
+   * Forces the browser to re-run its spellchecker over text already on
+   * screen, by toggling `contentEditable` off and back on — a widely-used
+   * nudge that makes the browser treat the element as freshly initialised
+   * and re-scan its existing content, without touching the document text
+   * or CodeMirror's undo history (`contentEditable` is a plain DOM
+   * property, invisible to both).
+   *
+   * The one thing this toggle *can* disturb is the browser's own selection/
+   * focus, so both are explicitly preserved:
+   * - If the view already had focus, `EditorView.focus()` (not the raw DOM
+   *   `.focus()`) is what puts it back correctly — internally it re-applies
+   *   `view.state.selection` to the DOM itself, inside CodeMirror's own
+   *   "ignore my own writes" guard (`observer.ignore`), rather than letting
+   *   the browser pick wherever it likes to place the caret after a fresh
+   *   `contentEditable` toggle. `focusPreventScroll` inside it is also what
+   *   keeps this from scrolling the page to bring the editor into view.
+   * - If the view was *not* focused, nothing had a selection anchored
+   *   inside it to lose, so `focus()` is skipped entirely — this must never
+   *   steal focus the editor didn't already have.
+   * - `scrollDOM`'s own scroll position is saved/restored around the
+   *   toggle regardless, since a `contentEditable` flip can nudge layout
+   *   even when the view isn't focused.
+   */
+  function forceSpellcheckRescan(current: EditorView) {
+    const content = current.contentDOM
+    const hadFocus = current.hasFocus
+    const scrollTop = current.scrollDOM.scrollTop
+    const scrollLeft = current.scrollDOM.scrollLeft
+
+    content.contentEditable = 'false'
+    content.contentEditable = 'true'
+
+    if (hadFocus) {
+      current.focus()
+    }
+
+    current.scrollDOM.scrollTop = scrollTop
+    current.scrollDOM.scrollLeft = scrollLeft
   }
 
   /**

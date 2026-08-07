@@ -4,7 +4,7 @@ export { default as SyncStatusIndicator } from './ui/SyncStatusIndicator.vue'
 export { initGithub } from './model/connection'
 
 // Fired by `SyncStatusIndicator.vue`; resolved in `src/app/wiring.ts` into
-// `features/settings`' `settingsOpened('github')` — see
+// `features/settings`' `settingsOpened('sync')` — see
 // `model/settingsPanel.ts`'s own doc comment for why this is a plain intent
 // event rather than a direct cross-feature import.
 export { githubSettingsRequested } from './model/settingsPanel'

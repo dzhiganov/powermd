@@ -1,8 +1,10 @@
 import { createEvent, createStore } from 'effector'
 
 /** The three settings categories — see `ui/SettingsModal.vue`'s own
- * category-nav doc comment. */
-export type SettingsCategory = 'editor' | 'appearance' | 'github'
+ * category-nav doc comment. `'sync'` covers both local autosave and the
+ * GitHub connection (renamed from `'github'` once autosave moved in
+ * alongside it — see `SettingsModal.vue`). */
+export type SettingsCategory = 'editor' | 'appearance' | 'sync'
 
 export const DEFAULT_SETTINGS_CATEGORY: SettingsCategory = 'editor'
 
@@ -10,7 +12,7 @@ export const DEFAULT_SETTINGS_CATEGORY: SettingsCategory = 'editor'
  * `ui/SettingsButton.vue`, `layout/ui/MoreMenu.vue`'s "Settings" item
  * (always `undefined` — opens on the default category), and
  * `src/app/wiring.ts`'s resolution of `features/github`'s
- * `githubSettingsRequested` (always `'github'` — jumps straight to that
+ * `githubSettingsRequested` (always `'sync'` — jumps straight to that
  * category). Effector's `EventCallable` requires the argument to be passed
  * explicitly once the payload type isn't plain `void`, even when it's
  * `undefined` — every call site does. */

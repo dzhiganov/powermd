@@ -35,14 +35,15 @@ import {
   syncRequested,
 } from '../model/sync'
 
-// This is Settings' "GitHub sync" category content (`SettingsModal.vue`'s
-// `activeCategory === 'github'` panel, its one mounting site) — moved here,
-// UI-only, from the removed standalone `GitHubModal.vue`. No dialog chrome
-// of its own (no fixed overlay, no header/close button, no focus trap):
-// `SettingsModal.vue` already owns all of that for the dialog it's now
-// embedded in. Every store/event below is untouched from the old modal —
-// token storage, the push engine, error handling, and the persisted
-// connection config all behave exactly as before, this is a UI move only.
+// This is Settings' "Sync" category content (`SettingsModal.vue`'s
+// `activeCategory === 'sync'` panel, rendered below the local autosave
+// control — see that file) — moved here, UI-only, from the removed
+// standalone `GitHubModal.vue`. No dialog chrome of its own (no fixed
+// overlay, no header/close button, no focus trap): `SettingsModal.vue`
+// already owns all of that for the dialog it's now embedded in. Every
+// store/event below is untouched from the old modal — token storage, the
+// push engine, error handling, and the persisted connection config all
+// behave exactly as before, this is a UI move only.
 
 const status = useUnit($connectionStatus)
 const login = useUnit($authenticatedLogin)
