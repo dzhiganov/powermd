@@ -17,6 +17,9 @@
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"],
   // The render worker entry point needs the WebWorker lib (`self` as a
   // worker global, not `Window`), which conflicts with this project's DOM
-  // lib if both are in one program — see tsconfig.worker.json.
-  "exclude": ["src/features/preview/lib/worker.ts"]
+  // lib if both are in one program — see tsconfig.worker.json. Test files
+  // are excluded too: Vitest type-strips them with esbuild rather than
+  // going through this project (see `vitest.config.ts`), and they're not
+  // part of the shipped app bundle either way.
+  "exclude": ["src/features/preview/lib/worker.ts", "src/**/*.test.ts"]
 }

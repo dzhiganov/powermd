@@ -7,6 +7,7 @@ const SHOW_TOOLTIPS_KEY = 'markdown-editor:show-tooltips'
 const DRAWER_SIDE_KEY = 'markdown-editor:drawer-side'
 const SHOW_FORMATTING_TOOLBAR_KEY = 'markdown-editor:show-formatting-toolbar'
 const SCROLL_SYNC_ENABLED_KEY = 'markdown-editor:scroll-sync-enabled'
+const AUTO_SYNC_INTERVAL_MINUTES_KEY = 'markdown-editor:auto-sync-interval-minutes'
 
 export type DrawerSide = 'left' | 'right'
 
@@ -28,6 +29,26 @@ function isDrawerSide(value: string | null): value is DrawerSide {
 function readDrawerSide(): DrawerSide {
   const stored = readStorage(DRAWER_SIDE_KEY)
   return isDrawerSide(stored) ? stored : DEFAULT_DRAWER_SIDE
+}
+
+/** The auto-sync interval control offers a small, fixed set of choices
+ * rather than a free-form input — same "no reason to let this be anything
+ * other than a few sane presets" reasoning as `SPELLCHECK_LANGUAGES` below
+ * being a closed list instead of a text field. */
+export const AUTO_SYNC_INTERVAL_MINUTES_OPTIONS = [1, 2, 5, 10, 15] as const
+export type AutoSyncIntervalMinutes = (typeof AUTO_SYNC_INTERVAL_MINUTES_OPTIONS)[number]
+
+const DEFAULT_AUTO_SYNC_INTERVAL_MINUTES: AutoSyncIntervalMinutes = 5
+
+function isAutoSyncIntervalMinutes(value: number): value is AutoSyncIntervalMinutes {
+  return (AUTO_SYNC_INTERVAL_MINUTES_OPTIONS as readonly number[]).includes(value)
+}
+
+function readAutoSyncIntervalMinutes(): AutoSyncIntervalMinutes {
+  const stored = readStorage(AUTO_SYNC_INTERVAL_MINUTES_KEY)
+  if (stored === null) return DEFAULT_AUTO_SYNC_INTERVAL_MINUTES
+  const parsed = Number(stored)
+  return isAutoSyncIntervalMinutes(parsed) ? parsed : DEFAULT_AUTO_SYNC_INTERVAL_MINUTES
 }
 
 // One shared persistence effect, parameterised by key/value — same shape as
@@ -124,5 +145,32 @@ export const $scrollSyncEnabled = createStore<boolean>(
 sample({
   clock: $scrollSyncEnabled,
   fn: (enabled) => ({ key: SCROLL_SYNC_ENABLED_KEY, value: String(enabled) }),
+  target: persistFx,
+})
+
+// --- GitHub auto-sync interval ----------------------------------------------
+//
+// How often local edits are committed to GitHub once connected — a much
+// coarser, separate control from `editorPreferences.ts`'s
+// `$autosaveDebounceMs`: that one controls saving to *this browser*
+// (IndexedDB), a few hundred ms, unconditional; this one controls how often
+// those already-saved edits also reach GitHub, a few minutes, and only
+// applies once a sync connection exists. See
+// `features/github/model/sync.ts`'s `decideSyncSchedule`/`$autoSyncIntervalMs`
+// for how the value is actually used — fed through as milliseconds via
+// `src/app/wiring.ts`, same "settings owns the persisted preference, wiring
+// feeds it to the feature that acts on it" shape as `autosaveIntervalChanged`
+// above.
+
+export const autoSyncIntervalMinutesChanged = createEvent<AutoSyncIntervalMinutes>()
+export const $autoSyncIntervalMinutes = createStore<AutoSyncIntervalMinutes>(
+  readAutoSyncIntervalMinutes(),
+)
+  .on(autoSyncIntervalMinutesChanged, (_, minutes) => minutes)
+  .on(defaultsRestored, () => DEFAULT_AUTO_SYNC_INTERVAL_MINUTES)
+
+sample({
+  clock: $autoSyncIntervalMinutes,
+  fn: (minutes) => ({ key: AUTO_SYNC_INTERVAL_MINUTES_KEY, value: String(minutes) }),
   target: persistFx,
 })

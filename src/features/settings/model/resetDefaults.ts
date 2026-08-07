@@ -17,7 +17,8 @@ export const $resetConfirmOpen = createStore(false)
  * preference store in this feature — `theme.ts`'s `$theme`,
  * `editorPreferences.ts`'s font size/family/line wrap/autosave/reading
  * width, `uiPreferences.ts`'s tooltips/drawer side/formatting toolbar/
- * scroll sync — adds its own `.on(defaultsRestored, () => DEFAULT)` reducer
+ * scroll sync/auto-sync interval — adds its own
+ * `.on(defaultsRestored, () => DEFAULT)` reducer
  * directly in its own file, rather than this file reaching into every store
  * and setting values by hand. That keeps "reset" automatically in sync with
  * "persist": a preference added to any of those files later is covered by

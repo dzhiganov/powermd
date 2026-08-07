@@ -17,6 +17,7 @@ import {
 } from '../lib/api'
 import { sha256Hex } from '../lib/hash'
 import { assignPaths } from '../lib/pathAssignment'
+import { decideSyncSchedule } from '../lib/schedule'
 import type { SyncConfig } from '../lib/config'
 import { $syncConnection, syncConnected, disconnectRequested, getActiveToken } from './connection'
 import {
@@ -51,10 +52,15 @@ export { $importPending, $importError }
  *    diverged from its last-synced hash into ONE commit via the Git Data
  *    API (get the branch ref -> get its tree -> create blobs for changed
  *    docs only -> create a new tree with `base_tree` so untouched files are
- *    preserved -> create the commit -> move the ref). Debounced well past
- *    the editor's own autosave debounce (`AUTOSAVE_MS_MAX` in
- *    `features/settings`, 3000ms) so a burst of edits collapses into one
- *    commit, plus available on demand via `syncRequested` ("Sync now").
+ *    preserved -> create the commit -> move the ref). Triggered at most once
+ *    per a user-configurable interval (default 5 minutes, `$autoSyncIntervalMs`
+ *    below) rather than after every pause in editing — writers pause
+ *    constantly, and syncing on every pause turns the GitHub history into
+ *    hundreds-of-commits-a-day noise. See `../lib/schedule.ts`'s
+ *    `decideSyncSchedule` (pure, unit tested there) for the actual
+ *    scheduling rule and the "Automatic sync scheduling" section below for
+ *    the wiring around it. Also available on demand via `syncRequested`
+ *    ("Sync now"), which bypasses the interval entirely.
  *
  * Local deletion is never reflected here — there is no "delete" branch in
  * this module at all, deliberately: a document removed locally simply stops
@@ -131,29 +137,12 @@ sample({
 export const pushCompleted = createEvent<{ id: string; origin: GitHubOrigin }[]>()
 
 // --- Phase 2: push -----------------------------------------------------------
-
-/** Debounced well past `features/settings`' `AUTOSAVE_MS_MAX` (3000ms) —
- * "editing has settled" has to mean settled across every open document, not
- * just faster than a single keystroke's own autosave. */
-const SYNC_DEBOUNCE_MS = 5000
-
-const snapshotSettled = createEvent()
-sample({
-  clock: [documentsSnapshotChanged, foldersSnapshotChanged],
-  fn: () => undefined,
-  target: snapshotSettled,
-})
-const autoSyncTick = debounce(snapshotSettled, SYNC_DEBOUNCE_MS)
-
-const syncQueued = createEvent()
-// `fn` here is only about discarding each clock's own payload (`importCompleted`
-// carries the imported batch, the other two carry nothing) — `syncQueued`
-// itself is a plain trigger, not a data carrier.
-sample({
-  clock: [autoSyncTick, syncRequested, importCompleted],
-  fn: () => undefined,
-  target: syncQueued,
-})
+//
+// The scheduling trigger for this phase (`syncQueued`, and everything that
+// decides when it fires) lives further down, right after `runSyncFx` itself
+// — see the "Automatic sync scheduling" section below. It needs
+// `runSyncFx.done` and (indirectly, inside a function body) `$lastSyncAt`,
+// both declared later in this file, so it's grouped there instead of here.
 
 function originMatchesConnection(origin: GitHubOrigin | null, connection: SyncConfig): boolean {
   return (
@@ -352,6 +341,154 @@ const runSyncFx = createEffect(
 
 sample({ clock: runSyncFx.doneData, target: pushCompleted })
 
+// --- Automatic sync scheduling ----------------------------------------------
+//
+// At most one automatic push per `$autoSyncIntervalMs`. `decideSyncSchedule`
+// (`../lib/schedule.ts`) makes the actual decision as a pure function of
+// "now" plus a handful of inputs; everything here just executes whatever it
+// returns and feeds its own state back in on the next call.
+
+/** How often local edits should reach GitHub, in ms. Defaulted to match
+ * `features/settings`' own default (5 minutes) before that feature's
+ * persisted value is fed in via `src/app/wiring.ts`'s one-kick-then-sample
+ * (same shape as `documents`' `$autosaveIntervalMs`/`autosaveIntervalChanged`
+ * — settings owns the persisted preference, this feature keeps its own live
+ * mirror). */
+const DEFAULT_AUTO_SYNC_INTERVAL_MS = 5 * 60_000
+export const autoSyncIntervalChanged = createEvent<number>()
+const $autoSyncIntervalMs = createStore<number>(DEFAULT_AUTO_SYNC_INTERVAL_MS).on(
+  autoSyncIntervalChanged,
+  (_, ms) => ms,
+)
+
+const snapshotSettled = createEvent()
+sample({
+  clock: [documentsSnapshotChanged, foldersSnapshotChanged],
+  fn: () => undefined,
+  target: snapshotSettled,
+})
+
+/**
+ * A coarse "something changed since the last successful sync" flag — NOT a
+ * hash-diff (that stays exactly where it already was, inside `runSyncFx`
+ * above, which is what actually decides what gets pushed). This only
+ * decides *whether/when to attempt* a sync at all, so erring toward "still
+ * dirty" costs at most one sync attempt that resolves to nothing to push; it
+ * can never cause a real edit to be skipped. True the instant a snapshot
+ * changes — including the very first snapshot at startup (`documentsSnapshotChanged`'s
+ * `sample` in `src/app/wiring.ts` fires off `$documentList`'s own updates,
+ * load included), which is what makes dirty documents from a previous
+ * session sync promptly on the next launch rather than waiting a full
+ * interval: `$lastSyncAt` below is session-local and starts `null`, so
+ * `decideSyncSchedule` treats that first snapshot exactly like "the interval
+ * has already elapsed." Cleared once a sync actually completes.
+ */
+const $dirtySinceLastSync = createStore(false)
+  .on(snapshotSettled, () => true)
+  .on(runSyncFx.done, () => false)
+  .reset(disconnectRequested)
+
+/** A short settle window — same purpose the old, always-applied
+ * `SYNC_DEBOUNCE_MS` served for every sync: once `decideSyncSchedule` says
+ * "sync now" (the interval has already elapsed, or nothing has ever synced
+ * this session), still wait for a burst of edits to go quiet before actually
+ * syncing, so it collapses into one push rather than one per edit. Never
+ * used for the "schedule at a fixed future time" branch below — that
+ * deadline is fixed the moment it's first computed and must NOT keep
+ * sliding forward on every further edit, which is exactly what a debounce
+ * would do to it. */
+const SETTLE_DEBOUNCE_MS = 5000
+
+const settleArmed = createEvent()
+const settleElapsed = debounce(settleArmed, SETTLE_DEBOUNCE_MS)
+
+/**
+ * The one piece of mutable scheduling state `decideSyncSchedule` needs
+ * beyond what's already in stores: the absolute time (epoch ms) a
+ * `schedule-at` timer is currently armed for, or `null`. Plain module state
+ * plus a real `setTimeout`/`clearTimeout` rather than an Effector primitive
+ * — same precedent as `lastPushedCommitSha` above — because the deadline
+ * this represents must stay FIXED once armed (only ever replaced by an
+ * earlier one, e.g. the interval setting shrinking — see
+ * `decideSyncSchedule`'s own doc comment), which patronum's `debounce`
+ * (resets its own deadline on every call) can't express.
+ */
+let pendingTimerAt: number | null = null
+let pendingTimeoutId: ReturnType<typeof setTimeout> | null = null
+
+function clearPendingTimer(): void {
+  if (pendingTimeoutId !== null) clearTimeout(pendingTimeoutId)
+  pendingTimeoutId = null
+  pendingTimerAt = null
+}
+
+const intervalElapsed = createEvent()
+
+function armIntervalTimer(at: number): void {
+  clearPendingTimer()
+  pendingTimerAt = at
+  pendingTimeoutId = setTimeout(
+    () => {
+      pendingTimeoutId = null
+      pendingTimerAt = null
+      intervalElapsed()
+    },
+    Math.max(0, at - Date.now()),
+  )
+}
+
+function runScheduleDecision(): void {
+  const decision = decideSyncSchedule({
+    now: Date.now(),
+    lastSyncAt: $lastSyncAt.getState(),
+    intervalMs: $autoSyncIntervalMs.getState(),
+    hasDirty: $dirtySinceLastSync.getState(),
+    pendingTimerAt,
+  })
+  if (decision.kind === 'sync-now') settleArmed()
+  else if (decision.kind === 'schedule-at') armIntervalTimer(decision.at)
+  // 'nothing': the correct timer (or none, if nothing is dirty) is already
+  // in place — no action needed.
+}
+
+// Re-run the decision on every snapshot change...
+snapshotSettled.watch(runScheduleDecision)
+// ...and whenever the interval setting itself changes, so shortening it
+// reschedules sooner rather than waiting for the next edit to notice. Guards
+// on `$dirtySinceLastSync` because this watcher also fires once,
+// synchronously, the moment `.watch` is called (Effector stores replay their
+// current value immediately) — at that point in module evaluation nothing
+// has ever been marked dirty yet, so this is a no-op at startup, not a
+// premature schedule.
+$autoSyncIntervalMs.watch(() => {
+  if ($dirtySinceLastSync.getState()) runScheduleDecision()
+})
+
+// Once a push actually starts (settle-triggered, interval-triggered,
+// manual, or a queued rerun — see `runSyncFx` in the trigger-gating section
+// below), any `schedule-at` timer still armed is stale: `$lastSyncAt` is
+// about to move, which changes what the correct next due time even is — so
+// it's cleared here rather than left to fire later against now-outdated
+// inputs. (The `intervalElapsed` timer clears itself identically the moment
+// it fires — see `armIntervalTimer` above — so this is a no-op in that
+// specific case and only actually does something for the other three
+// triggers.)
+runSyncFx.watch(clearPendingTimer)
+disconnectRequested.watch(clearPendingTimer)
+
+const syncQueued = createEvent()
+// `fn` here is only about discarding each clock's own payload
+// (`importCompleted` carries the imported batch, the others carry nothing)
+// — `syncQueued` itself is a plain trigger, not a data carrier.
+// `importCompleted` and `syncRequested` both deliberately bypass
+// `decideSyncSchedule` entirely: first-connect import and manual "Sync now"
+// are meant to run immediately, interval or no interval.
+sample({
+  clock: [settleElapsed, intervalElapsed, syncRequested, importCompleted],
+  fn: () => undefined,
+  target: syncQueued,
+})
+
 // --- Trigger gating: never overlap a run, never hammer while rate-limited --
 //
 // If a trigger arrives while a push is already in flight, it's remembered
@@ -496,4 +633,35 @@ sample({
 // never actually caused a failure.
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => syncQueued())
+}
+
+// --- Flush before the tab disappears ----------------------------------------
+//
+// `visibilitychange` -> hidden (a tab switch, minimizing, switching apps)
+// fires while the page is still fully alive — a multi-call Git Data push
+// (ref -> tree -> blobs -> tree -> commit -> ref, see `pushBatch` above) can
+// run to completion here exactly as it would from any other trigger, so
+// this is a real, reliable flush point, not a best-effort one.
+//
+// `pagehide` (tab close, navigating away, refresh) is a different story:
+// browsers give a page very little guaranteed time to run once this fires,
+// and there is no way for this code to know in advance whether several
+// sequential `fetch` calls will get to finish. This listener still attempts
+// it — best-effort, same spirit as `features/documents`' own
+// `flushPendingToIndexedDB` on `pagehide` — but that's honestly all it is:
+// it will often be aborted mid-flight and never reach GitHub. That's an
+// accepted gap, not a bug, because IndexedDB already has every edit locally
+// (`features/documents`' own autosave, entirely independent of this
+// feature) regardless of whether this push completes — the worst case is
+// that this session's edits reach GitHub on the *next* session's sync
+// instead of this one.
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && $dirtySinceLastSync.getState()) syncQueued()
+  })
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => {
+    if ($dirtySinceLastSync.getState()) syncQueued()
+  })
 }

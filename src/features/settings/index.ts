@@ -45,5 +45,8 @@ export {
   showFormattingToolbarToggled,
   $scrollSyncEnabled,
   scrollSyncToggled,
+  $autoSyncIntervalMinutes,
+  autoSyncIntervalMinutesChanged,
+  AUTO_SYNC_INTERVAL_MINUTES_OPTIONS,
 } from './model/uiPreferences'
-export type { DrawerSide } from './model/uiPreferences'
+export type { DrawerSide, AutoSyncIntervalMinutes } from './model/uiPreferences'

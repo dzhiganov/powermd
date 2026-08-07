@@ -19,4 +19,9 @@ export {
   type SyncFolderInput,
 } from './model/snapshot'
 export { importCompleted, type BulkImportDoc } from './model/import'
-export { originsAssigned, folderDirsAssigned, pushCompleted } from './model/sync'
+export {
+  originsAssigned,
+  folderDirsAssigned,
+  pushCompleted,
+  autoSyncIntervalChanged,
+} from './model/sync'

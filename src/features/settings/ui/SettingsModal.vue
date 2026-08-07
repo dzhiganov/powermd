@@ -45,6 +45,10 @@ import {
   showFormattingToolbarToggled,
   $scrollSyncEnabled,
   scrollSyncToggled,
+  $autoSyncIntervalMinutes,
+  autoSyncIntervalMinutesChanged,
+  AUTO_SYNC_INTERVAL_MINUTES_OPTIONS,
+  type AutoSyncIntervalMinutes,
 } from '../model/uiPreferences'
 import {
   $resetConfirmOpen,
@@ -65,6 +69,7 @@ const showTooltips = useUnit($showTooltips)
 const drawerSide = useUnit($drawerSide)
 const showFormattingToolbar = useUnit($showFormattingToolbar)
 const scrollSyncEnabled = useUnit($scrollSyncEnabled)
+const autoSyncIntervalMinutes = useUnit($autoSyncIntervalMinutes)
 
 const dialogRef = ref<HTMLElement | null>(null)
 const firstControlRef = ref<HTMLElement | null>(null)
@@ -97,6 +102,11 @@ function handleReadingWidthInput(event: Event) {
 }
 function handleSpellCheckLanguageChange(event: Event) {
   spellCheckLanguageChanged((event.target as HTMLSelectElement).value as SpellCheckLanguage)
+}
+function handleAutoSyncIntervalChange(event: Event) {
+  autoSyncIntervalMinutesChanged(
+    Number((event.target as HTMLSelectElement).value) as AutoSyncIntervalMinutes,
+  )
 }
 
 // --- Category nav ---------------------------------------------------------
@@ -471,6 +481,29 @@ watch(open, (isOpen) => {
               <h3 class="text-xs font-semibold tracking-wide text-base-content/70 uppercase">
                 GitHub sync
               </h3>
+              <div class="flex flex-col gap-1">
+                <label for="settings-auto-sync-interval" class="text-sm text-base-content">
+                  Auto-sync interval
+                </label>
+                <select
+                  id="settings-auto-sync-interval"
+                  class="select select-sm w-full"
+                  :value="autoSyncIntervalMinutes"
+                  @change="handleAutoSyncIntervalChange"
+                >
+                  <option
+                    v-for="minutes in AUTO_SYNC_INTERVAL_MINUTES_OPTIONS"
+                    :key="minutes"
+                    :value="minutes"
+                  >
+                    Every {{ minutes }} minute{{ minutes === 1 ? '' : 's' }}
+                  </option>
+                </select>
+                <p class="text-xs text-base-content/70">
+                  Your work is always saved to this browser immediately. This only controls how
+                  often those changes are also committed to GitHub.
+                </p>
+              </div>
               <GitHubSyncPanel />
             </div>
           </div>
@@ -519,8 +552,8 @@ watch(open, (isOpen) => {
       </h2>
       <p class="mt-2 text-sm text-base-content/70">
         Restores font size, font family, line wrapping, spell check, autosave delay, reading width,
-        tooltips, formatting toolbar, documents panel side, scroll sync, and theme to their
-        defaults. Your documents, folders, and GitHub connection are not affected.
+        tooltips, formatting toolbar, documents panel side, scroll sync, auto-sync interval, and
+        theme to their defaults. Your documents, folders, and GitHub connection are not affected.
       </p>
       <div class="mt-5 flex justify-end gap-2">
         <button

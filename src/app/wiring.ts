@@ -49,6 +49,7 @@ import {
   folderDirsAssigned,
   pushCompleted,
   githubSettingsRequested,
+  autoSyncIntervalChanged,
 } from '@/features/github'
 import { $viewMode, viewModeChanged, $isDesktop } from '@/features/layout'
 import type { ViewMode } from '@/features/layout'
@@ -60,6 +61,7 @@ import {
   $editorFontFamily,
   $spellCheckEnabled,
   $spellCheckLanguage,
+  $autoSyncIntervalMinutes,
   helpOpened,
   settingsOpened,
 } from '@/features/settings'
@@ -361,4 +363,19 @@ sample({
   clock: githubSettingsRequested,
   fn: () => 'sync' as const,
   target: settingsOpened,
+})
+
+// --- settings <-> github -----------------------------------------------------
+//
+// Auto-sync interval: same one-kick-then-sample shape as the autosave
+// interval above, feeding `github`'s own live mirror (`$autoSyncIntervalMs`
+// in `model/sync.ts`, consumed by its `decideSyncSchedule`). Persisted in
+// minutes — the unit the Settings UI's `<select>` picks from — and converted
+// to ms here, at the one place that knows both `settings`' unit and what
+// `github` actually wants.
+autoSyncIntervalChanged($autoSyncIntervalMinutes.getState() * 60_000)
+sample({
+  clock: $autoSyncIntervalMinutes,
+  fn: (minutes) => minutes * 60_000,
+  target: autoSyncIntervalChanged,
 })
