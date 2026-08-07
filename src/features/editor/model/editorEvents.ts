@@ -51,3 +51,25 @@ export const $lineWrapEnabled = createStore<boolean>(true).on(
  * the self-hosted font's async load (measured ~85% off before that fix).
  */
 export const editorFontMetricsChanged = createEvent()
+
+/**
+ * The editor feature's own mirror of `features/settings`'s persisted spell
+ * check preferences (enabled + language) — same "settings owns the
+ * preference, the acting feature keeps its own mirror" shape as
+ * `$lineWrapEnabled` above. Bundled into one event/store (rather than two,
+ * mirroring `$lineWrapEnabled`/`editorFontMetricsChanged` separately) since
+ * `Editor.vue`'s `setSpellcheck` (see `lib/useCodeMirror.ts`) always needs
+ * both values together to build the content element's `spellcheck`/`lang`
+ * attributes in one reconfigure.
+ *
+ * Defaults to spell check on, no language override — the same behaviour
+ * the editor had before this preference existed (`spellcheck: 'true'`,
+ * `lang` following the page) — so it renders correctly before `wiring.ts`
+ * has applied the real persisted value, which it does synchronously before
+ * this module's default could ever paint.
+ */
+export const spellcheckSettingsChanged = createEvent<{ enabled: boolean; language: string }>()
+export const $spellcheckSettings = createStore<{ enabled: boolean; language: string }>({
+  enabled: true,
+  language: 'default',
+}).on(spellcheckSettingsChanged, (_, settings) => settings)

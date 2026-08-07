@@ -230,10 +230,23 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
          forces the panel's children to reflow. On mobile this element's
          width never changes (only the `md:w-*` pair does), so there's no
          width animation to reclaim space from at all — the overlay is
-         `fixed` and out of flow already. -->
+         `fixed` and out of flow already.
+
+         `order-1`/`order-3` (both branches, not just `side === 'right'`):
+         `AppShell.vue`'s docked-drawer row has a third flex item now (the
+         `outline` feature's panel, opposite this one), so this element's
+         position has to be pinned explicitly rather than left to win by
+         DOM/source order against `<main>` (which is pinned to `order-2`
+         there) — a `display:contents` root like this one never
+         participates in flex layout itself, only its children do, so the
+         order has to live here, on the actual flex item, not on whatever
+         wrapper `AppShell.vue` might apply it through. -->
     <aside
       class="fixed inset-y-0 z-50 w-80 max-w-[85vw] transition-none print:hidden md:static md:z-auto md:max-w-none md:shrink-0 md:overflow-hidden md:transition-[width] md:duration-500 md:ease-out motion-reduce:md:transition-none"
-      :class="[side === 'right' ? 'right-0 order-2' : 'left-0', open ? 'md:w-80' : 'md:w-0']"
+      :class="[
+        side === 'right' ? 'right-0 order-3' : 'left-0 order-1',
+        open ? 'md:w-80' : 'md:w-0',
+      ]"
       :aria-hidden="!open"
       :inert="!open"
       aria-label="Documents"

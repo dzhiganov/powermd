@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useUnit } from 'effector-vue/composition'
 import { XMarkIcon } from '@heroicons/vue/24/outline'
 
@@ -11,17 +11,23 @@ import {
   $lineWrapEnabled,
   $autosaveDebounceMs,
   $readingWidthCh,
+  $spellCheckEnabled,
+  $spellCheckLanguage,
   editorFontSizeChanged,
   editorFontFamilyChanged,
   lineWrapToggled,
   autosaveDebounceChanged,
   readingWidthChanged,
+  spellCheckToggled,
+  spellCheckLanguageChanged,
+  SPELLCHECK_LANGUAGES,
   FONT_SIZE_MIN,
   FONT_SIZE_MAX,
   AUTOSAVE_MS_MIN,
   AUTOSAVE_MS_MAX,
   READING_WIDTH_MIN,
   READING_WIDTH_MAX,
+  type SpellCheckLanguage,
 } from '../model/editorPreferences'
 import { $settingsOpen, settingsClosed } from '../model/dialogs'
 import {
@@ -47,6 +53,8 @@ const fontFamily = useUnit($editorFontFamily)
 const lineWrap = useUnit($lineWrapEnabled)
 const autosaveMs = useUnit($autosaveDebounceMs)
 const readingWidth = useUnit($readingWidthCh)
+const spellCheckEnabled = useUnit($spellCheckEnabled)
+const spellCheckLanguage = useUnit($spellCheckLanguage)
 const showTooltips = useUnit($showTooltips)
 const drawerSide = useUnit($drawerSide)
 const showFormattingToolbar = useUnit($showFormattingToolbar)
@@ -81,6 +89,77 @@ function handleAutosaveInput(event: Event) {
 function handleReadingWidthInput(event: Event) {
   readingWidthChanged(Number((event.target as HTMLInputElement).value))
 }
+function handleSpellCheckLanguageChange(event: Event) {
+  spellCheckLanguageChanged((event.target as HTMLSelectElement).value as SpellCheckLanguage)
+}
+
+// --- Category nav ---------------------------------------------------------
+//
+// WAI-ARIA "tabs" pattern (`role="tablist"`/`"tab"`/`"tabpanel"`) with
+// roving tabindex: arrow keys move focus *and* activate the tab landed on,
+// matching `FormattingToolbar.vue`'s existing toolbar-pattern precedent for
+// the same "one stop in the page's Tab order, arrows move within it" shape.
+// Vertical at `sm:` and up (a real left-side nav, per the task); the same
+// buttons collapse to a horizontal, scrollable row above the content at
+// narrower viewports instead of overflowing the dialog — see the
+// `.settings-nav` rule in <style> for the breakpoint.
+//
+// Category content is `v-if`-switched, not `v-show`: every category except
+// the active one is entirely absent from the DOM, so `trapFocus` above
+// (which walks every focusable element currently inside `dialogRef`) never
+// has to reason about skipping hidden-but-still-technically-focusable
+// inputs from an inactive category.
+interface Category {
+  id: 'editor' | 'appearance' | 'layout' | 'documents' | 'advanced'
+  label: string
+}
+
+const categories: Category[] = [
+  { id: 'editor', label: 'Editor' },
+  { id: 'appearance', label: 'Appearance' },
+  { id: 'layout', label: 'Layout' },
+  { id: 'documents', label: 'Documents' },
+  { id: 'advanced', label: 'Advanced' },
+]
+
+const activeCategory = ref<Category['id']>('editor')
+const tabRefs = ref<(HTMLButtonElement | null)[]>([])
+
+function setTabRef(el: unknown, index: number) {
+  tabRefs.value[index] = el instanceof HTMLButtonElement ? el : null
+}
+
+function selectCategory(id: Category['id']) {
+  activeCategory.value = id
+}
+
+function focusTabIndex(index: number) {
+  const clamped = (index + categories.length) % categories.length
+  activeCategory.value = categories[clamped].id
+  tabRefs.value[clamped]?.focus()
+}
+
+function handleTabKeydown(event: KeyboardEvent, index: number) {
+  if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+    event.preventDefault()
+    focusTabIndex(index + 1)
+  } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+    event.preventDefault()
+    focusTabIndex(index - 1)
+  } else if (event.key === 'Home') {
+    event.preventDefault()
+    focusTabIndex(0)
+  } else if (event.key === 'End') {
+    event.preventDefault()
+    focusTabIndex(categories.length - 1)
+  }
+}
+
+// Always reopens on the first category — the dialog must not silently
+// resume wherever it was left several sessions ago.
+watch(open, (isOpen) => {
+  if (isOpen) activeCategory.value = 'editor'
+})
 </script>
 
 <template>
@@ -95,8 +174,8 @@ function handleReadingWidthInput(event: Event) {
     @keydown.esc="settingsClosed()"
     @keydown.tab="trapFocus"
   >
-    <div class="w-full max-w-md rounded-box bg-base-100 p-5 shadow-xl">
-      <div class="flex items-center justify-between">
+    <div class="flex max-h-[85vh] w-full max-w-xl flex-col rounded-box bg-base-100 shadow-xl">
+      <div class="flex shrink-0 items-center justify-between p-5 pb-4">
         <h2 id="settings-dialog-title" class="text-base font-semibold text-base-content">
           Settings
         </h2>
@@ -111,154 +190,242 @@ function handleReadingWidthInput(event: Event) {
         </button>
       </div>
 
-      <div class="mt-4 flex flex-col gap-4">
-        <!-- No theme control here — the header's `ThemeToggle` (always
-             visible, next to the sync indicator) is the only one now. A
-             second copy in this modal was redundant with it. -->
-        <label class="flex flex-col gap-1">
-          <span class="text-sm text-base-content">Editor font size — {{ fontSize }}px</span>
-          <input
-            type="range"
-            class="range range-sm"
-            :min="FONT_SIZE_MIN"
-            :max="FONT_SIZE_MAX"
-            step="0.5"
-            :value="fontSize"
-            aria-label="Editor font size"
-            @input="handleFontSizeInput"
-          />
-        </label>
-
-        <div class="flex flex-col gap-1">
-          <span id="settings-font-family-label" class="text-sm text-base-content"
-            >Editor font family</span
+      <div class="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
+        <div
+          role="tablist"
+          aria-label="Settings categories"
+          aria-orientation="vertical"
+          class="flex shrink-0 flex-row gap-1 overflow-x-auto border-base-300 px-5 pb-3 sm:w-36 sm:flex-col sm:gap-0.5 sm:overflow-x-visible sm:overflow-y-auto sm:border-r sm:py-2 sm:pr-2 sm:pb-2 sm:pl-3"
+        >
+          <button
+            v-for="(category, index) in categories"
+            :id="`settings-tab-${category.id}`"
+            :key="category.id"
+            :ref="(el) => setTabRef(el, index)"
+            type="button"
+            role="tab"
+            :aria-selected="activeCategory === category.id"
+            :aria-controls="`settings-panel-${category.id}`"
+            :tabindex="activeCategory === category.id ? 0 : -1"
+            class="settings-tab"
+            :class="{ 'settings-tab-active': activeCategory === category.id }"
+            @click="selectCategory(category.id)"
+            @keydown="handleTabKeydown($event, index)"
           >
-          <div class="join" role="group" aria-labelledby="settings-font-family-label">
-            <button
-              type="button"
-              class="btn join-item btn-sm"
-              :class="{ 'btn-active': fontFamily === 'mono' }"
-              :aria-pressed="fontFamily === 'mono'"
-              @click="editorFontFamilyChanged('mono')"
-            >
-              Monospace
-            </button>
-            <button
-              type="button"
-              class="btn join-item btn-sm"
-              :class="{ 'btn-active': fontFamily === 'serif' }"
-              :aria-pressed="fontFamily === 'serif'"
-              @click="editorFontFamilyChanged('serif')"
-            >
-              Serif
-            </button>
-          </div>
-        </div>
-
-        <label class="flex items-center justify-between">
-          <span class="text-sm text-base-content">Line wrapping</span>
-          <input
-            type="checkbox"
-            class="toggle toggle-sm"
-            :checked="lineWrap"
-            aria-label="Line wrapping"
-            @change="lineWrapToggled()"
-          />
-        </label>
-
-        <label class="flex items-center justify-between">
-          <span class="text-sm text-base-content">Show tooltips</span>
-          <input
-            type="checkbox"
-            class="toggle toggle-sm"
-            :checked="showTooltips"
-            aria-label="Show tooltips"
-            @change="showTooltipsToggled()"
-          />
-        </label>
-
-        <label class="flex items-center justify-between">
-          <span class="text-sm text-base-content">Show formatting toolbar</span>
-          <input
-            type="checkbox"
-            class="toggle toggle-sm"
-            :checked="showFormattingToolbar"
-            aria-label="Show formatting toolbar"
-            @change="showFormattingToolbarToggled()"
-          />
-        </label>
-
-        <!-- Defaulted off — the editor and preview panes must not follow
-             each other unless explicitly turned on here. See
-             `features/scroll-sync/model/scrollSync.ts`. -->
-        <label class="flex items-center justify-between">
-          <span class="text-sm text-base-content">Sync editor and preview scroll</span>
-          <input
-            type="checkbox"
-            class="toggle toggle-sm"
-            :checked="scrollSyncEnabled"
-            aria-label="Sync editor and preview scroll"
-            @change="scrollSyncToggled()"
-          />
-        </label>
-
-        <label class="flex flex-col gap-1">
-          <span class="text-sm text-base-content">Autosave delay — {{ autosaveMs }}ms</span>
-          <input
-            type="range"
-            class="range range-sm"
-            :min="AUTOSAVE_MS_MIN"
-            :max="AUTOSAVE_MS_MAX"
-            step="100"
-            :value="autosaveMs"
-            aria-label="Autosave delay in milliseconds"
-            @input="handleAutosaveInput"
-          />
-        </label>
-
-        <label class="flex flex-col gap-1">
-          <span class="text-sm text-base-content">Reading width — {{ readingWidth }}ch</span>
-          <input
-            type="range"
-            class="range range-sm"
-            :min="READING_WIDTH_MIN"
-            :max="READING_WIDTH_MAX"
-            :value="readingWidth"
-            aria-label="Preview reading width in characters"
-            @input="handleReadingWidthInput"
-          />
-        </label>
-
-        <div class="flex flex-col gap-1">
-          <span id="settings-drawer-side-label" class="text-sm text-base-content"
-            >Documents panel side</span
-          >
-          <div class="join" role="group" aria-labelledby="settings-drawer-side-label">
-            <button
-              type="button"
-              class="btn join-item btn-sm"
-              :class="{ 'btn-active': drawerSide === 'left' }"
-              :aria-pressed="drawerSide === 'left'"
-              @click="drawerSideChanged('left')"
-            >
-              Left
-            </button>
-            <button
-              type="button"
-              class="btn join-item btn-sm"
-              :class="{ 'btn-active': drawerSide === 'right' }"
-              :aria-pressed="drawerSide === 'right'"
-              @click="drawerSideChanged('right')"
-            >
-              Right
-            </button>
-          </div>
-        </div>
-
-        <div class="mt-2 border-t border-base-300 pt-4">
-          <button type="button" class="btn btn-outline btn-sm w-full" @click="resetRequested()">
-            Reset to defaults
+            {{ category.label }}
           </button>
+        </div>
+
+        <div
+          :id="`settings-panel-${activeCategory}`"
+          role="tabpanel"
+          :aria-labelledby="`settings-tab-${activeCategory}`"
+          tabindex="0"
+          class="min-h-0 flex-1 overflow-y-auto p-5"
+        >
+          <!-- Editor: font, size, wrap, spell check, language -->
+          <div v-if="activeCategory === 'editor'" class="flex flex-col gap-4">
+            <label class="flex flex-col gap-1">
+              <span class="text-sm text-base-content">Editor font size — {{ fontSize }}px</span>
+              <input
+                type="range"
+                class="range range-sm"
+                :min="FONT_SIZE_MIN"
+                :max="FONT_SIZE_MAX"
+                step="0.5"
+                :value="fontSize"
+                aria-label="Editor font size"
+                @input="handleFontSizeInput"
+              />
+            </label>
+
+            <div class="flex flex-col gap-1">
+              <span id="settings-font-family-label" class="text-sm text-base-content"
+                >Editor font family</span
+              >
+              <div class="join" role="group" aria-labelledby="settings-font-family-label">
+                <button
+                  type="button"
+                  class="btn join-item btn-sm"
+                  :class="{ 'btn-active': fontFamily === 'mono' }"
+                  :aria-pressed="fontFamily === 'mono'"
+                  @click="editorFontFamilyChanged('mono')"
+                >
+                  Monospace
+                </button>
+                <button
+                  type="button"
+                  class="btn join-item btn-sm"
+                  :class="{ 'btn-active': fontFamily === 'serif' }"
+                  :aria-pressed="fontFamily === 'serif'"
+                  @click="editorFontFamilyChanged('serif')"
+                >
+                  Serif
+                </button>
+              </div>
+            </div>
+
+            <label class="flex items-center justify-between">
+              <span class="text-sm text-base-content">Line wrapping</span>
+              <input
+                type="checkbox"
+                class="toggle toggle-sm"
+                :checked="lineWrap"
+                aria-label="Line wrapping"
+                @change="lineWrapToggled()"
+              />
+            </label>
+
+            <label class="flex items-center justify-between">
+              <span class="text-sm text-base-content">Spell check</span>
+              <input
+                type="checkbox"
+                class="toggle toggle-sm"
+                :checked="spellCheckEnabled"
+                aria-label="Spell check"
+                @change="spellCheckToggled()"
+              />
+            </label>
+
+            <div class="flex flex-col gap-1">
+              <label for="settings-spellcheck-language" class="text-sm text-base-content">
+                Spell check language
+              </label>
+              <select
+                id="settings-spellcheck-language"
+                class="select select-sm w-full"
+                :value="spellCheckLanguage"
+                :disabled="!spellCheckEnabled"
+                @change="handleSpellCheckLanguageChange"
+              >
+                <option
+                  v-for="entry in SPELLCHECK_LANGUAGES"
+                  :key="entry.value"
+                  :value="entry.value"
+                >
+                  {{ entry.label }}
+                </option>
+              </select>
+              <p class="text-xs text-base-content/60">
+                Which dictionaries are actually available depends on your browser and operating
+                system — this app doesn't ship any of its own.
+              </p>
+            </div>
+          </div>
+
+          <!-- Appearance: reading width, formatting toolbar, tooltips -->
+          <div v-else-if="activeCategory === 'appearance'" class="flex flex-col gap-4">
+            <label class="flex flex-col gap-1">
+              <span class="text-sm text-base-content">Reading width — {{ readingWidth }}ch</span>
+              <input
+                type="range"
+                class="range range-sm"
+                :min="READING_WIDTH_MIN"
+                :max="READING_WIDTH_MAX"
+                :value="readingWidth"
+                aria-label="Preview reading width in characters"
+                @input="handleReadingWidthInput"
+              />
+            </label>
+
+            <label class="flex items-center justify-between">
+              <span class="text-sm text-base-content">Show formatting toolbar</span>
+              <input
+                type="checkbox"
+                class="toggle toggle-sm"
+                :checked="showFormattingToolbar"
+                aria-label="Show formatting toolbar"
+                @change="showFormattingToolbarToggled()"
+              />
+            </label>
+
+            <label class="flex items-center justify-between">
+              <span class="text-sm text-base-content">Show tooltips</span>
+              <input
+                type="checkbox"
+                class="toggle toggle-sm"
+                :checked="showTooltips"
+                aria-label="Show tooltips"
+                @change="showTooltipsToggled()"
+              />
+            </label>
+          </div>
+
+          <!-- Layout: documents panel side, scroll sync -->
+          <div v-else-if="activeCategory === 'layout'" class="flex flex-col gap-4">
+            <div class="flex flex-col gap-1">
+              <span id="settings-drawer-side-label" class="text-sm text-base-content"
+                >Documents panel side</span
+              >
+              <div class="join" role="group" aria-labelledby="settings-drawer-side-label">
+                <button
+                  type="button"
+                  class="btn join-item btn-sm"
+                  :class="{ 'btn-active': drawerSide === 'left' }"
+                  :aria-pressed="drawerSide === 'left'"
+                  @click="drawerSideChanged('left')"
+                >
+                  Left
+                </button>
+                <button
+                  type="button"
+                  class="btn join-item btn-sm"
+                  :class="{ 'btn-active': drawerSide === 'right' }"
+                  :aria-pressed="drawerSide === 'right'"
+                  @click="drawerSideChanged('right')"
+                >
+                  Right
+                </button>
+              </div>
+            </div>
+
+            <!-- Defaulted off — the editor and preview panes must not
+                 follow each other unless explicitly turned on here. See
+                 `features/scroll-sync/model/scrollSync.ts`. -->
+            <label class="flex items-center justify-between">
+              <span class="text-sm text-base-content">Sync editor and preview scroll</span>
+              <input
+                type="checkbox"
+                class="toggle toggle-sm"
+                :checked="scrollSyncEnabled"
+                aria-label="Sync editor and preview scroll"
+                @change="scrollSyncToggled()"
+              />
+            </label>
+          </div>
+
+          <!-- Documents: autosave interval -->
+          <div v-else-if="activeCategory === 'documents'" class="flex flex-col gap-4">
+            <label class="flex flex-col gap-1">
+              <span class="text-sm text-base-content">Autosave delay — {{ autosaveMs }}ms</span>
+              <input
+                type="range"
+                class="range range-sm"
+                :min="AUTOSAVE_MS_MIN"
+                :max="AUTOSAVE_MS_MAX"
+                step="100"
+                :value="autosaveMs"
+                aria-label="Autosave delay in milliseconds"
+                @input="handleAutosaveInput"
+              />
+            </label>
+          </div>
+
+          <!-- Advanced: reset to defaults -->
+          <div v-else class="flex flex-col gap-3">
+            <p class="text-sm text-base-content/70">
+              Restores every preference in this dialog — font, spell check, layout, autosave, and
+              theme — to its default. Your documents, folders, and GitHub connection are never
+              affected.
+            </p>
+            <button
+              type="button"
+              class="btn btn-outline btn-sm self-start"
+              @click="resetRequested()"
+            >
+              Reset to defaults
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -285,9 +452,9 @@ function handleReadingWidthInput(event: Event) {
         Reset settings to defaults?
       </h2>
       <p class="mt-2 text-sm text-base-content/70">
-        Restores font size, font family, line wrapping, autosave delay, reading width, tooltips,
-        formatting toolbar, documents panel side, scroll sync, and theme to their defaults. Your
-        documents, folders, and GitHub connection are not affected.
+        Restores font size, font family, line wrapping, spell check, autosave delay, reading width,
+        tooltips, formatting toolbar, documents panel side, scroll sync, and theme to their
+        defaults. Your documents, folders, and GitHub connection are not affected.
       </p>
       <div class="mt-5 flex justify-end gap-2">
         <button
@@ -305,3 +472,49 @@ function handleReadingWidthInput(event: Event) {
     </div>
   </div>
 </template>
+
+<style scoped>
+/*
+ * Category nav buttons — flat rows, matching `MoreMenu.vue`'s
+ * `.more-menu-item` convention (hover/active carried by a flat background
+ * change, no shadow/gradient) rather than daisyUI's `tab`/`menu`
+ * utilities, consistent with this app's other hand-rolled small controls.
+ * `--md-seg-fg` (inactive) and full `--color-base-content` (active) are
+ * both already measured >=4.5:1 in both themes (see `app/styles/main.css`'s
+ * `--md-seg-fg` comment) — the same pair `Toolbar.vue`'s `.view-tab` and
+ * `DocumentDrawer.vue`'s `.dock-btn` already use, so no new contrast value
+ * is introduced here.
+ */
+.settings-tab {
+  display: block;
+  flex-shrink: 0;
+  width: 100%;
+  overflow: hidden;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--md-seg-fg, var(--color-base-content));
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 7px 10px;
+}
+
+.settings-tab:hover {
+  background: var(--md-hov, var(--color-base-200));
+}
+
+.settings-tab-active {
+  background: var(--md-sel, var(--color-base-200));
+  color: var(--color-base-content);
+  font-weight: 600;
+}
+
+.settings-tab:focus-visible {
+  outline: 2px solid var(--md-accent);
+  outline-offset: -2px;
+}
+</style>

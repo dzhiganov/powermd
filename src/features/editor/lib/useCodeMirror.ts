@@ -20,6 +20,32 @@ import { jumpFlashField } from './jumpFlash'
  */
 const programmatic = Annotation.define<boolean>()
 
+/** Shape shared by `initialSpellcheck`/`setSpellcheck` below — kept as one
+ * object (not two separate enabled/language options) since both values are
+ * always applied together, in a single `contentAttributes` reconfigure. */
+export interface SpellcheckOptions {
+  enabled: boolean
+  /** `'default'` means "don't set `lang`" — the content element then
+   * inherits the page's own `lang` (see `buildContentAttributes` below).
+   * Any other value is applied verbatim as the `lang` attribute. */
+  language: string
+}
+
+/** Builds the content element's `spellcheck`/`lang`/`aria-label`
+ * attributes for a given spell-check preference — the single place this
+ * mapping happens, shared by the initial mount and every later
+ * `setSpellcheck` reconfigure so the two can never drift apart. */
+function buildContentAttributes(spellcheck: SpellcheckOptions): Record<string, string> {
+  const attrs: Record<string, string> = {
+    spellcheck: String(spellcheck.enabled),
+    'aria-label': 'Markdown editor',
+  }
+  if (spellcheck.language !== 'default') {
+    attrs.lang = spellcheck.language
+  }
+  return attrs
+}
+
 interface UseCodeMirrorOptions {
   /** Initial document text, read once when the view is created. */
   doc: string
@@ -28,6 +54,11 @@ interface UseCodeMirrorOptions {
    * closure variable below). Later changes go through `setLineWrap`
    * instead, which reconfigures the `Compartment` in place. */
   initialLineWrap: boolean
+  /** Initial spell-check state, read once when the view is created (and
+   * again on every `loadDocument` rebuild — see the `currentSpellcheck`
+   * closure variable below). Later changes go through `setSpellcheck`
+   * instead, which reconfigures the `Compartment` in place. */
+  initialSpellcheck: SpellcheckOptions
   /** Called with the full document string whenever the user edits it. */
   onChange: (value: string) => void
   /** Called once, synchronously, right after the `EditorView` is created.
@@ -61,6 +92,15 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
   const wrapCompartment = new Compartment()
   let currentLineWrap = options.initialLineWrap
 
+  // Same reasoning as `wrapCompartment` above: spell check (Step 8,
+  // settings) has to reconfigure in place rather than go through a
+  // `view.setState` rebuild, so a toggle or language change never discards
+  // undo history or resets the cursor. `currentSpellcheck` tracks the live
+  // value across `createState` calls (initial mount *and* every
+  // `loadDocument` rebuild) the same way `currentLineWrap` does.
+  const spellcheckCompartment = new Compartment()
+  let currentSpellcheck = options.initialSpellcheck
+
   // Builds a fresh state for `doc`. Reused for the initial mount and for
   // every document load, so both go through exactly the same extension set.
   function createState(doc: string): EditorState {
@@ -72,10 +112,9 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         keymap.of([...defaultKeymap, ...historyKeymap]),
         markdown({ codeLanguages: languages }),
         wrapCompartment.of(currentLineWrap ? EditorView.lineWrapping : []),
-        EditorView.contentAttributes.of({
-          spellcheck: 'true',
-          'aria-label': 'Markdown editor',
-        }),
+        spellcheckCompartment.of(
+          EditorView.contentAttributes.of(buildContentAttributes(currentSpellcheck)),
+        ),
         daisyMarkdownTheme,
         imagePasteHandler,
         jumpFlashField,
@@ -199,6 +238,29 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
   }
 
   /**
+   * Toggles spell check on/off and/or its language on the *live* view via
+   * `spellcheckCompartment.reconfigure` — same shape as `setLineWrap`
+   * above: a plain `dispatch` with only an `effects` entry, no document
+   * change and no `setState`, so undo history, cursor, and scroll are all
+   * untouched. Applying `enabled: false` removes the `spellcheck`
+   * attribute's effect immediately (browsers stop checking on the next
+   * paint, no reload); a language change re-applies `lang`, which the
+   * browser reads to pick a dictionary the *next* time it (re-)checks the
+   * content — already true of any `lang`/`spellcheck` change on a live
+   * `contenteditable` element, not something this app can force faster.
+   */
+  function setSpellcheck(spellcheck: SpellcheckOptions) {
+    currentSpellcheck = spellcheck
+    const current = view.value
+    if (!current) return
+    current.dispatch({
+      effects: spellcheckCompartment.reconfigure(
+        EditorView.contentAttributes.of(buildContentAttributes(spellcheck)),
+      ),
+    })
+  }
+
+  /**
    * Asks CodeMirror to re-measure its own layout (line heights, cursor
    * coordinates) without touching the document, cursor, or scroll position
    * — the same call the `document.fonts.ready` handler above already makes
@@ -213,5 +275,5 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
     view.value?.requestMeasure()
   }
 
-  return { loadDocument, setLineWrap, requestMeasure }
+  return { loadDocument, setLineWrap, setSpellcheck, requestMeasure }
 }

@@ -12,13 +12,18 @@ export {
   $lineWrapEnabled,
   $autosaveDebounceMs,
   $readingWidthCh,
+  $spellCheckEnabled,
+  $spellCheckLanguage,
   editorFontSizeChanged,
   editorFontFamilyChanged,
   lineWrapToggled,
   autosaveDebounceChanged,
   readingWidthChanged,
+  spellCheckToggled,
+  spellCheckLanguageChanged,
+  SPELLCHECK_LANGUAGES,
 } from './model/editorPreferences'
-export type { EditorFontFamily } from './model/editorPreferences'
+export type { EditorFontFamily, SpellCheckLanguage } from './model/editorPreferences'
 
 export {
   $settingsOpen,

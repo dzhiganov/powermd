@@ -4,7 +4,7 @@
 // public API here (rather than relying on it being pulled in transitively
 // by some UI component) guarantees the model starts up regardless of
 // which components end up rendered.
-import { sample } from 'effector'
+import { combine, sample } from 'effector'
 
 import {
   $content,
@@ -16,6 +16,7 @@ import {
   helpRequested,
   lineWrapChanged,
   editorFontMetricsChanged,
+  spellcheckSettingsChanged,
 } from '@/features/editor'
 import { sourceReceived, renderMarkdownForExport } from '@/features/preview'
 import { initScrollSync, scrollSyncEnabledChanged } from '@/features/scroll-sync'
@@ -48,7 +49,13 @@ import {
   folderDirsAssigned,
   pushCompleted,
 } from '@/features/github'
-import { $viewMode, viewModeChanged, $isDesktop } from '@/features/layout'
+import {
+  $viewMode,
+  viewModeChanged,
+  $isDesktop,
+  $showEditor,
+  $showPreview,
+} from '@/features/layout'
 import type { ViewMode } from '@/features/layout'
 import {
   $lineWrapEnabled as $lineWrapPreference,
@@ -56,11 +63,15 @@ import {
   $scrollSyncEnabled,
   $editorFontSize,
   $editorFontFamily,
+  $spellCheckEnabled,
+  $spellCheckLanguage,
   helpOpened,
 } from '@/features/settings'
+import { initOutline } from '@/features/outline'
 
 import { initUrlSync } from './urlSync'
 import { initPaneJump } from './paneJump'
+import { initZenShortcut } from './zenShortcut'
 
 import '@/features/settings'
 import '@/features/editor'
@@ -69,6 +80,7 @@ import '@/features/documents'
 import '@/features/transfer'
 import '@/features/layout'
 import '@/features/github'
+import '@/features/outline'
 
 // The preview feature never imports the editor feature (or vice versa) —
 // this is the one place that's allowed to know both exist, and connects
@@ -107,6 +119,22 @@ sample({ clock: $scrollSyncEnabled, target: scrollSyncEnabledChanged })
 // `$scrollSyncEnabled`. See `src/app/paneJump.ts` for why it doesn't need a
 // `SyncSession` to exist.
 initPaneJump()
+
+// Document outline (preview-only mode): `outline` never imports `layout`
+// directly (would create a cycle — `layout/ui/AppShell.vue` already
+// imports `outline`'s own panel component), so `$showEditor`/`$showPreview`
+// are injected here instead, the same "the one place that knows both
+// features exist" shape as every other cross-feature link in this file —
+// see `initTransfer`/`initDocuments`'s own dependency-injected calls below
+// for the established precedent of passing values in rather than importing
+// across.
+initOutline({ showEditor: $showEditor, showPreview: $showPreview })
+
+// Zen mode's keyboard shortcut + Escape-to-exit: app-wide, not scoped to
+// the editor's own CodeMirror keymap (see `src/app/zenShortcut.ts`), so it
+// lives here alongside every other top-level `init*` call rather than
+// inside any one feature.
+initZenShortcut()
 
 // --- documents <-> editor -------------------------------------------------
 //
@@ -237,6 +265,22 @@ sample({
   clock: [$editorFontSize, $editorFontFamily],
   target: editorFontMetricsChanged,
 })
+
+// Spell check enabled/language: bundled into one `combine`d store (unlike
+// the array-clock trick `editorFontMetricsChanged` uses just above) because
+// this mirror actually needs a real payload — `spellcheckSettingsChanged`
+// carries the current `{ enabled, language }` pair, not just a "something
+// changed" signal — so the array-clock's dedup hazard (documented on
+// `editorFontMetricsChanged` above) doesn't apply here: a `combine`d store
+// only skips a re-emit when the *computed value* is unchanged, which is
+// exactly what should happen when neither input actually changed.
+const $spellCheckSettings = combine(
+  $spellCheckEnabled,
+  $spellCheckLanguage,
+  (enabled, language) => ({ enabled, language }),
+)
+spellcheckSettingsChanged($spellCheckSettings.getState())
+sample({ clock: $spellCheckSettings, target: spellcheckSettingsChanged })
 
 // Autosave interval: same one-kick-then-sample shape, feeding
 // `documents`' own debounce store (`$autosaveIntervalMs` in

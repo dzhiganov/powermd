@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useUnit } from 'effector-vue/composition'
+import { ArrowsPointingOutIcon } from '@heroicons/vue/24/outline'
 
 import { ThemeToggle, $showTooltips } from '@/features/settings'
 import { DrawerToggleButton, DocumentTitle } from '@/features/documents'
@@ -8,6 +9,7 @@ import { SyncStatusIndicator } from '@/features/github'
 
 import { $viewMode, viewModeChanged } from '../model/layout'
 import type { ViewMode } from '../model/layout'
+import { zenToggled } from '../model/zen'
 import MoreMenu from './MoreMenu.vue'
 
 // The drawer side ('left' | 'right') drives which end of the header the
@@ -104,6 +106,21 @@ const viewModeOptions: ViewModeOption[] = [
            action to gate on the active document the way the old per-file
            flow did. -->
       <SyncStatusIndicator :show-tooltips="showTooltips" />
+
+      <!-- Zen mode's toggle-on affordance — the toggle-off affordance is a
+           separate, always-visible floating button (`ZenExitButton.vue`,
+           mounted once in `AppShell.vue`) since this entire header is
+           exactly the chrome zen mode hides, so this button can't also
+           serve as the way back out. -->
+      <button
+        type="button"
+        class="btn btn-ghost btn-xs btn-square"
+        aria-label="Enter Zen mode"
+        :title="showTooltips ? 'Zen mode' : undefined"
+        @click="zenToggled()"
+      >
+        <ArrowsPointingOutIcon class="h-3.5 w-3.5" />
+      </button>
 
       <ThemeToggle />
       <!-- Own toolbar icon (user request: no longer duplicated inside the

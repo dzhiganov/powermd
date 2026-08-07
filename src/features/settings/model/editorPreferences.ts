@@ -10,6 +10,8 @@ const FONT_FAMILY_KEY = 'markdown-editor:editor-font-family'
 const LINE_WRAP_KEY = 'markdown-editor:line-wrap'
 const AUTOSAVE_MS_KEY = 'markdown-editor:autosave-ms'
 const READING_WIDTH_KEY = 'markdown-editor:reading-width'
+const SPELLCHECK_ENABLED_KEY = 'markdown-editor:spellcheck-enabled'
+const SPELLCHECK_LANGUAGE_KEY = 'markdown-editor:spellcheck-language'
 
 export const FONT_SIZE_MIN = 12
 export const FONT_SIZE_MAX = 20
@@ -67,6 +69,42 @@ function readFontFamily(): EditorFontFamily {
   return isFontFamily(stored) ? stored : DEFAULT_FONT_FAMILY
 }
 
+/**
+ * `'default'` means "don't set `lang` at all" — the editor's content
+ * element then inherits `<html lang="en">` (see `index.html`), so the
+ * browser resolves spelling against whatever the page's own language is.
+ * Every other value is a real BCP-47 language subtag, applied directly as
+ * the content element's `lang` attribute (see `useCodeMirror.ts`'s
+ * `buildContentAttributes`) — the browser (not this app) is what actually
+ * owns which dictionaries exist for it; this list only offers a reasonable
+ * spread of ones a browser/OS commonly ships.
+ */
+export type SpellCheckLanguage = 'default' | 'en' | 'de' | 'fr' | 'es' | 'ru' | 'pt' | 'it' | 'nl'
+
+export const SPELLCHECK_LANGUAGES: ReadonlyArray<{ value: SpellCheckLanguage; label: string }> = [
+  { value: 'default', label: 'Follow the page default' },
+  { value: 'en', label: 'English' },
+  { value: 'de', label: 'German' },
+  { value: 'fr', label: 'French' },
+  { value: 'es', label: 'Spanish' },
+  { value: 'ru', label: 'Russian' },
+  { value: 'pt', label: 'Portuguese' },
+  { value: 'it', label: 'Italian' },
+  { value: 'nl', label: 'Dutch' },
+]
+
+const DEFAULT_SPELLCHECK_ENABLED = true
+const DEFAULT_SPELLCHECK_LANGUAGE: SpellCheckLanguage = 'default'
+
+function isSpellCheckLanguage(value: string | null): value is SpellCheckLanguage {
+  return SPELLCHECK_LANGUAGES.some((entry) => entry.value === value)
+}
+
+function readSpellCheckLanguage(): SpellCheckLanguage {
+  const stored = readStorage(SPELLCHECK_LANGUAGE_KEY)
+  return isSpellCheckLanguage(stored) ? stored : DEFAULT_SPELLCHECK_LANGUAGE
+}
+
 // One shared persistence effect, parameterised by key/value, rather than a
 // separate `createEffect` per preference below — same storage helper
 // (`writeStorage`), same fire-and-forget shape every time.
@@ -112,6 +150,38 @@ export const $lineWrapEnabled = createStore<boolean>(readBoolean(LINE_WRAP_KEY, 
 sample({
   clock: $lineWrapEnabled,
   fn: (enabled) => ({ key: LINE_WRAP_KEY, value: String(enabled) }),
+  target: persistFx,
+})
+
+// --- Spell check ---------------------------------------------------------
+//
+// Two independent preferences — on/off, and which language's dictionary
+// the browser should check against — both applied to the editor's content
+// element live, via `features/editor/lib/useCodeMirror.ts`'s own
+// Compartment (same "reconfigure in place, never a state rebuild" shape as
+// `$lineWrapEnabled` above), never a reload.
+
+export const spellCheckToggled = createEvent()
+export const $spellCheckEnabled = createStore<boolean>(
+  readBoolean(SPELLCHECK_ENABLED_KEY, DEFAULT_SPELLCHECK_ENABLED),
+)
+  .on(spellCheckToggled, (enabled) => !enabled)
+  .on(defaultsRestored, () => DEFAULT_SPELLCHECK_ENABLED)
+
+sample({
+  clock: $spellCheckEnabled,
+  fn: (enabled) => ({ key: SPELLCHECK_ENABLED_KEY, value: String(enabled) }),
+  target: persistFx,
+})
+
+export const spellCheckLanguageChanged = createEvent<SpellCheckLanguage>()
+export const $spellCheckLanguage = createStore<SpellCheckLanguage>(readSpellCheckLanguage())
+  .on(spellCheckLanguageChanged, (_, language) => language)
+  .on(defaultsRestored, () => DEFAULT_SPELLCHECK_LANGUAGE)
+
+sample({
+  clock: $spellCheckLanguage,
+  fn: (language) => ({ key: SPELLCHECK_LANGUAGE_KEY, value: language }),
   target: persistFx,
 })
 

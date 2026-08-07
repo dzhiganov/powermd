@@ -10,6 +10,7 @@ export {
   helpRequested,
   lineWrapChanged,
   editorFontMetricsChanged,
+  spellcheckSettingsChanged,
 } from './model/editorEvents'
 export { EDITOR_SHORTCUTS } from './lib/shortcuts'
 export type { EditorShortcut } from './lib/shortcuts'

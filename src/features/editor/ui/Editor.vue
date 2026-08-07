@@ -6,7 +6,11 @@ import { createEditorScrollHandle } from '../lib/scrollHandle'
 import { $content, contentChanged, loadContent } from '../model/content'
 import { editorScrollHandleMounted, editorScrollHandleUnmounted } from '../model/scrollHandle'
 import { editorViewMounted, editorViewDestroyed } from '../model/view'
-import { $lineWrapEnabled, editorFontMetricsChanged } from '../model/editorEvents'
+import {
+  $lineWrapEnabled,
+  editorFontMetricsChanged,
+  $spellcheckSettings,
+} from '../model/editorEvents'
 
 defineProps<{
   /** Constrains and centres `.cm-content` to a comfortable reading width
@@ -17,7 +21,7 @@ defineProps<{
 
 const container = ref<HTMLDivElement | null>(null)
 
-const { loadDocument, setLineWrap, requestMeasure } = useCodeMirror(container, {
+const { loadDocument, setLineWrap, setSpellcheck, requestMeasure } = useCodeMirror(container, {
   // Read once, synchronously, at mount. If the restored/seeded document has
   // already been pushed into `$content` by then, the view opens with it;
   // otherwise it opens empty and the `loadContent` subscription below fills
@@ -28,6 +32,9 @@ const { loadDocument, setLineWrap, requestMeasure } = useCodeMirror(container, {
   // this already reflects the real preference, not just the store's
   // hardcoded default.
   initialLineWrap: $lineWrapEnabled.getState(),
+  // Same one-shot read as `initialLineWrap` above, for the spell check
+  // enabled/language pair.
+  initialSpellcheck: $spellcheckSettings.getState(),
   onChange: (value) => contentChanged(value),
   onViewReady: (view) => {
     // Wraps the raw `EditorView` into the narrow `EditorScrollHandle` shape
@@ -71,6 +78,15 @@ onUnmounted(wrapSubscription.unsubscribe)
 // the layout that repaint just changed.
 const fontMetricsSubscription = editorFontMetricsChanged.watch(() => requestMeasure())
 onUnmounted(fontMetricsSubscription.unsubscribe)
+
+// Settings feature owns the persisted spell-check enabled/language
+// preferences too; `wiring.ts` mirrors a change into this feature's own
+// `$spellcheckSettings` (see its doc comment in `model/editorEvents.ts`).
+// `.watch` fires immediately with the current value too (harmless before
+// the view exists, same as `wrapSubscription` above), then on every later
+// change, applying it live via the Compartment reconfigure.
+const spellcheckSubscription = $spellcheckSettings.watch((settings) => setSpellcheck(settings))
+onUnmounted(spellcheckSubscription.unsubscribe)
 </script>
 
 <template>
