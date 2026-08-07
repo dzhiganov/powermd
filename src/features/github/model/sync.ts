@@ -473,3 +473,27 @@ sample({
   }),
   target: toastRequested,
 })
+
+// --- Offline recovery ---------------------------------------------------
+//
+// A push made while offline fails at the network layer inside
+// `githubRequest` (`GitHubNetworkError` — "Could not reach GitHub. Check
+// your connection and try again.") and lands here as a normal `$syncError`,
+// exactly like any other failed push: visible, not silently swallowed, and
+// not spun forever waiting on a request that was never going to answer.
+//
+// What it does NOT do on its own is retry once connectivity comes back —
+// nothing above re-queues a push just because the network recovered; the
+// next attempt would otherwise wait on the next actual edit (or a manual
+// "Sync now"), which could be an arbitrarily long time after the user is
+// back online. The browser's own `online` event closes that gap: it fires
+// once the network path is usable again, so re-queuing from it resumes the
+// stalled push without the user having to do anything. Firing this
+// unconditionally (not gated on `$syncError` being set) is still cheap and
+// correct — `syncQueued`'s own consumer already no-ops when there's no
+// connection, and a `runSyncFx` run with nothing dirty resolves immediately
+// — so there's no real cost to also firing it after a network blip that
+// never actually caused a failure.
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => syncQueued())
+}

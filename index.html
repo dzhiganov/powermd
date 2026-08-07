@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Markdown Editor</title>
+    <meta
+      name="description"
+      content="A local-first markdown editor with live preview, mermaid diagrams, and optional GitHub sync."
+    />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <!-- Matches each theme's `--color-base-100` (src/app/styles/main.css) —
+         the browser UI (address bar on mobile, PWA title bar) paints this
+         behind the page before/around first paint. Two tags, not one: this
+         is the browser chrome's own color, resolved the same way the OS
+         picks light/dark assets generally — independent of (and unable to
+         read) this app's own `data-theme` attribute, which the inline
+         script below sets after determining the user's stored choice. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbfaf8" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e0f11" />
     <script>
       // Sets data-theme before first paint so the page doesn't flash the
       // default theme then snap to the stored/resolved one. The stored
