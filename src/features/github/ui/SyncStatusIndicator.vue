@@ -7,7 +7,7 @@ import { ink } from '@/shared/lib/ink'
 
 import { $syncConnection } from '../model/connection'
 import { $syncStatus, $lastSyncAt, $syncError, $importError } from '../model/sync'
-import { githubModalOpened } from '../model/dialog'
+import { githubSettingsRequested } from '../model/settingsPanel'
 
 // Same "prop, not a direct `@/features/settings` import" shape as every
 // other toolbar control — see `GitHubButton.vue`'s (this component's
@@ -61,7 +61,7 @@ const errorInk = computed(() => ({ color: ink('--color-error') }))
     :class="{ 'sync-status-pill-error': status === 'error' }"
     :aria-label="label"
     :title="showTooltips || status === 'error' ? label : undefined"
-    @click="githubModalOpened()"
+    @click="githubSettingsRequested()"
   >
     <span class="sr-only" role="status" aria-live="polite">{{ label }}</span>
     <ArrowPathIcon

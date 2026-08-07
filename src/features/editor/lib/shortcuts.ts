@@ -16,17 +16,13 @@ export interface EditorShortcut {
  * `ShortcutsModal.vue`, via `EDITOR_SHORTCUTS`) are built from this list,
  * so they can never drift apart.
  *
- * Two entries are the exception, listed here purely so the help modal
- * documents them via this one list instead of a second one — neither has
- * an entry in `bindings` below:
+ * One entry is the exception, listed here purely so the help modal
+ * documents it via this one list instead of a second one — it has no
+ * entry in `bindings` below:
  *   - `Mod-Click`: a mouse gesture (the modifier-click pane jump, wired in
  *     `src/app/paneJump.ts` since it spans the editor *and* preview
  *     panes), not a keyboard binding at all.
- *   - `Mod-.`: Zen mode's toggle, wired in `src/app/zenShortcut.ts` as a
- *     `window`-level listener rather than a CodeMirror `keymap` entry,
- *     since it has to work regardless of what currently has focus, not
- *     just while the editor is.
- * `formatShortcut` (`shared/lib/platform.ts`) still renders both sensibly:
+ * `formatShortcut` (`shared/lib/platform.ts`) still renders it sensibly:
  * `Mod` resolves to ⌘/Ctrl exactly like every other entry, and `Click`
  * (not a single character, not a recognised modifier) passes through
  * unchanged. */
@@ -38,7 +34,6 @@ export const EDITOR_SHORTCUTS: EditorShortcut[] = [
   { keys: 'Mod-Shift-v', description: 'Toggle view mode' },
   { keys: 'Mod-/', description: 'Open keyboard shortcuts help' },
   { keys: 'Mod-Click', description: 'Jump to the matching line in the other pane' },
-  { keys: 'Mod-.', description: 'Toggle Zen mode' },
 ]
 
 const bindings: KeyBinding[] = [

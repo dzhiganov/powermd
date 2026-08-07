@@ -397,9 +397,9 @@ body {
  * Explicitly NOT re-derived in this pass (translucent overlays where text
  * drawn on top only ever gets MORE contrast from a darker source colour,
  * never less, so they were left reading `--color-primary` as before):
- * the row `:active`-press tint (`DocumentRow.vue`/`FolderGroup.vue`/
- * `GitHubModal.vue`, `color-mix(... 30%, transparent)`) and the search
- * match highlight (`HighlightedText.vue`, `color-mix(... 35%, transparent)`).
+ * the row `:active`-press tint (`DocumentRow.vue`/`FolderGroup.vue`,
+ * `color-mix(... 30%, transparent)`) and the search match highlight
+ * (`HighlightedText.vue`, `color-mix(... 35%, transparent)`).
  *
  * Light theme is untouched here — its `--color-primary` (#635f57) was never
  * reported as a problem at this point, stays exactly as measured under
@@ -483,7 +483,8 @@ body {
  * `--color-primary` itself would have flattened all of those into
  * near-invisibility. Scoping the override to `.btn-primary`'s own
  * `--btn-color` changes only the primary button (and anything else that
- * genuinely wants `.btn-primary`, e.g. `GitHubModal.vue`'s "Connect") while
+ * genuinely wants `.btn-primary`, e.g. `GitHubSyncPanel.vue`'s "Connect")
+ * while
  * leaving every other `--color-primary` consumer exactly as already
  * measured.
  *

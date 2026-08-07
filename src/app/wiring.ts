@@ -48,14 +48,9 @@ import {
   originsAssigned,
   folderDirsAssigned,
   pushCompleted,
+  githubSettingsRequested,
 } from '@/features/github'
-import {
-  $viewMode,
-  viewModeChanged,
-  $isDesktop,
-  $showEditor,
-  $showPreview,
-} from '@/features/layout'
+import { $viewMode, viewModeChanged, $isDesktop } from '@/features/layout'
 import type { ViewMode } from '@/features/layout'
 import {
   $lineWrapEnabled as $lineWrapPreference,
@@ -66,12 +61,11 @@ import {
   $spellCheckEnabled,
   $spellCheckLanguage,
   helpOpened,
+  settingsOpened,
 } from '@/features/settings'
-import { initOutline } from '@/features/outline'
 
 import { initUrlSync } from './urlSync'
 import { initPaneJump } from './paneJump'
-import { initZenShortcut } from './zenShortcut'
 
 import '@/features/settings'
 import '@/features/editor'
@@ -80,7 +74,6 @@ import '@/features/documents'
 import '@/features/transfer'
 import '@/features/layout'
 import '@/features/github'
-import '@/features/outline'
 
 // The preview feature never imports the editor feature (or vice versa) —
 // this is the one place that's allowed to know both exist, and connects
@@ -119,22 +112,6 @@ sample({ clock: $scrollSyncEnabled, target: scrollSyncEnabledChanged })
 // `$scrollSyncEnabled`. See `src/app/paneJump.ts` for why it doesn't need a
 // `SyncSession` to exist.
 initPaneJump()
-
-// Document outline (preview-only mode): `outline` never imports `layout`
-// directly (would create a cycle — `layout/ui/AppShell.vue` already
-// imports `outline`'s own panel component), so `$showEditor`/`$showPreview`
-// are injected here instead, the same "the one place that knows both
-// features exist" shape as every other cross-feature link in this file —
-// see `initTransfer`/`initDocuments`'s own dependency-injected calls below
-// for the established precedent of passing values in rather than importing
-// across.
-initOutline({ showEditor: $showEditor, showPreview: $showPreview })
-
-// Zen mode's keyboard shortcut + Escape-to-exit: app-wide, not scoped to
-// the editor's own CodeMirror keymap (see `src/app/zenShortcut.ts`), so it
-// lives here alongside every other top-level `init*` call rather than
-// inside any one feature.
-initZenShortcut()
 
 // --- documents <-> editor -------------------------------------------------
 //
@@ -370,3 +347,17 @@ sample({ clock: importCompleted, target: documentsBulkImported })
 sample({ clock: originsAssigned, target: documentGithubOriginsApplied })
 sample({ clock: pushCompleted, target: documentGithubOriginsApplied })
 sample({ clock: folderDirsAssigned, target: folderSyncDirPathsApplied })
+
+// The GitHub connection UI now lives inside the Settings dialog's own
+// "GitHub sync" category (`features/github/ui/GitHubSyncPanel.vue`, moved
+// there from the removed standalone `GitHubModal.vue`) rather than a
+// dedicated modal `github` owns. `github` still has no notion `settings`
+// exists — clicking the sync status pill (`SyncStatusIndicator.vue`) only
+// fires a plain intent event, resolved into `settings`' own
+// `settingsOpened('github')` here, the same fire-an-intent/let-wiring-
+// resolve-it shape as `helpRequested` -> `helpOpened` below.
+sample({
+  clock: githubSettingsRequested,
+  fn: () => 'github' as const,
+  target: settingsOpened,
+})

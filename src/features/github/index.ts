@@ -1,11 +1,13 @@
-export { default as GitHubModal } from './ui/GitHubModal.vue'
+export { default as GitHubSyncPanel } from './ui/GitHubSyncPanel.vue'
 export { default as SyncStatusIndicator } from './ui/SyncStatusIndicator.vue'
 
 export { initGithub } from './model/connection'
 
-// GitHub sync modal open/close — reachable from `layout/ui/MoreMenu.vue`'s
-// "GitHub sync" item and from `SyncStatusIndicator.vue` itself.
-export { githubModalOpened } from './model/dialog'
+// Fired by `SyncStatusIndicator.vue`; resolved in `src/app/wiring.ts` into
+// `features/settings`' `settingsOpened('github')` — see
+// `model/settingsPanel.ts`'s own doc comment for why this is a plain intent
+// event rather than a direct cross-feature import.
+export { githubSettingsRequested } from './model/settingsPanel'
 
 // Cross-feature links wired in `src/app/wiring.ts` (documents <-> github, one
 // directional: `github` may import `@/features/documents`'s public API for

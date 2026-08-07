@@ -4,6 +4,7 @@ import { useUnit } from 'effector-vue/composition'
 import { XMarkIcon } from '@heroicons/vue/24/outline'
 
 import { useDialogFocusTrap } from '@/shared/lib/useDialog'
+import { GitHubSyncPanel } from '@/features/github'
 
 import {
   $editorFontSize,
@@ -29,7 +30,12 @@ import {
   READING_WIDTH_MAX,
   type SpellCheckLanguage,
 } from '../model/editorPreferences'
-import { $settingsOpen, settingsClosed } from '../model/dialogs'
+import {
+  $settingsOpen,
+  $settingsInitialCategory,
+  settingsClosed,
+  type SettingsCategory,
+} from '../model/dialogs'
 import {
   $showTooltips,
   showTooltipsToggled,
@@ -104,25 +110,34 @@ function handleSpellCheckLanguageChange(event: Event) {
 // narrower viewports instead of overflowing the dialog — see the
 // `.settings-nav` rule in <style> for the breakpoint.
 //
+// Three categories (down from five): Editor stays as-is; Appearance now
+// absorbs the old Layout and Documents categories too (reading width,
+// formatting toolbar, tooltips, documents panel side, scroll sync, autosave
+// interval — everything that's "how the app looks/behaves" rather than
+// "how the editor itself behaves" or "where documents sync to"); GitHub
+// sync is new, hosting the connection UI moved in from the removed
+// standalone `GitHubModal.vue` (see `GitHubSyncPanel.vue`). "Reset to
+// defaults" is no longer a category at all — it's the footer button below,
+// always reachable regardless of which category is active, rather than a
+// destination you have to navigate to.
+//
 // Category content is `v-if`-switched, not `v-show`: every category except
 // the active one is entirely absent from the DOM, so `trapFocus` above
 // (which walks every focusable element currently inside `dialogRef`) never
 // has to reason about skipping hidden-but-still-technically-focusable
 // inputs from an inactive category.
 interface Category {
-  id: 'editor' | 'appearance' | 'layout' | 'documents' | 'advanced'
+  id: SettingsCategory
   label: string
 }
 
 const categories: Category[] = [
   { id: 'editor', label: 'Editor' },
   { id: 'appearance', label: 'Appearance' },
-  { id: 'layout', label: 'Layout' },
-  { id: 'documents', label: 'Documents' },
-  { id: 'advanced', label: 'Advanced' },
+  { id: 'github', label: 'GitHub sync' },
 ]
 
-const activeCategory = ref<Category['id']>('editor')
+const activeCategory = ref<SettingsCategory>('editor')
 const tabRefs = ref<(HTMLButtonElement | null)[]>([])
 
 function setTabRef(el: unknown, index: number) {
@@ -155,10 +170,14 @@ function handleTabKeydown(event: KeyboardEvent, index: number) {
   }
 }
 
-// Always reopens on the first category — the dialog must not silently
-// resume wherever it was left several sessions ago.
+// Reopens on whichever category `settingsOpened` was fired with (the
+// general "Settings" entry points pass `undefined`, resolving to Editor;
+// `SyncStatusIndicator.vue`'s click resolves to `'github'` — see
+// `$settingsInitialCategory`'s own doc comment in `model/dialogs.ts`) —
+// never silently resumes wherever the dialog was left several sessions ago.
+const initialCategory = useUnit($settingsInitialCategory)
 watch(open, (isOpen) => {
-  if (isOpen) activeCategory.value = 'editor'
+  if (isOpen) activeCategory.value = initialCategory.value
 })
 </script>
 
@@ -174,7 +193,18 @@ watch(open, (isOpen) => {
     @keydown.esc="settingsClosed()"
     @keydown.tab="trapFocus"
   >
-    <div class="flex max-h-[85vh] w-full max-w-xl flex-col rounded-box bg-base-100 shadow-xl">
+    <!-- Fixed width AND height (not `max-h`-only, content-driven, the way
+         this dialog used to size itself) — switching categories must never
+         change the dialog's own footprint, only what scrolls inside the
+         content pane below. Still capped to the viewport (minus this
+         wrapper's own `p-4`) via `max-w`/`max-h` so narrow/short viewports
+         never get an overflowing dialog — at that point the fixed size
+         simply stops applying and the dialog shrinks to fit, the nav's own
+         `sm:` breakpoint (below) already collapsing it to a horizontal row
+         well before that becomes necessary on any real device. -->
+    <div
+      class="flex h-[600px] max-h-[calc(100dvh-2rem)] w-[640px] max-w-[calc(100dvw-2rem)] flex-col rounded-box bg-base-100 shadow-xl"
+    >
       <div class="flex shrink-0 items-center justify-between p-5 pb-4">
         <h2 id="settings-dialog-title" class="text-base font-semibold text-base-content">
           Settings
@@ -216,6 +246,11 @@ watch(open, (isOpen) => {
           </button>
         </div>
 
+        <!-- The one scrolling surface for whichever category is active —
+             fixed-size ancestors above (the dialog itself) plus this pane
+             being the only `overflow-y-auto` in the chain is what keeps
+             overflow contained here instead of growing the dialog or the
+             page. -->
         <div
           :id="`settings-panel-${activeCategory}`"
           role="tabpanel"
@@ -313,7 +348,8 @@ watch(open, (isOpen) => {
             </div>
           </div>
 
-          <!-- Appearance: reading width, formatting toolbar, tooltips -->
+          <!-- Appearance: reading width, formatting toolbar, tooltips,
+               documents panel side, scroll sync, autosave interval. -->
           <div v-else-if="activeCategory === 'appearance'" class="flex flex-col gap-4">
             <label class="flex flex-col gap-1">
               <span class="text-sm text-base-content">Reading width — {{ readingWidth }}ch</span>
@@ -349,10 +385,7 @@ watch(open, (isOpen) => {
                 @change="showTooltipsToggled()"
               />
             </label>
-          </div>
 
-          <!-- Layout: documents panel side, scroll sync -->
-          <div v-else-if="activeCategory === 'layout'" class="flex flex-col gap-4">
             <div class="flex flex-col gap-1">
               <span id="settings-drawer-side-label" class="text-sm text-base-content"
                 >Documents panel side</span
@@ -392,10 +425,7 @@ watch(open, (isOpen) => {
                 @change="scrollSyncToggled()"
               />
             </label>
-          </div>
 
-          <!-- Documents: autosave interval -->
-          <div v-else-if="activeCategory === 'documents'" class="flex flex-col gap-4">
             <label class="flex flex-col gap-1">
               <span class="text-sm text-base-content">Autosave delay — {{ autosaveMs }}ms</span>
               <input
@@ -411,22 +441,33 @@ watch(open, (isOpen) => {
             </label>
           </div>
 
-          <!-- Advanced: reset to defaults -->
-          <div v-else class="flex flex-col gap-3">
-            <p class="text-sm text-base-content/70">
-              Restores every preference in this dialog — font, spell check, layout, autosave, and
-              theme — to its default. Your documents, folders, and GitHub connection are never
-              affected.
-            </p>
-            <button
-              type="button"
-              class="btn btn-outline btn-sm self-start"
-              @click="resetRequested()"
-            >
-              Reset to defaults
-            </button>
+          <!-- GitHub sync: the connection UI moved in from the removed
+               standalone `GitHubModal.vue` — see `GitHubSyncPanel.vue`.
+               UI move only: token storage, the push engine, error
+               handling, and the persisted connection config all behave
+               exactly as before. -->
+          <div v-else class="flex flex-col gap-4">
+            <GitHubSyncPanel />
           </div>
         </div>
+      </div>
+
+      <!-- Footer: "Reset to defaults" — always reachable regardless of the
+           active category, not a fifth destination to navigate to. Still
+           the same confirmation dialog/copy/guarantee as before.
+           `/70`, not this dialog's other small-print `/60` (the spell-check
+           language note above) — measured 4.463:1 in light theme at `/60`,
+           just under the 4.5:1 text floor; `/70` measures 6.265:1 in light
+           theme (and 6.014:1+ in dark, `/60`'s already-comfortable dark
+           value only going up from a higher opacity), so this is the one
+           caption in the dialog that needs the stronger token. -->
+      <div class="flex shrink-0 items-center justify-between gap-3 border-t border-base-300 p-4">
+        <p class="text-xs text-base-content/70">
+          Preferences only — documents, folders, and your GitHub connection are untouched.
+        </p>
+        <button type="button" class="btn btn-outline btn-sm shrink-0" @click="resetRequested()">
+          Reset to defaults
+        </button>
       </div>
     </div>
   </div>

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useUnit } from 'effector-vue/composition'
-import { ArrowsPointingOutIcon } from '@heroicons/vue/24/outline'
 
 import { ThemeToggle, $showTooltips } from '@/features/settings'
 import { DrawerToggleButton, DocumentTitle } from '@/features/documents'
@@ -9,7 +8,6 @@ import { SyncStatusIndicator } from '@/features/github'
 
 import { $viewMode, viewModeChanged } from '../model/layout'
 import type { ViewMode } from '../model/layout'
-import { zenToggled } from '../model/zen'
 import MoreMenu from './MoreMenu.vue'
 
 // The drawer side ('left' | 'right') drives which end of the header the
@@ -107,21 +105,6 @@ const viewModeOptions: ViewModeOption[] = [
            flow did. -->
       <SyncStatusIndicator :show-tooltips="showTooltips" />
 
-      <!-- Zen mode's toggle-on affordance — the toggle-off affordance is a
-           separate, always-visible floating button (`ZenExitButton.vue`,
-           mounted once in `AppShell.vue`) since this entire header is
-           exactly the chrome zen mode hides, so this button can't also
-           serve as the way back out. -->
-      <button
-        type="button"
-        class="btn btn-ghost btn-xs btn-square"
-        aria-label="Enter Zen mode"
-        :title="showTooltips ? 'Zen mode' : undefined"
-        @click="zenToggled()"
-      >
-        <ArrowsPointingOutIcon class="h-3.5 w-3.5" />
-      </button>
-
       <ThemeToggle />
       <!-- Own toolbar icon (user request: no longer duplicated inside the
            More menu below — its `menuItem` prop variant is unused now, see
@@ -129,15 +112,12 @@ const viewModeOptions: ViewModeOption[] = [
            import/export pair. -->
       <ImportButton />
       <ExportMenu />
-      <!-- GitHub sync's own header icon (previously `GitHubButton`) folds
-           into the More menu below — its "GitHub sync" item dispatches the
-           exact same `githubModalOpened()` event that button used to, so
-           the feature stays fully reachable, just consolidated with
-           Settings/Shortcuts rather than each getting its own permanent
-           header icon (Import and Print each have their own dedicated
-           entry point elsewhere now — this toolbar button and `ExportMenu`'s
-           "Print / PDF" respectively — so neither needs a duplicate here
-           too). -->
+      <!-- GitHub sync's connection UI now lives inside Settings' own
+           "GitHub sync" category (see `features/github/ui/
+           GitHubSyncPanel.vue`) rather than a dedicated modal, so the More
+           menu below no longer carries its own separate entry for it —
+           `SyncStatusIndicator` above and the menu's "Settings" item are
+           both already sufficient ways in. -->
       <MoreMenu :show-tooltips="showTooltips" />
 
       <template v-if="side === 'right'">

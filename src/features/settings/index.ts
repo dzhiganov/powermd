@@ -27,12 +27,14 @@ export type { EditorFontFamily, SpellCheckLanguage } from './model/editorPrefere
 
 export {
   $settingsOpen,
+  $settingsInitialCategory,
   $helpOpen,
   settingsOpened,
   settingsClosed,
   helpOpened,
   helpClosed,
 } from './model/dialogs'
+export type { SettingsCategory } from './model/dialogs'
 
 export {
   $showTooltips,
