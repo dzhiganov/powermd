@@ -40,11 +40,35 @@ export const $oauthConfigured = createStore(CLIENT_ID !== null)
 
 /** The GitHub App's own "install on repositories" page, or `null` if
  * `VITE_GITHUB_APP_SLUG` isn't configured. Used by `ui/GitHubSyncPanel.vue`
- * to surface an install path when the connected account has the App
- * installed on zero repositories (an empty repo picker with no way out,
- * otherwise). */
+ * for two related but distinct purposes: to surface an install path when
+ * the connected account has the App installed on zero repositories (an
+ * empty repo picker with no way out, otherwise), and — after a disconnect —
+ * as the "manage repository access" link, since revoking a token
+ * (`api/github/revoke.ts`) never uninstalls the App from any repository.
+ * Visiting this same URL for an App already installed lets GitHub's own UI
+ * update which repositories it can reach, which is exactly the
+ * "installation" side of the installation-vs-authorization distinction this
+ * feature has to keep honest — see `model/connection.ts`'s
+ * `disconnectRequested` doc comment. */
 export function getAppInstallUrl(): string | null {
   return APP_SLUG !== null ? `https://github.com/apps/${APP_SLUG}/installations/new` : null
+}
+
+/** GitHub's own per-application authorization page for this App — lets the
+ * user review and manually revoke it themselves. Built from the same public
+ * client id used to start the OAuth flow (`CLIENT_ID` above; a GitHub App's
+ * client id isn't secret — see `.env.example`), or `null` if
+ * `VITE_GITHUB_APP_CLIENT_ID` isn't configured. Surfaced by
+ * `ui/GitHubSyncPanel.vue` only as a fallback, when
+ * `model/connection.ts`'s server-side revoke
+ * (`$lastDisconnectOutcome.status === 'revoke-failed'`) could not confirm
+ * the token was revoked — local state is already cleared by then either
+ * way, this is just the honest "here's how to finish the job yourself"
+ * path. */
+export function getManualRevokeUrl(): string | null {
+  return CLIENT_ID !== null
+    ? `https://github.com/settings/connections/applications/${CLIENT_ID}`
+    : null
 }
 
 // --- Sign-in: redirect out --------------------------------------------------

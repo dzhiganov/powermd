@@ -1,11 +1,12 @@
 /**
  * Thin client for this app's own `/api/github/*` serverless functions — the
- * token exchange and refresh GitHub's endpoints themselves refuse to serve
- * to a browser directly (no CORS headers on `github.com/login/oauth/*`).
- * Mirrors `lib/api.ts`'s "typed error, never log a secret" shape, though
- * there's no secret on this side of the exchange to begin with — the
- * response is an access token, the same sensitivity as a pasted PAT, and is
- * handled the same way from here on (`model/oauth.ts` hands it straight to
+ * token exchange, refresh, and revoke calls GitHub's endpoints themselves
+ * refuse to serve to a browser directly (no CORS headers on
+ * `github.com/login/oauth/*` or `api.github.com/applications/*`). Mirrors
+ * `lib/api.ts`'s "typed error, never log a secret" shape, though there's no
+ * secret on this side of the exchange to begin with — the response is an
+ * access token, the same sensitivity as a pasted PAT, and is handled the
+ * same way from here on (`model/oauth.ts` hands it straight to
  * `model/connection.ts`'s `tokenSubmitted`, same as the PAT form does).
  */
 
@@ -22,6 +23,11 @@ export interface AppTokenResult {
   expiresAt: string | null
   refreshToken: string | null
   refreshTokenExpiresAt: string | null
+}
+
+/** Matches `api/_lib/githubRevoke.ts`'s `RevokeResult` on the server. */
+export interface AppRevokeResult {
+  revoked: boolean
 }
 
 export class GitHubAppAuthError extends Error {
@@ -43,7 +49,7 @@ function errorMessageFrom(body: unknown): string {
   return 'GitHub sign-in failed.'
 }
 
-async function postJson(path: string, body: Record<string, string>): Promise<AppTokenResult> {
+async function postJson<T>(path: string, body: Record<string, string>): Promise<T> {
   let response: Response
   try {
     response = await fetch(path, {
@@ -68,18 +74,28 @@ async function postJson(path: string, body: Record<string, string>): Promise<App
   if (!response.ok) {
     throw new GitHubAppAuthError(errorMessageFrom(parsed))
   }
-  return parsed as AppTokenResult
+  return parsed as T
 }
 
 /** `POST /api/github/token` — exchanges the authorization `code` from the
  * OAuth redirect for an access token. */
 export function exchangeCodeForToken(code: string): Promise<AppTokenResult> {
-  return postJson('/api/github/token', { code })
+  return postJson<AppTokenResult>('/api/github/token', { code })
 }
 
 /** `POST /api/github/refresh` — exchanges a stored refresh token for a new
  * access token. Called only from `model/connection.ts`'s `callWithToken` on
  * a 401. */
 export function refreshAppToken(refreshToken: string): Promise<AppTokenResult> {
-  return postJson('/api/github/refresh', { refreshToken })
+  return postJson<AppTokenResult>('/api/github/refresh', { refreshToken })
+}
+
+/** `POST /api/github/revoke` — revokes a GitHub-App-issued access token on
+ * GitHub's side. Called only from `model/connection.ts`'s
+ * `disconnectRequested` handling, and only for an `'app'`-kind credential
+ * (see `lib/credentialKind.ts`) — a personal access token is never sent
+ * here, since GitHub's revoke endpoint only works for tokens this app's own
+ * GitHub App issued. */
+export function revokeAppToken(token: string): Promise<AppRevokeResult> {
+  return postJson<AppRevokeResult>('/api/github/revoke', { token })
 }

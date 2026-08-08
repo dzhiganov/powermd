@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../lib/appApi', () => ({
   refreshAppToken: vi.fn(),
+  revokeAppToken: vi.fn(),
   GitHubAppAuthError: class GitHubAppAuthError extends Error {
     constructor(message: string) {
       super(message)
@@ -191,5 +192,89 @@ describe('callWithToken', () => {
 
     await expect(callWithToken(operation)).rejects.toBeInstanceOf(GitHubReauthRequiredError)
     expect(operation).toHaveBeenCalledTimes(1) // never retried — the refresh itself never succeeded
+  })
+})
+
+describe('disconnectRequested', () => {
+  it('clears local state immediately and reports "revoked" once GitHub confirms an app-credential revoke', async () => {
+    const { disconnectRequested, credentialKindDeclared, $lastDisconnectOutcome } =
+      await import('./connection')
+    const { storeToken, getStoredToken } = await import('../lib/token')
+    const { storeConfig, getStoredConfig } = await import('../lib/config')
+    const { revokeAppToken } = await import('../lib/appApi')
+
+    storeToken('app-token')
+    credentialKindDeclared('app')
+    storeConfig({ owner: 'o', repo: 'r', branch: 'main', subfolder: '' })
+    vi.mocked(revokeAppToken).mockResolvedValueOnce({ revoked: true })
+
+    disconnectRequested()
+
+    // Local state is gone before the (mocked, still-pending) revoke call
+    // has any chance to resolve — this is the guarantee that matters most:
+    // a slow or failing network call must never delay disconnecting.
+    expect(getStoredToken()).toBeNull()
+    expect(getStoredConfig()).toBeNull()
+
+    await vi.waitFor(() => expect($lastDisconnectOutcome.getState()).toEqual({ status: 'revoked' }))
+    expect(revokeAppToken).toHaveBeenCalledExactlyOnceWith('app-token')
+  })
+
+  it('clears local state even when the GitHub revoke call throws — never traps the user in a connected state', async () => {
+    const {
+      disconnectRequested,
+      credentialKindDeclared,
+      $connectionStatus,
+      $lastDisconnectOutcome,
+    } = await import('./connection')
+    const { storeToken, getStoredToken } = await import('../lib/token')
+    const { storeAppAuthMeta, getStoredAppAuthMeta } = await import('../lib/appAuth')
+    const { getStoredCredentialKind } = await import('../lib/credentialKind')
+    const { revokeAppToken } = await import('../lib/appApi')
+
+    storeToken('app-token')
+    credentialKindDeclared('app')
+    storeAppAuthMeta({ refreshToken: 'ghr_old', expiresAt: null, refreshTokenExpiresAt: null })
+    vi.mocked(revokeAppToken).mockRejectedValueOnce(new Error('network down'))
+
+    disconnectRequested()
+
+    // The important assertion: every piece of local state this feature
+    // owns is gone synchronously, well before the rejected revoke promise
+    // has settled.
+    expect(getStoredToken()).toBeNull()
+    expect(getStoredAppAuthMeta()).toBeNull()
+    expect(getStoredCredentialKind()).toBeNull()
+    expect($connectionStatus.getState()).toBe('disconnected')
+
+    await vi.waitFor(() =>
+      expect($lastDisconnectOutcome.getState()).toEqual({ status: 'revoke-failed' }),
+    )
+  })
+
+  it('skips the revoke call entirely for a PAT credential, clearing locally with no error', async () => {
+    const { disconnectRequested, credentialKindDeclared, $lastDisconnectOutcome } =
+      await import('./connection')
+    const { storeToken, getStoredToken } = await import('../lib/token')
+    const { revokeAppToken } = await import('../lib/appApi')
+
+    storeToken('pat-token')
+    credentialKindDeclared('pat')
+
+    disconnectRequested()
+
+    expect(getStoredToken()).toBeNull()
+    expect($lastDisconnectOutcome.getState()).toEqual({ status: 'not-applicable' })
+    expect(revokeAppToken).not.toHaveBeenCalled()
+  })
+
+  it('is a silent no-op for revocation when there was no active token to begin with', async () => {
+    const { disconnectRequested, $lastDisconnectOutcome } = await import('./connection')
+    const { revokeAppToken } = await import('../lib/appApi')
+
+    disconnectRequested()
+
+    expect($lastDisconnectOutcome.getState()).toEqual({ status: 'not-applicable' })
+    expect(revokeAppToken).not.toHaveBeenCalled()
   })
 })

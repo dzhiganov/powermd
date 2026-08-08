@@ -5,9 +5,10 @@ import { clearStoredConfig, getStoredConfig, storeConfig, type SyncConfig } from
 import { normalizeSubfolder, validateSubfolder } from '../lib/path'
 import { validateToken, listBranches, GitHubAuthError } from '../lib/api'
 import { clearAppAuthMeta, getStoredAppAuthMeta, storeAppAuthMeta } from '../lib/appAuth'
-import { refreshAppToken, GitHubAppAuthError } from '../lib/appApi'
+import { refreshAppToken, revokeAppToken, GitHubAppAuthError } from '../lib/appApi'
 import {
   clearCredentialKind,
+  getStoredCredentialKind,
   storeCredentialKind,
   type CredentialKind,
 } from '../lib/credentialKind'
@@ -59,8 +60,15 @@ export const tokenSubmitted = createEvent<string>()
  * the token or from `lib/appAuth.ts`'s refresh metadata instead. */
 export const credentialKindDeclared = createEvent<CredentialKind>()
 /** Disconnect: forget the token and the sync connection, and stop syncing.
- * Never deletes anything locally or remotely — it only forgets where (and
- * with what credential) to sync next. Other model files in this feature
+ * Never deletes any document, locally or on GitHub. For an `'app'`
+ * credential, best-effort revokes the token itself on GitHub's side (see
+ * the "Disconnect: revoke on GitHub's side, then clear locally" block
+ * below) — but local state is ALWAYS cleared regardless of whether that
+ * revoke succeeds, so a network failure can never trap the user in a
+ * connected-looking state. Revoking the token does not uninstall the
+ * GitHub App from any repository — that's a separate grant the user has to
+ * remove themselves (see `model/oauth.ts`'s `getAppInstallUrl`,
+ * surfaced by `ui/GitHubSyncPanel.vue`). Other model files in this feature
  * reset their own stores on this event too. */
 export const disconnectRequested = createEvent()
 
@@ -158,6 +166,83 @@ sample({
 // Persist the token only after it validates — never store an unverified or
 // rejected token.
 sample({ clock: validateTokenFx.done, fn: ({ params }) => params, target: storeTokenFx })
+
+// --- Disconnect: revoke on GitHub's side, then clear locally ---------------
+//
+// Disconnect must never leave the user stuck in a connected-looking state
+// just because a network call failed — see this module's own file-level
+// doc comment. So the two things `disconnectRequested` does are kept
+// deliberately independent: revocation (below) is best-effort and reports
+// its outcome for the UI, while local clearing (the `sample` right after
+// this block) always runs regardless of what revocation does or how long
+// it takes.
+
+export type DisconnectOutcome =
+  | { status: 'revoked' } // an 'app' credential, and GitHub confirmed the revoke
+  | { status: 'not-applicable' } // no token, or a 'pat' credential (nothing to revoke)
+  | { status: 'revoke-failed' } // an 'app' credential, but the revoke call failed
+
+interface DisconnectSnapshot {
+  token: string
+  kind: CredentialKind | null
+}
+
+/** Captures the active token and its declared kind synchronously, in the
+ * SAME tick `disconnectRequested` fires — deliberately declared BEFORE the
+ * local-clearing `sample` below so it runs first: Effector processes
+ * same-clock subscribers in declaration order (see `$wizardRepo`'s doc
+ * comment further down for the same guarantee relied on there), so this
+ * reads `getActiveToken()`/`getStoredCredentialKind()` before
+ * `clearTokenFx`/`clearCredentialKindOnDisconnectFx` have a chance to erase
+ * them. Without this snapshot, revocation would race its own target's
+ * local-clear and could end up trying to revoke `null`. */
+const disconnectSnapshotTaken = createEvent<DisconnectSnapshot | null>()
+sample({
+  clock: disconnectRequested,
+  fn: (): DisconnectSnapshot | null => {
+    const token = getActiveToken()
+    return token === null ? null : { token, kind: getStoredCredentialKind() }
+  },
+  target: disconnectSnapshotTaken,
+})
+
+// Only ever invoked for an 'app' credential — see `lib/appApi.ts`'s
+// `revokeAppToken` doc comment for why a PAT is never sent here. Catches
+// its own failure rather than letting the effect reject, specifically so a
+// revoke failure can never propagate anywhere that would block or delay
+// the local clearing below — it only ever surfaces through
+// `$lastDisconnectOutcome`, for the UI to report honestly.
+const revokeTokenFx = createEffect(
+  async (snapshot: DisconnectSnapshot): Promise<DisconnectOutcome> => {
+    try {
+      await revokeAppToken(snapshot.token)
+      return { status: 'revoked' }
+    } catch {
+      return { status: 'revoke-failed' }
+    }
+  },
+)
+
+sample({
+  clock: disconnectSnapshotTaken,
+  filter: (snapshot): snapshot is DisconnectSnapshot =>
+    snapshot !== null && snapshot.kind === 'app',
+  target: revokeTokenFx,
+})
+
+/** The outcome of the most recent disconnect's revocation attempt, for
+ * `ui/GitHubSyncPanel.vue` to report honestly — `null` before any disconnect
+ * has happened this session. Set synchronously to `'not-applicable'` for a
+ * PAT (or already-tokenless) disconnect so the UI never shows a stale
+ * "revoking…" state waiting on an effect that was never even started; reset
+ * on the next `tokenSubmitted` so a fresh connection doesn't keep showing a
+ * previous session's disconnect outcome. */
+export const $lastDisconnectOutcome = createStore<DisconnectOutcome | null>(null)
+  .on(disconnectSnapshotTaken, (_, snapshot) =>
+    snapshot !== null && snapshot.kind === 'app' ? null : { status: 'not-applicable' },
+  )
+  .on(revokeTokenFx.doneData, (_, outcome) => outcome)
+  .reset(tokenSubmitted)
 
 // Disconnecting forgets the token, any GitHub App refresh-token metadata,
 // the declared credential kind, and the sync connection (the last of those

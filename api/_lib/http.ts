@@ -6,6 +6,7 @@
  */
 import { MissingEnvError } from './env'
 import { GitHubTokenExchangeError } from './githubToken'
+import { GitHubRevokeError } from './githubRevoke'
 
 /** A request that fails validation before ever reaching GitHub — bad JSON,
  * a missing/malformed field. Always a 400, and the message is always safe
@@ -79,6 +80,9 @@ export function errorResponse(error: unknown): Response {
   }
   if (error instanceof GitHubTokenExchangeError) {
     return jsonResponse(502, { error: 'github_token_exchange_failed', message: error.message })
+  }
+  if (error instanceof GitHubRevokeError) {
+    return jsonResponse(502, { error: 'github_revoke_failed', message: error.message })
   }
   return jsonResponse(500, { error: 'internal_error', message: 'Something went wrong.' })
 }

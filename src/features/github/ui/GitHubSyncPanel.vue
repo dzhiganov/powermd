@@ -11,6 +11,7 @@ import {
   $connectionErrorMessage,
   $maskedToken,
   $syncConnection,
+  $lastDisconnectOutcome,
   $wizardRepo,
   $wizardBranch,
   $wizardBranches,
@@ -26,7 +27,12 @@ import {
   connectSubmitted,
 } from '../model/connection'
 import { $repos, $reposLoading, $reposError, reposRequested } from '../model/repos'
-import { $oauthConfigured, getAppInstallUrl, signInRequested } from '../model/oauth'
+import {
+  $oauthConfigured,
+  getAppInstallUrl,
+  getManualRevokeUrl,
+  signInRequested,
+} from '../model/oauth'
 import {
   $syncStatus,
   $syncError,
@@ -51,9 +57,11 @@ const status = useUnit($connectionStatus)
 const login = useUnit($authenticatedLogin)
 const errorMessage = useUnit($connectionErrorMessage)
 const maskedToken = useUnit($maskedToken)
+const lastDisconnectOutcome = useUnit($lastDisconnectOutcome)
 
 const oauthConfigured = useUnit($oauthConfigured)
 const installUrl = getAppInstallUrl()
+const manualRevokeUrl = getManualRevokeUrl()
 
 const repos = useUnit($repos)
 const reposLoading = useUnit($reposLoading)
@@ -134,6 +142,17 @@ function submitConnect() {
 }
 
 const errorInk = computed(() => ({ color: ink('--color-error') }))
+const infoInk = computed(() => ({ color: ink('--color-info') }))
+
+// A stale/broken connection (an expired sign-in, a validation error) still
+// has real state on file — a stored token, or a stored sync target — and
+// the user needs an obvious way to start over rather than getting stuck.
+// `'disconnected'` itself is excluded: by definition there's nothing left
+// to disconnect there, except in the edge case a sync target survived
+// (defensive — `disconnectRequested` always clears `$syncConnection` too).
+const showResetButton = computed(
+  () => status.value !== 'disconnected' || syncConnection.value !== null,
+)
 
 const syncErrorMessage = computed(() => syncError.value ?? importError.value)
 
@@ -163,6 +182,72 @@ const lastSyncLabel = computed(() => {
       Your GitHub sign-in expired. Sign in again to continue syncing — nothing was lost, sync will
       resume where it left off.
     </p>
+
+    <!-- A stale connection (expired sign-in, or a validation error) isn't
+         the same as never having connected — surface an explicit way to
+         start over rather than leaving the user stuck. -->
+    <div v-if="showResetButton" class="flex items-center justify-between gap-2">
+      <span class="text-xs text-base-content/60">
+        {{
+          status === 'reauth-required'
+            ? 'Still signed in to a stale session.'
+            : 'A previous connection is still on file.'
+        }}
+      </span>
+      <button
+        type="button"
+        class="btn btn-ghost btn-xs"
+        aria-label="Remove token, stop syncing, and disconnect"
+        @click="disconnectRequested()"
+      >
+        Disconnect
+      </button>
+    </div>
+
+    <!-- The result of the most recent disconnect's revoke attempt (nothing
+         shown for a PAT disconnect, or before any disconnect has happened
+         this session — see `$lastDisconnectOutcome`'s doc comment). Always
+         paired with the installation-vs-authorization explanation: revoking
+         the token never uninstalls the App from any repository, that's a
+         separate grant. -->
+    <div
+      v-if="
+        status === 'disconnected' &&
+        lastDisconnectOutcome !== null &&
+        lastDisconnectOutcome.status !== 'not-applicable'
+      "
+      class="flex flex-col gap-1 rounded-box border border-base-300 bg-base-200 p-2"
+    >
+      <p v-if="lastDisconnectOutcome.status === 'revoked'" class="text-xs text-base-content/70">
+        GitHub access revoked.
+      </p>
+      <p v-else class="text-xs" :style="errorInk" role="alert">
+        Disconnected locally, but GitHub couldn't confirm the token was revoked.
+        <a
+          v-if="manualRevokeUrl !== null"
+          :href="manualRevokeUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="underline"
+          :style="infoInk"
+        >
+          Revoke it manually on GitHub
+        </a>
+      </p>
+      <p class="text-xs text-base-content/70">
+        This doesn't remove the app's access to your repositories — that's a separate grant.
+        <a
+          v-if="installUrl !== null"
+          :href="installUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="underline"
+          :style="infoInk"
+        >
+          Manage repository access
+        </a>
+      </p>
+    </div>
 
     <button
       v-if="oauthConfigured"
