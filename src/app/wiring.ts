@@ -42,6 +42,7 @@ import {
 import { initTransfer, markdownFileImported, exportSourceChanged } from '@/features/transfer'
 import {
   initGithub,
+  initGithubOAuth,
   documentsSnapshotChanged,
   foldersSnapshotChanged,
   importCompleted,
@@ -302,6 +303,17 @@ sample({ clock: helpRequested, target: helpOpened })
 // replaced the old per-file "Save/Commit to GitHub" flow this section used
 // to wire — see `features/github/model/sync.ts`'s doc comment for the full
 // design.
+
+// Handle a GitHub App authorize-redirect landing here BEFORE re-validating
+// any stored token — see `features/github/model/oauth.ts`'s `initGithubOAuth`
+// doc comment for why this is a no-op on every load except that one, and
+// why it strips `code`/`state` from the URL immediately regardless of
+// outcome. Ordering relative to `initGithub()` below doesn't affect
+// correctness (a fresh callback has no stored token yet; a stale one just
+// gets re-validated and then overwritten a moment later once the exchange
+// resolves), but running it first keeps "handle the redirect" and "restore
+// an existing session" in the order a reader would expect.
+initGithubOAuth()
 
 // Re-validate any stored token on startup — same "plain function called once"
 // shape as `initDocuments`/`initTransfer` above. `github`'s own

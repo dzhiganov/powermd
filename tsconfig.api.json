@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.api.tsbuildinfo",
+    "target": "es2023",
+    // DOM only, not `["ES2023", "node"]` types — these run as Vercel Edge
+    // Functions (standard `Request`/`Response`, real browser-shaped
+    // globals), and `@types/node`'s own `fetch`/`Request`/`Response`
+    // declarations collide with DOM's, the same class of "two libs can't
+    // coexist in one program" conflict `tsconfig.worker.json` documents for
+    // the WebWorker lib. `types: []` keeps `@types/node` out entirely; the
+    // one Node-shaped global this code needs (`process.env`) gets a minimal
+    // local ambient declaration instead — see `api/_lib/env.ts`.
+    "lib": ["ES2023", "DOM"],
+    "types": [],
+    "skipLibCheck": true,
+    "strict": true,
+
+    /* Bundler mode — Vercel Edge Functions are bundled (esbuild), not run
+       as plain Node/CommonJS modules, same reasoning tsconfig.app.json's
+       own "Bundler mode" section documents. */
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["api/**/*.ts"],
+  "exclude": ["api/**/*.test.ts"]
+}

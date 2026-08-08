@@ -187,6 +187,22 @@ export default defineConfig({
             handler: 'NetworkOnly',
           },
           {
+            // Same guarantee, for this app's own `/api/*` serverless
+            // functions (the GitHub App OAuth token exchange/refresh — see
+            // `api/github/token.ts` and `api/github/refresh.ts`). A cached
+            // token exchange would be both broken (replaying a one-time
+            // authorization `code` never works twice) and a security
+            // problem (an old response served instead of hitting the
+            // exchange fresh), so this is excluded exactly as explicitly as
+            // `api.github.com` above rather than trusted to fall through to
+            // the same-origin script/style rule below (which it wouldn't
+            // actually match — a `fetch()` POST has no `script`/`style`
+            // `request.destination` — but explicit beats implicit here).
+            urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
+              sameOrigin && url.pathname.startsWith('/api/'),
+            handler: 'NetworkOnly',
+          },
+          {
             // Everything reachable here already missed the precache route
             // above (Workbox checks precache matches first) — in practice
             // this is exactly the `assets/lazy/*.js` mermaid/grammar chunks

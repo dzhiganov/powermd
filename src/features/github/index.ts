@@ -3,6 +3,11 @@ export { default as SyncStatusIndicator } from './ui/SyncStatusIndicator.vue'
 
 export { initGithub } from './model/connection'
 
+// GitHub App "Sign in with GitHub" — `initGithubOAuth` is called once from
+// `src/app/wiring.ts`, same "plain function called once at startup" shape
+// as `initGithub` right above.
+export { initGithubOAuth } from './model/oauth'
+
 // Fired by `SyncStatusIndicator.vue`; resolved in `src/app/wiring.ts` into
 // `features/settings`' `settingsOpened('sync')` — see
 // `model/settingsPanel.ts`'s own doc comment for why this is a plain intent

@@ -25,6 +25,7 @@ import {
   connectSubmitted,
 } from '../model/connection'
 import { $repos, $reposLoading, $reposError, reposRequested } from '../model/repos'
+import { $oauthConfigured, getAppInstallUrl, signInRequested } from '../model/oauth'
 import {
   $syncStatus,
   $syncError,
@@ -49,6 +50,9 @@ const status = useUnit($connectionStatus)
 const login = useUnit($authenticatedLogin)
 const errorMessage = useUnit($connectionErrorMessage)
 const maskedToken = useUnit($maskedToken)
+
+const oauthConfigured = useUnit($oauthConfigured)
+const installUrl = getAppInstallUrl()
 
 const repos = useUnit($repos)
 const reposLoading = useUnit($reposLoading)
@@ -79,6 +83,13 @@ function submitToken() {
   tokenSubmitted(value)
   tokenInput.value = ''
 }
+
+// The PAT form is secondary/advanced when a GitHub App is configured on
+// this deployment — collapsed behind a toggle so "Sign in with GitHub" is
+// the obvious primary path. When no App is configured at all (a dev/preview
+// deployment with no `VITE_GITHUB_APP_CLIENT_ID`), the PAT form is the only
+// option there is, so it's shown directly rather than behind an extra click.
+const showPatForm = ref(!oauthConfigured.value)
 
 // Load the repo list whenever the connect wizard becomes reachable with no
 // repos loaded yet (first time this category is opened after the token
@@ -132,15 +143,54 @@ const lastSyncLabel = computed(() => {
 </script>
 
 <template>
-  <!-- Disconnected / error: the token form. -->
-  <div v-if="status === 'disconnected' || status === 'error'" class="flex flex-col gap-3">
+  <!-- Disconnected / error / reauth-required: sign in again. -->
+  <div
+    v-if="status === 'disconnected' || status === 'error' || status === 'reauth-required'"
+    class="flex flex-col gap-3"
+  >
     <p class="text-sm text-base-content/70">
       Every document and folder syncs automatically to a repository — one-way, this app is always
-      the source of truth. Create a fine-grained personal access token with Contents (Read and
-      write) on only the repository you intend to sync here — that way a leak has a bounded blast
-      radius.
+      the source of truth.
     </p>
-    <form class="flex flex-col gap-2" @submit.prevent="submitToken">
+
+    <p v-if="status === 'reauth-required'" class="text-xs" :style="errorInk" role="alert">
+      Your GitHub sign-in expired. Sign in again to continue syncing — nothing was lost, sync will
+      resume where it left off.
+    </p>
+
+    <button
+      v-if="oauthConfigured"
+      type="button"
+      class="btn btn-primary btn-sm self-start"
+      @click="signInRequested()"
+    >
+      Sign in with GitHub
+    </button>
+    <p
+      v-if="status === 'error' && !showPatForm && errorMessage !== null"
+      class="text-xs"
+      :style="errorInk"
+    >
+      {{ errorMessage }}
+    </p>
+
+    <button
+      v-if="oauthConfigured"
+      type="button"
+      class="btn btn-ghost btn-xs self-start"
+      :aria-expanded="showPatForm"
+      @click="showPatForm = !showPatForm"
+    >
+      {{
+        showPatForm ? 'Hide personal access token option' : 'Use a personal access token instead'
+      }}
+    </button>
+
+    <form v-if="showPatForm" class="flex flex-col gap-2" @submit.prevent="submitToken">
+      <p class="text-sm text-base-content/70">
+        Create a fine-grained personal access token with Contents (Read and write) on only the
+        repository you intend to sync here — that way a leak has a bounded blast radius.
+      </p>
       <label class="flex flex-col gap-1">
         <span class="text-sm text-base-content">Personal access token</span>
         <input
@@ -193,9 +243,36 @@ const lastSyncLabel = computed(() => {
 
     <div class="divider my-0"></div>
 
+    <!-- No sync target chosen yet, and the token can't see any repository at
+         all: an empty dropdown offering nothing isn't a real option — surface
+         the GitHub App's install page instead (this is the expected state
+         right after a fresh "Sign in with GitHub" before the App has been
+         installed on any repository). -->
+    <div
+      v-if="syncConnection === null && !reposLoading && reposError === null && repos.length === 0"
+      class="flex flex-col gap-2"
+    >
+      <p class="text-sm text-base-content/70">
+        No repositories available yet. If the GitHub App isn't installed on any repository, install
+        it on the ones you want to sync, then refresh.
+      </p>
+      <a
+        v-if="installUrl !== null"
+        :href="installUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="btn btn-sm btn-outline self-start"
+      >
+        Install GitHub App
+      </a>
+      <button type="button" class="btn btn-ghost btn-xs self-start" @click="reposRequested()">
+        I've installed it — refresh
+      </button>
+    </div>
+
     <!-- No sync target chosen yet: the "pick a repo and go" wizard. -->
     <form
-      v-if="syncConnection === null"
+      v-else-if="syncConnection === null"
       class="flex flex-col gap-3"
       @submit.prevent="submitConnect"
     >

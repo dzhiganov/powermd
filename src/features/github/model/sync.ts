@@ -19,7 +19,14 @@ import { sha256Hex } from '../lib/hash'
 import { assignPaths } from '../lib/pathAssignment'
 import { decideSyncSchedule } from '../lib/schedule'
 import type { SyncConfig } from '../lib/config'
-import { $syncConnection, syncConnected, disconnectRequested, getActiveToken } from './connection'
+import {
+  $connectionStatus,
+  $syncConnection,
+  callWithToken,
+  disconnectRequested,
+  syncConnected,
+  type ConnectionStatus,
+} from './connection'
 import {
   $documentsSnapshot,
   $foldersSnapshot,
@@ -316,9 +323,6 @@ interface RunSyncParams {
 
 const runSyncFx = createEffect(
   async ({ connection, docs }: RunSyncParams): Promise<{ id: string; origin: GitHubOrigin }[]> => {
-    const token = getActiveToken()
-    if (token === null) throw new Error('Not connected to GitHub.')
-
     // Only documents that already carry a valid origin *for this
     // connection* are push candidates — anything still missing one is
     // picked up by the very next sync cycle once Phase 1 (which runs
@@ -335,7 +339,10 @@ const runSyncFx = createEffect(
     )
 
     if (dirty.length === 0) return []
-    return pushBatch(token, connection, dirty)
+    // `callWithToken` (`./connection.ts`) gives the whole batch one
+    // refresh-and-retry on a 401 before giving up — same contract as every
+    // other network-calling effect in this feature.
+    return callWithToken((token) => pushBatch(token, connection, dirty))
   },
 )
 
@@ -513,8 +520,18 @@ export const $rateLimitedUntil = createStore<Date | null>(null)
   .on(runSyncFx.done, () => null)
   .reset(disconnectRequested)
 
-function canRunNow(connection: SyncConfig | null, rateLimitedUntil: Date | null): boolean {
+function canRunNow(
+  connection: SyncConfig | null,
+  rateLimitedUntil: Date | null,
+  connectionStatus: ConnectionStatus,
+): boolean {
   if (connection === null) return false
+  // A token that needs re-authentication cannot push — trying anyway would
+  // just fail the same 401 (already-attempted refresh included) on every
+  // interval tick until the user signs in again. `callWithToken` itself only
+  // ever retries once per call; THIS is what stops the scheduler from
+  // calling it again and again in the meantime.
+  if (connectionStatus === 'reauth-required') return false
   if (rateLimitedUntil === null) return true
   return Date.now() >= rateLimitedUntil.getTime()
 }
@@ -526,9 +543,10 @@ sample({
     docs: $documentsSnapshot,
     pending: runSyncFx.pending,
     rateLimitedUntil: $rateLimitedUntil,
+    connectionStatus: $connectionStatus,
   },
-  filter: ({ connection, pending, rateLimitedUntil }) =>
-    !pending && canRunNow(connection, rateLimitedUntil),
+  filter: ({ connection, pending, rateLimitedUntil, connectionStatus }) =>
+    !pending && canRunNow(connection, rateLimitedUntil, connectionStatus),
   fn: ({ connection, docs }): RunSyncParams => ({ connection: connection as SyncConfig, docs }),
   target: runSyncFx,
 })
@@ -542,11 +560,26 @@ sample({
     docs: $documentsSnapshot,
     queued: $rerunQueued,
     rateLimitedUntil: $rateLimitedUntil,
+    connectionStatus: $connectionStatus,
   },
-  filter: ({ connection, queued, rateLimitedUntil }) =>
-    queued && canRunNow(connection, rateLimitedUntil),
+  filter: ({ connection, queued, rateLimitedUntil, connectionStatus }) =>
+    queued && canRunNow(connection, rateLimitedUntil, connectionStatus),
   fn: ({ connection, docs }): RunSyncParams => ({ connection: connection as SyncConfig, docs }),
   target: runSyncFx,
+})
+
+// Once the user signs in again after a `reauth-required` state (the same
+// `tokenSubmitted` -> `validateTokenFx.done` path both the PAT form and the
+// GitHub App callback go through — see `model/connection.ts` and
+// `model/oauth.ts`) — immediately try any queued work rather than leaving it
+// stranded until the next unrelated edit. Harmless before a sync connection
+// has ever been chosen too: `canRunNow` above already no-ops on
+// `connection === null`.
+sample({
+  clock: $connectionStatus,
+  filter: (status) => status === 'connected',
+  fn: () => undefined,
+  target: syncQueued,
 })
 
 // Once a rate limit clears, automatically try the queued work rather than

@@ -3,7 +3,9 @@ import { createEffect, createEvent, createStore, sample } from 'effector'
 import { clearStoredToken, getStoredToken, maskToken, storeToken } from '../lib/token'
 import { clearStoredConfig, getStoredConfig, storeConfig, type SyncConfig } from '../lib/config'
 import { normalizeSubfolder, validateSubfolder } from '../lib/path'
-import { validateToken, listBranches } from '../lib/api'
+import { validateToken, listBranches, GitHubAuthError } from '../lib/api'
+import { clearAppAuthMeta, getStoredAppAuthMeta, storeAppAuthMeta } from '../lib/appAuth'
+import { refreshAppToken, GitHubAppAuthError } from '../lib/appApi'
 import type { GitHubRepo } from './types'
 
 /**
@@ -23,9 +25,19 @@ import type { GitHubRepo } from './types'
  *    `$syncConnection` — not `$connectionStatus` — is what `model/sync.ts`
  *    and `model/import.ts` actually key their work off of: a validated
  *    token with no chosen repo yet does nothing.
+ *
+ * Also owns `callWithToken` (bottom of this file) — the refresh-on-401
+ * wrapper every network-calling effect in this feature (`model/sync.ts`,
+ * `model/repos.ts`, `model/import.ts`, and this file's own
+ * `fetchBranchesFx`) goes through instead of calling `getActiveToken`
+ * directly. It lives here rather than its own module because it needs to
+ * both read `getActiveToken` and fire `reauthRequired` into
+ * `$connectionStatus`, and putting it in a separate file that either side
+ * imports from would make a cycle with this one either way.
  */
 
-export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
+export type ConnectionStatus =
+  'disconnected' | 'connecting' | 'connected' | 'error' | 'reauth-required'
 
 // --- Public events: token ---------------------------------------------------
 
@@ -36,6 +48,15 @@ export const tokenSubmitted = createEvent<string>()
  * with what credential) to sync next. Other model files in this feature
  * reset their own stores on this event too. */
 export const disconnectRequested = createEvent()
+
+/** A GitHub-App-connected session's access token expired AND could not be
+ * refreshed (no refresh token stored, the refresh token itself expired, or
+ * the refresh call failed) — fired by `callWithToken` at the bottom of this
+ * file. Unlike `disconnectRequested`, this deliberately does NOT clear
+ * `$syncConnection`: the repo/branch/subfolder choice is still valid, only
+ * the credential needs replacing, so a fresh sign-in resumes syncing to the
+ * same place rather than re-running the connect wizard. */
+export const reauthRequired = createEvent()
 
 // --- Public events: the connect wizard --------------------------------------
 
@@ -59,6 +80,16 @@ const validateTokenFx = createEffect((token: string) => validateToken(token))
 const storeTokenFx = createEffect((token: string) => storeToken(token))
 const clearTokenFx = createEffect(() => clearStoredToken())
 
+// Forgets the credential without forgetting the sync target — see
+// `reauthRequired`'s own doc comment above for why this stops short of
+// `clearTokenFx`+`clearConfigFx` (that pairing is `disconnectRequested`'s
+// job, further down).
+const clearCredentialOnReauthFx = createEffect(() => {
+  clearStoredToken()
+  clearAppAuthMeta()
+})
+sample({ clock: reauthRequired, target: clearCredentialOnReauthFx })
+
 // --- Stores: token -------------------------------------------------------
 
 export const $connectionStatus = createStore<ConnectionStatus>('disconnected')
@@ -66,10 +97,11 @@ export const $connectionStatus = createStore<ConnectionStatus>('disconnected')
   .on(validateTokenFx.done, () => 'connected')
   .on(validateTokenFx.fail, () => 'error')
   .on(disconnectRequested, () => 'disconnected')
+  .on(reauthRequired, () => 'reauth-required')
 
 export const $authenticatedLogin = createStore<string | null>(null)
   .on(validateTokenFx.done, (_, { result }) => result.login)
-  .on([validateTokenFx.fail, disconnectRequested], () => null)
+  .on([validateTokenFx.fail, disconnectRequested, reauthRequired], () => null)
 
 /**
  * A short, actionable message for the current failure, or `null`. Distinct
@@ -86,7 +118,7 @@ export const $connectionErrorMessage = createStore<string | null>(null)
  * raw value. */
 export const $maskedToken = createStore<string | null>(null)
   .on(validateTokenFx.done, (_, { params }) => maskToken(params))
-  .on(disconnectRequested, () => null)
+  .on([disconnectRequested, reauthRequired], () => null)
 
 function describeConnectionError(error: unknown): string {
   // Every typed error from `lib/api.ts` has a safe, specific, token-free
@@ -109,8 +141,11 @@ sample({
 // rejected token.
 sample({ clock: validateTokenFx.done, fn: ({ params }) => params, target: storeTokenFx })
 
-// Disconnecting forgets the token and the sync connection.
-sample({ clock: disconnectRequested, target: clearTokenFx })
+// Disconnecting forgets the token, any GitHub App refresh-token metadata,
+// and the sync connection (the last of those further down, alongside
+// `$syncConnection`'s own `.reset`).
+const clearAppAuthOnDisconnectFx = createEffect(() => clearAppAuthMeta())
+sample({ clock: disconnectRequested, target: [clearTokenFx, clearAppAuthOnDisconnectFx] })
 
 // --- Token access for sibling model files ---------------------------------
 
@@ -152,9 +187,7 @@ export const $wizardSubfolderError = $wizardSubfolder.map((value) =>
 )
 
 const fetchBranchesFx = createEffect((repo: GitHubRepo): Promise<string[]> => {
-  const token = getActiveToken()
-  if (token === null) return Promise.reject(new Error('Not connected to GitHub.'))
-  return listBranches(token, repo.owner, repo.name)
+  return callWithToken((token) => listBranches(token, repo.owner, repo.name))
 })
 
 sample({ clock: repoPicked, target: fetchBranchesFx })
@@ -249,5 +282,101 @@ export function initGithub(): void {
   const stored = getStoredToken()
   if (stored !== null) {
     tokenSubmitted(stored)
+  }
+}
+
+// --- Auth retry (refresh-on-401) --------------------------------------------
+//
+// GitHub App user tokens may be configured to expire (8 hours, with a
+// refresh token) or not — this app has to work correctly either way. A
+// personal access token never expires this way at all. `callWithToken` is
+// the one place that decides what a 401 means and what to do about it, so
+// `model/sync.ts`, `model/repos.ts`, `model/import.ts`, and this file's own
+// `fetchBranchesFx` above all get the same behavior for free rather than
+// each re-implementing it.
+
+/** Surfaced (via `describeSyncError`/`$reposError`/`$importError`, which all
+ * already just render `error.message`) when a 401 could not be resolved by
+ * one refresh attempt — no refresh token to try (a PAT, or a GitHub App
+ * connection with expiration disabled), the refresh token itself expired,
+ * or the refresh call failed. `reauthRequired` has already fired by the time
+ * this is thrown (see `callWithToken` below), so `$connectionStatus` is
+ * already `'reauth-required'` for the UI to react to alongside this
+ * message. */
+export class GitHubReauthRequiredError extends Error {
+  constructor() {
+    super('Your GitHub sign-in expired. Sign in again to continue syncing.')
+    this.name = 'GitHubReauthRequiredError'
+  }
+}
+
+// Concurrent 401s (e.g. a push and a repo-list fetch failing in the same
+// moment) share one in-flight refresh rather than each starting their own —
+// GitHub App refresh tokens are typically single-use (using one invalidates
+// it and issues a new one), so a second concurrent refresh call would race
+// the first and fail.
+let refreshInFlight: Promise<string> | null = null
+
+async function performRefresh(): Promise<string> {
+  const meta = getStoredAppAuthMeta()
+  if (meta === null) throw new GitHubReauthRequiredError()
+
+  let result
+  try {
+    result = await refreshAppToken(meta.refreshToken)
+  } catch (error) {
+    throw error instanceof GitHubAppAuthError ? new GitHubReauthRequiredError() : error
+  }
+
+  storeToken(result.accessToken)
+  if (result.refreshToken !== null) {
+    storeAppAuthMeta({
+      refreshToken: result.refreshToken,
+      expiresAt: result.expiresAt !== null ? new Date(result.expiresAt).getTime() : null,
+      refreshTokenExpiresAt:
+        result.refreshTokenExpiresAt !== null
+          ? new Date(result.refreshTokenExpiresAt).getTime()
+          : null,
+    })
+  } else {
+    clearAppAuthMeta()
+  }
+  return result.accessToken
+}
+
+function refreshOnce(): Promise<string> {
+  if (refreshInFlight === null) {
+    refreshInFlight = performRefresh().finally(() => {
+      refreshInFlight = null
+    })
+  }
+  return refreshInFlight
+}
+
+/**
+ * Runs `operation` with the current access token. On a `GitHubAuthError`
+ * (401), attempts exactly ONE refresh (deduped across concurrent callers via
+ * `refreshOnce`) and retries `operation` once with the fresh token. If that
+ * retry also fails, or there was nothing to refresh in the first place,
+ * `reauthRequired` fires — clearing the stored credential and moving
+ * `$connectionStatus` to `'reauth-required'` — and a `GitHubReauthRequiredError`
+ * propagates to the caller instead of retrying further; nothing above this
+ * function loops or keeps hammering GitHub with an expired token.
+ */
+export async function callWithToken<T>(operation: (token: string) => Promise<T>): Promise<T> {
+  const token = getActiveToken()
+  if (token === null) throw new Error('Not connected to GitHub.')
+
+  try {
+    return await operation(token)
+  } catch (error) {
+    if (!(error instanceof GitHubAuthError)) throw error
+    try {
+      const freshToken = await refreshOnce()
+      return await operation(freshToken)
+    } catch {
+      reauthRequired()
+      throw new GitHubReauthRequiredError()
+    }
   }
 }

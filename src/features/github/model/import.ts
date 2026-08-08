@@ -6,7 +6,7 @@ import type { GitHubOrigin } from '@/features/documents'
 import { getTree, getFileContent } from '../lib/api'
 import { sha256Hex } from '../lib/hash'
 import type { SyncConfig } from '../lib/config'
-import { syncConnected, getActiveToken } from './connection'
+import { callWithToken, syncConnected } from './connection'
 import { $documentsSnapshot } from './snapshot'
 
 /**
@@ -59,66 +59,71 @@ interface ImportResult {
   truncated: boolean
 }
 
-const importFx = createEffect(async ({ config, docs }: ImportParams): Promise<ImportResult> => {
-  const token = getActiveToken()
-  if (token === null) throw new Error('Not connected to GitHub.')
-
-  const { entries, truncated } = await getTree(token, config.owner, config.repo, config.branch)
-  const prefix = config.subfolder === '' ? '' : `${config.subfolder}/`
-  const markdownEntries = entries.filter(
-    (entry) => entry.type === 'blob' && isMarkdownPath(entry.path) && entry.path.startsWith(prefix),
-  )
-
-  const alreadyLinkedPaths = new Set(
-    docs
-      .map((doc) => doc.origin)
-      .filter(
-        (origin): origin is GitHubOrigin =>
-          origin !== null &&
-          origin.owner === config.owner &&
-          origin.repo === config.repo &&
-          origin.branch === config.branch,
-      )
-      .map((origin) => origin.path),
-  )
-
-  const toImport = markdownEntries.filter((entry) => !alreadyLinkedPaths.has(entry.path))
-
-  const imported: BulkImportDoc[] = []
-  for (const entry of toImport) {
-    // Sequential, not `Promise.all` — a repo with hundreds of markdown files
-    // would otherwise fire hundreds of concurrent requests at once and blow
-    // through the rate limit immediately; a plain `getFileContent` failure
-    // here (network, too-large, a mid-import rate limit) fails the whole
-    // import and is surfaced as one actionable error rather than a partial,
-    // silently-incomplete import.
-    const fetched = await getFileContent(
-      token,
-      config.owner,
-      config.repo,
-      entry.path,
-      config.branch,
+// The whole body runs inside `callWithToken` (`./connection.ts`) — a 401 on
+// ANY request in this sequence (the tree read, or any one file's content
+// fetch) aborts the sequence, gets one refresh-and-retry of the WHOLE
+// import against a fresh token, and re-lists the tree from scratch rather
+// than trying to resume mid-file-list.
+const importFx = createEffect(({ config, docs }: ImportParams): Promise<ImportResult> => {
+  return callWithToken(async (token) => {
+    const { entries, truncated } = await getTree(token, config.owner, config.repo, config.branch)
+    const prefix = config.subfolder === '' ? '' : `${config.subfolder}/`
+    const markdownEntries = entries.filter(
+      (entry) =>
+        entry.type === 'blob' && isMarkdownPath(entry.path) && entry.path.startsWith(prefix),
     )
-    const content = fetched.content
-    const relPath = entry.path.slice(prefix.length)
-    const slashIndex = relPath.lastIndexOf('/')
-    const dirPath = slashIndex === -1 ? null : relPath.slice(0, slashIndex)
-    const filename = slashIndex === -1 ? relPath : relPath.slice(slashIndex + 1)
-    const hash = await sha256Hex(content)
-    imported.push({
-      title: stripExtension(filename),
-      content,
-      dirPath,
-      origin: {
-        owner: config.owner,
-        repo: config.repo,
-        branch: config.branch,
-        path: entry.path,
-        syncedHash: hash,
-      },
-    })
-  }
-  return { imported, truncated }
+
+    const alreadyLinkedPaths = new Set(
+      docs
+        .map((doc) => doc.origin)
+        .filter(
+          (origin): origin is GitHubOrigin =>
+            origin !== null &&
+            origin.owner === config.owner &&
+            origin.repo === config.repo &&
+            origin.branch === config.branch,
+        )
+        .map((origin) => origin.path),
+    )
+
+    const toImport = markdownEntries.filter((entry) => !alreadyLinkedPaths.has(entry.path))
+
+    const imported: BulkImportDoc[] = []
+    for (const entry of toImport) {
+      // Sequential, not `Promise.all` — a repo with hundreds of markdown
+      // files would otherwise fire hundreds of concurrent requests at once
+      // and blow through the rate limit immediately; a plain
+      // `getFileContent` failure here (network, too-large, a mid-import
+      // rate limit) fails the whole import and is surfaced as one
+      // actionable error rather than a partial, silently-incomplete import.
+      const fetched = await getFileContent(
+        token,
+        config.owner,
+        config.repo,
+        entry.path,
+        config.branch,
+      )
+      const content = fetched.content
+      const relPath = entry.path.slice(prefix.length)
+      const slashIndex = relPath.lastIndexOf('/')
+      const dirPath = slashIndex === -1 ? null : relPath.slice(0, slashIndex)
+      const filename = slashIndex === -1 ? relPath : relPath.slice(slashIndex + 1)
+      const hash = await sha256Hex(content)
+      imported.push({
+        title: stripExtension(filename),
+        content,
+        dirPath,
+        origin: {
+          owner: config.owner,
+          repo: config.repo,
+          branch: config.branch,
+          path: entry.path,
+          syncedHash: hash,
+        },
+      })
+    }
+    return { imported, truncated }
+  })
 })
 
 /** Output: the batch of documents to create — `src/app/wiring.ts` samples
