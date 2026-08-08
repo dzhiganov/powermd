@@ -4,10 +4,13 @@ import {
   EllipsisHorizontalIcon,
   Cog6ToothIcon,
   QuestionMarkCircleIcon,
+  InformationCircleIcon,
 } from '@heroicons/vue/24/outline'
 
 import { useDialogFocusTrap } from '@/shared/lib/useDialog'
 import { settingsOpened, helpOpened } from '@/features/settings'
+
+import { aboutOpened } from '../model/dialogs'
 
 // `showTooltips` comes in as a prop rather than a direct
 // `@/features/settings` import for the tooltip text specifically — this
@@ -70,6 +73,11 @@ function handleShortcuts() {
   helpOpened()
 }
 
+function handleAbout() {
+  closeMenu()
+  aboutOpened()
+}
+
 function handleEscape() {
   closeMenu()
   triggerRef.value?.focus()
@@ -128,6 +136,10 @@ function handleEscape() {
       <button type="button" role="menuitem" class="more-menu-item" @click="handleShortcuts">
         <QuestionMarkCircleIcon class="h-3.5 w-3.5 shrink-0" />
         Keyboard shortcuts
+      </button>
+      <button type="button" role="menuitem" class="more-menu-item" @click="handleAbout">
+        <InformationCircleIcon class="h-3.5 w-3.5 shrink-0" />
+        About
       </button>
     </div>
   </div>

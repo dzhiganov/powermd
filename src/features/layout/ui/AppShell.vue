@@ -18,6 +18,7 @@ import EditorPane from './EditorPane.vue'
 import PreviewPane from './PreviewPane.vue'
 import Splitter from './Splitter.vue'
 import StatusBar from './StatusBar.vue'
+import AboutModal from './AboutModal.vue'
 import { $viewMode, $splitRatio, $mobileTab } from '../model/layout'
 
 const viewMode = useUnit($viewMode)
@@ -69,6 +70,7 @@ const centered = true
   >
     <SettingsModal />
     <ShortcutsModal />
+    <AboutModal />
     <Toolbar :side="drawerSide" />
     <MobileTabs v-show="!isDesktop" />
     <!-- Fixed corner status indicator (see `SaveIndicator.vue`) — mounted
