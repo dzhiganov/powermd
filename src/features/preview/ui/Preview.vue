@@ -7,6 +7,7 @@ import { ink } from '@/shared/lib/ink'
 import { $html } from '../model/preview'
 import { previewScrollHandleMounted, previewScrollHandleUnmounted } from '../model/scrollHandle'
 import { renderMermaidDiagrams } from '../lib/mermaidRenderer'
+import { createAnimatedPreview, type AnimatedPreviewController } from '../lib/animatedPatch'
 
 defineProps<{
   /** Constrains and centres the prose column to a comfortable reading
@@ -25,22 +26,44 @@ const html = useUnit($html)
 const scroller = ref<HTMLDivElement | null>(null)
 const content = ref<HTMLDivElement | null>(null)
 
+// Owns the DOM under `content` imperatively — there is deliberately no
+// `v-html` binding in the template below any more. `$html` updates on
+// every debounced render (`model/preview.ts`), and a wholesale
+// `innerHTML` replacement on every keystroke is what made split-mode
+// typing snap instead of animate. `animatedPatch.ts` still *can* fall
+// back to exactly that (a plain `innerHTML` assignment) for anything it
+// can't prove is a small, local, structurally-unambiguous edit — see that
+// module's doc comment for the correctness argument — so this remains as
+// safe as the old `v-html` binding in every case, just no longer
+// snapshot-and-replace in the one case (typing inside existing text) where
+// a subtle fade is worth animating. Created in `onMounted` below, once
+// `content.value` exists — not via `watch(html, ..., { immediate: true })`,
+// which in `<script setup>` would run during component setup, before any
+// template ref is populated.
+let previewController: AnimatedPreviewController | null = null
+
 // Mermaid diagrams render on the main thread, after the fact — `$html`
-// is already sanitized, worker-rendered markup by the time it lands in
-// `v-html` below (see `lib/mermaidRenderer.ts` for why: the worker has
-// no DOM, mermaid needs one). `flush: 'post'` is what makes this safe to
-// read `content.value`'s *new* DOM from: it runs after Vue has actually
-// patched the `v-html` binding, not just after `html` changed in
-// Effector. Replacing a `pre` with a diagram (or an error box) inside
-// `content.value` is itself a DOM mutation under it, which the scroll-sync
-// feature's own `MutationObserver` (`scroll-sync/lib/syncSession.ts`,
-// observing `contentRoot` for `childList`/`subtree`/`characterData`)
-// already picks up — no separate anchor-invalidation wiring needed here,
-// the same way an `<img>` finishing loading already invalidates it today.
+// is already sanitized, worker-rendered markup by the time it reaches
+// `previewController.apply()` below (see `lib/mermaidRenderer.ts` for why:
+// the worker has no DOM, mermaid needs one). `apply()` mutates
+// `content.value`'s DOM synchronously (patch or full replace, either way
+// before it returns), so — unlike the `v-html` binding this replaced —
+// nothing here needs to wait on Vue's own render/patch cycle to read back
+// the new DOM; `flush: 'post'` is kept anyway since there's no cost to it
+// and it keeps this watcher's timing unsurprising relative to the
+// theme-change watcher below. Replacing a `pre` with a diagram (or an
+// error box) inside `content.value`, or inserting/removing a fade span, is
+// itself a DOM mutation under it, which the scroll-sync feature's own
+// `MutationObserver` (`scroll-sync/lib/syncSession.ts`, observing
+// `contentRoot` for `childList`/`subtree`/`characterData`) already picks
+// up — no separate anchor-invalidation wiring needed here, the same way
+// an `<img>` finishing loading already invalidates it today.
 watch(
   html,
-  () => {
-    if (content.value) renderMermaidDiagrams(content.value)
+  (newHtml) => {
+    if (!content.value || !previewController) return
+    previewController.apply(newHtml)
+    renderMermaidDiagrams(content.value)
   },
   { flush: 'post' },
 )
@@ -69,6 +92,16 @@ onMounted(() => {
     getContentRoot: () => contentEl,
   })
 
+  // First paint of whatever `$html` already holds at mount time (normally
+  // `''`, but not guaranteed — e.g. Vite HMR keeps the store's state
+  // across a component remount). Everything the `watch(html, ...)` above
+  // handles for *later* changes has to happen here too for this one, since
+  // that watcher only fires on a change after setup, not for the value
+  // already current when it started watching.
+  previewController = createAnimatedPreview(contentEl)
+  previewController.apply(html.value)
+  renderMermaidDiagrams(contentEl)
+
   themeObserver = new MutationObserver(() => {
     if (content.value) renderMermaidDiagrams(content.value)
   })
@@ -82,6 +115,8 @@ onUnmounted(() => {
   previewScrollHandleUnmounted()
   themeObserver?.disconnect()
   themeObserver = null
+  previewController?.dispose()
+  previewController = null
 })
 
 // Bound into the scoped <style> below via `v-bind()` so the ratio behind
@@ -134,8 +169,14 @@ const previewMaxWidth = 'min(680px, var(--md-reading-width, 75ch))'
       class="markdown-preview prose prose-sm p-4 print:max-w-none print:p-0"
       :class="centered ? 'mx-auto' : 'max-w-none'"
       :style="centered ? { maxWidth: previewMaxWidth } : undefined"
-      v-html="html"
-    />
+    ></div>
+    <!-- No `v-html` on the div above — `previewController` (see
+         `<script setup>`, `lib/animatedPatch.ts`) owns its content
+         imperatively, so a small local edit can be animated instead of the
+         whole subtree being replaced on every keystroke. `rehype-sanitize`
+         remains the one security boundary either way (`lib/pipeline.ts`);
+         nothing in that module ever reaches this element with anything the
+         sanitizer hasn't already approved. -->
   </div>
 </template>
 
@@ -213,6 +254,47 @@ const previewMaxWidth = 'min(680px, var(--md-reading-width, 75ch))'
 
 .markdown-preview :deep(a) {
   word-break: break-word;
+}
+
+/* Character-level fade animation for split-mode typing
+ * (`lib/animatedPatch.ts`). `display: inline` (never `inline-block`) and
+ * no padding/margin/border on either class — these wrappers must
+ * contribute *exactly* the box a plain run of text would, so an in-flight
+ * animation can't itself shift line breaks or any sibling's `offsetTop`
+ * beyond what the literal character count already implies (see that
+ * module's doc comment: a fade-out span holding soon-to-be-deleted text is
+ * the one case where content briefly gets longer — expected, and self-
+ * correcting the instant its cleanup timer runs).
+ *
+ * `opacity` is the only animated property, deliberately — `transform` or a
+ * width/margin animation would change text metrics or line breaking mid-
+ * flight, which `data-line` scroll-sync anchors and this pane's own layout
+ * can't tolerate. `.md-fade-out` additionally gets `user-select: none` —
+ * its text is already deleted from the document, and must stay out of a
+ * copy even if the user selects across it mid-animation (set again inline
+ * in `animatedPatch.ts`, so this holds even where the stylesheet isn't
+ * loaded, e.g. a plain DOM unit test). `.md-fade-in`'s text is staying, so
+ * it stays normally selectable throughout.
+ *
+ * Gated behind `prefers-reduced-motion: no-preference` — same rule as the
+ * pane-jump flash below. `animatedPatch.ts` independently checks the same
+ * media query itself and skips building these wrapper elements at all
+ * under reduced motion, so this block is inert (never matches anything)
+ * in that case regardless — belt and braces, not load-bearing on its own. */
+.markdown-preview :deep(.md-fade-in),
+.markdown-preview :deep(.md-fade-out) {
+  display: inline;
+}
+
+.markdown-preview :deep(.md-fade-out) {
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .markdown-preview :deep(.md-fade-in),
+  .markdown-preview :deep(.md-fade-out) {
+    transition: opacity 120ms ease-out;
+  }
 }
 
 /* Modifier-click pane-jump's "landed here" flash (`src/app/paneJump.ts`,
