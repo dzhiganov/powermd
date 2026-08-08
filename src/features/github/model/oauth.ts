@@ -11,7 +11,7 @@ import {
 } from '../lib/oauth'
 import { exchangeCodeForToken, GitHubAppAuthError } from '../lib/appApi'
 import { clearAppAuthMeta, storeAppAuthMeta, type AppAuthMeta } from '../lib/appAuth'
-import { tokenSubmitted } from './connection'
+import { credentialKindDeclared, tokenSubmitted } from './connection'
 
 /**
  * "Sign in with GitHub" — the GitHub App user-to-server flow, offered as the
@@ -121,6 +121,14 @@ const clearAppAuthMetaFx = createEffect(() => clearAppAuthMeta())
 // re-validates and persists it via `lib/token.ts`) — see this module's doc
 // comment for why that unification matters.
 sample({ clock: exchangeFx.doneData, fn: (result) => result.accessToken, target: tokenSubmitted })
+
+// Declares this credential as a GitHub App token — see
+// `credentialKindDeclared`'s own doc comment in `connection.ts` for why
+// this has to be declared explicitly rather than inferred from the token or
+// from whether a refresh token came back (a GitHub App with token
+// expiration turned off issues a token with no refresh token, exactly like
+// a PAT).
+sample({ clock: exchangeFx.doneData, fn: () => 'app' as const, target: credentialKindDeclared })
 
 sample({
   clock: exchangeFx.doneData,

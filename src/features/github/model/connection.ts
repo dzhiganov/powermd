@@ -6,6 +6,11 @@ import { normalizeSubfolder, validateSubfolder } from '../lib/path'
 import { validateToken, listBranches, GitHubAuthError } from '../lib/api'
 import { clearAppAuthMeta, getStoredAppAuthMeta, storeAppAuthMeta } from '../lib/appAuth'
 import { refreshAppToken, GitHubAppAuthError } from '../lib/appApi'
+import {
+  clearCredentialKind,
+  storeCredentialKind,
+  type CredentialKind,
+} from '../lib/credentialKind'
 import type { GitHubRepo } from './types'
 
 /**
@@ -43,6 +48,16 @@ export type ConnectionStatus =
 
 /** Validate and connect with a pasted token. */
 export const tokenSubmitted = createEvent<string>()
+
+/** Declares which kind of credential `tokenSubmitted` is about to carry —
+ * fired by whichever flow obtained it (`ui/GitHubSyncPanel.vue`'s PAT form
+ * with `'pat'`, `model/oauth.ts`'s exchange with `'app'`) BEFORE or
+ * alongside its own `tokenSubmitted` call. Never fired by `initGithub()`'s
+ * startup re-validation of an already-stored token, so a reload preserves
+ * whichever kind was last declared instead of resetting it. See
+ * `lib/credentialKind.ts`'s doc comment for why this can't be inferred from
+ * the token or from `lib/appAuth.ts`'s refresh metadata instead. */
+export const credentialKindDeclared = createEvent<CredentialKind>()
 /** Disconnect: forget the token and the sync connection, and stop syncing.
  * Never deletes anything locally or remotely — it only forgets where (and
  * with what credential) to sync next. Other model files in this feature
@@ -79,6 +94,9 @@ export const syncConnected = createEvent<SyncConfig>()
 const validateTokenFx = createEffect((token: string) => validateToken(token))
 const storeTokenFx = createEffect((token: string) => storeToken(token))
 const clearTokenFx = createEffect(() => clearStoredToken())
+
+const storeCredentialKindFx = createEffect((kind: CredentialKind) => storeCredentialKind(kind))
+sample({ clock: credentialKindDeclared, target: storeCredentialKindFx })
 
 // Forgets the credential without forgetting the sync target — see
 // `reauthRequired`'s own doc comment above for why this stops short of
@@ -142,10 +160,14 @@ sample({
 sample({ clock: validateTokenFx.done, fn: ({ params }) => params, target: storeTokenFx })
 
 // Disconnecting forgets the token, any GitHub App refresh-token metadata,
-// and the sync connection (the last of those further down, alongside
-// `$syncConnection`'s own `.reset`).
+// the declared credential kind, and the sync connection (the last of those
+// further down, alongside `$syncConnection`'s own `.reset`).
 const clearAppAuthOnDisconnectFx = createEffect(() => clearAppAuthMeta())
-sample({ clock: disconnectRequested, target: [clearTokenFx, clearAppAuthOnDisconnectFx] })
+const clearCredentialKindOnDisconnectFx = createEffect(() => clearCredentialKind())
+sample({
+  clock: disconnectRequested,
+  target: [clearTokenFx, clearAppAuthOnDisconnectFx, clearCredentialKindOnDisconnectFx],
+})
 
 // --- Token access for sibling model files ---------------------------------
 

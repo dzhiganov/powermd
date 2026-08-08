@@ -289,6 +289,109 @@ export async function listAllRepos(token: string): Promise<GitHubRepo[]> {
   return repos
 }
 
+// --- App-installation repo listing -----------------------------------------
+//
+// A GitHub App user-to-server token cannot list repositories through
+// `/user/repos` the way a personal access token can — GitHub only lets it
+// see repositories the App was actually *installed* on. Those are only
+// reachable by walking every installation the signed-in user has access to,
+// then every repository under each one. `model/repos.ts` picks this path or
+// `listAllRepos` above based on the active connection's credential kind
+// (`lib/credentialKind.ts`).
+
+interface RawInstallation {
+  id: number
+}
+
+interface RawInstallationsResponse {
+  installations: RawInstallation[]
+}
+
+interface RawInstallationReposResponse {
+  repositories: RawRepo[]
+}
+
+const INSTALLATIONS_PER_PAGE = 100
+const MAX_INSTALLATION_PAGES = 20
+
+/** Lists the id of every installation this token can see — one per
+ * organization/account the App is installed on that this user has access
+ * to. Paginated the same way `listAllRepos` paginates `/user/repos`. Zero
+ * installations is a real, expected state (the App is authorized but not
+ * installed on any repository yet) and simply yields an empty array here,
+ * not an error. */
+async function listAllInstallationIds(token: string): Promise<number[]> {
+  const ids: number[] = []
+  for (let page = 1; page <= MAX_INSTALLATION_PAGES; page += 1) {
+    const response = await githubRequest(
+      `/user/installations?per_page=${INSTALLATIONS_PER_PAGE}&page=${page}`,
+      token,
+    )
+    const raw = (await response.json()) as RawInstallationsResponse
+    const installations = Array.isArray(raw.installations) ? raw.installations : []
+    for (const installation of installations) {
+      ids.push(installation.id)
+    }
+    if (installations.length < INSTALLATIONS_PER_PAGE) break
+  }
+  return ids
+}
+
+/** Lists every repository visible through one installation. Paginated the
+ * same way `listAllRepos` paginates `/user/repos` — this endpoint takes the
+ * same `per_page`/`page` parameters and returns a short final page exactly
+ * like it does. */
+async function listInstallationRepos(token: string, installationId: number): Promise<GitHubRepo[]> {
+  const repos: GitHubRepo[] = []
+  for (let page = 1; page <= MAX_REPO_PAGES; page += 1) {
+    const response = await githubRequest(
+      `/user/installations/${installationId}/repositories?per_page=${REPOS_PER_PAGE}&page=${page}`,
+      token,
+    )
+    const raw = (await response.json()) as RawInstallationReposResponse
+    const rawPage = Array.isArray(raw.repositories) ? raw.repositories : []
+    for (const rawRepo of rawPage) {
+      repos.push(mapRepo(rawRepo))
+    }
+    if (rawPage.length < REPOS_PER_PAGE) break
+  }
+  return repos
+}
+
+/**
+ * Lists every repository a GitHub App user-to-server token can act on, by
+ * walking every installation the signed-in user has access to
+ * (`listAllInstallationIds`) and then every repository under each one
+ * (`listInstallationRepos`) — the App-token equivalent of `listAllRepos`
+ * above, for the same "browse and pick a repository" wizard.
+ *
+ * The same repository can in principle be reachable through more than one
+ * installation (e.g. one installed on the user's personal account and
+ * another on an organization that also grants access to it), so results
+ * are deduplicated by repository id. Sorted by full name for a stable,
+ * predictable order, since — unlike `/user/repos` — the installation
+ * repositories endpoint has no `sort` query parameter to ask GitHub to do
+ * that server-side.
+ *
+ * Zero installations resolves to an empty array, same as zero repos from
+ * `listAllRepos` — `model/repos.ts`/`ui/GitHubSyncPanel.vue` already treat
+ * an empty `$repos` with no error as "show the install-the-App link"
+ * rather than a failure, so nothing here needs to special-case it.
+ */
+export async function listAllAppRepos(token: string): Promise<GitHubRepo[]> {
+  const installationIds = await listAllInstallationIds(token)
+
+  const byId = new Map<number, GitHubRepo>()
+  for (const installationId of installationIds) {
+    const repos = await listInstallationRepos(token, installationId)
+    for (const repo of repos) {
+      byId.set(repo.id, repo)
+    }
+  }
+
+  return Array.from(byId.values()).sort((a, b) => a.fullName.localeCompare(b.fullName))
+}
+
 /** Re-fetches a single repo (used to re-confirm its default branch). */
 export async function getRepo(token: string, owner: string, repo: string): Promise<GitHubRepo> {
   const response = await githubRequest(

@@ -18,6 +18,7 @@ import {
   $wizardSubfolder,
   $wizardSubfolderError,
   tokenSubmitted,
+  credentialKindDeclared,
   disconnectRequested,
   repoPicked,
   branchPicked,
@@ -80,6 +81,11 @@ const tokenInput = ref('')
 function submitToken() {
   const value = tokenInput.value
   if (value.trim() === '') return
+  // Declared unconditionally on every submit through this form — including
+  // when it replaces a stale GitHub-App-flagged connection after a reauth —
+  // so repository listing always matches the credential actually in use.
+  // See `credentialKindDeclared`'s doc comment in `model/connection.ts`.
+  credentialKindDeclared('pat')
   tokenSubmitted(value)
   tokenInput.value = ''
 }
