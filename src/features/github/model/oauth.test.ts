@@ -38,6 +38,39 @@ describe('getAppInstallUrl', () => {
     expect(getAppInstallUrl()).toBe(getManageInstallationsUrl())
     expect(getAppInstallUrl()).toBe('https://github.com/settings/installations')
   })
+
+  // Shipped broken: the variable was set to the App's whole page URL, which
+  // was then interpolated into the deep link and produced the origin twice.
+  it('accepts the App page URL, since that is what gets pasted in', async () => {
+    vi.stubEnv('VITE_GITHUB_APP_SLUG', 'https://github.com/apps/markdowneditorapp')
+    const { getAppInstallUrl } = await import('./oauth')
+
+    expect(getAppInstallUrl()).toBe('https://github.com/apps/markdowneditorapp/installations/new')
+  })
+
+  it('degrades rather than emitting a dead link when the slug is unusable', async () => {
+    vi.stubEnv('VITE_GITHUB_APP_SLUG', 'not a slug!')
+    const { getAppInstallUrl, getManageInstallationsUrl } = await import('./oauth')
+
+    // "Wrong" must not be worse than "missing".
+    expect(getAppInstallUrl()).toBe(getManageInstallationsUrl())
+  })
+})
+
+describe('normalizeAppSlug', () => {
+  it('reduces the forms a slug arrives in, and rejects the rest', async () => {
+    const { normalizeAppSlug } = await import('./oauth')
+
+    expect(normalizeAppSlug('markdowneditorapp')).toBe('markdowneditorapp')
+    expect(normalizeAppSlug('https://github.com/apps/markdowneditorapp')).toBe('markdowneditorapp')
+    expect(normalizeAppSlug('https://github.com/apps/markdowneditorapp/')).toBe('markdowneditorapp')
+    expect(normalizeAppSlug('github.com/apps/my-app')).toBe('my-app')
+
+    expect(normalizeAppSlug(null)).toBeNull()
+    expect(normalizeAppSlug('')).toBeNull()
+    expect(normalizeAppSlug('has spaces')).toBeNull()
+    expect(normalizeAppSlug('https://github.com/apps/')).toBeNull()
+  })
 })
 
 describe('getManageInstallationsUrl', () => {

@@ -26,11 +26,37 @@ import { credentialKindDeclared, tokenSubmitted } from './connection'
  */
 
 const CLIENT_ID = readPublicEnv('VITE_GITHUB_APP_CLIENT_ID')
-const APP_SLUG = readPublicEnv('VITE_GITHUB_APP_SLUG')
+const APP_SLUG = normalizeAppSlug(readPublicEnv('VITE_GITHUB_APP_SLUG'))
 
 function readPublicEnv(name: 'VITE_GITHUB_APP_CLIENT_ID' | 'VITE_GITHUB_APP_SLUG'): string | null {
   const value = import.meta.env[name]
   return typeof value === 'string' && value !== '' ? value : null
+}
+
+/**
+ * Reduces whatever was put in `VITE_GITHUB_APP_SLUG` to a bare slug, or
+ * `null` if it cannot be.
+ *
+ * The App's page lives at `github.com/apps/<slug>`, so pasting that whole
+ * URL into the variable is the obvious mistake to make — and it produced a
+ * link carrying the origin twice, which 404s.
+ *
+ * The slug is read as the segment that follows `apps/`, rather than simply
+ * the last path segment: a URL with no slug at all (`github.com/apps/`)
+ * would otherwise reduce to `apps` and pass the shape check below, giving
+ * `github.com/apps/apps/...` — a different dead link rather than a fallback.
+ *
+ * Anything that still does not look like a GitHub slug (letters, digits and
+ * hyphens) is treated as absent, so a malformed value falls back to the
+ * generic settings page instead of rendering a dead link. "Unset" already
+ * behaved that way and there is no reason for "wrong" to be worse.
+ */
+export function normalizeAppSlug(raw: string | null): string | null {
+  if (raw === null) return null
+  const trimmed = raw.trim().replace(/\/+$/, '')
+  const fromUrl = /(?:^|\/)apps\/([^/]+)/.exec(trimmed)
+  const candidate = fromUrl !== null ? fromUrl[1] : trimmed
+  return /^[A-Za-z0-9-]+$/.test(candidate) ? candidate : null
 }
 
 /** Whether this deployment has a GitHub App configured at all — gates
