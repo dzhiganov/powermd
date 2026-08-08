@@ -217,7 +217,7 @@ watch(open, (isOpen) => {
          `sm:` breakpoint (below) already collapsing it to a horizontal row
          well before that becomes necessary on any real device. -->
     <div
-      class="flex h-[600px] max-h-[calc(100dvh-2rem)] w-[640px] max-w-[calc(100dvw-2rem)] flex-col rounded-box bg-base-100 shadow-xl"
+      class="settings-panel flex h-[600px] max-h-[calc(100dvh-2rem)] w-[640px] max-w-[calc(100dvw-2rem)] flex-col rounded-box shadow-xl"
     >
       <div class="flex shrink-0 items-center justify-between p-5 pb-4">
         <h2 id="settings-dialog-title" class="text-base font-semibold text-base-content">
@@ -355,7 +355,14 @@ watch(open, (isOpen) => {
                   {{ entry.label }}
                 </option>
               </select>
-              <p class="text-xs text-base-content/60">
+              <!-- `/70`, not `/60` — this app's standing rule, and this
+                   caption is why it exists. At `/60` it measured 4.46:1
+                   against the old opaque panel (already under the 4.5:1
+                   floor), and translucency pushed it to 3.93:1 worst-case,
+                   since the panel now sits over whatever the document
+                   behind it happens to be. `/70` clears the floor against
+                   both extremes. -->
+              <p class="text-xs text-base-content/70">
                 Which dictionaries are actually available depends on your browser and operating
                 system — this app doesn't ship any of its own.
               </p>
@@ -573,6 +580,111 @@ watch(open, (isOpen) => {
 </template>
 
 <style scoped>
+/*
+ * GLASS PANEL — translucent/blurred/gradient surface for the dialog box
+ * itself only (not the full-screen scrim, which stays `bg-black/50` on the
+ * wrapper above — that keeps the dialog reading as separated from the app
+ * exactly as before). Two rules, deliberately separated so legibility never
+ * depends on `backdrop-filter` support:
+ *
+ *   1. `background-color`/`background-image` (this rule): an ALWAYS-APPLIED
+ *      opaque-enough solid tint, computed to guarantee the contrast floor on
+ *      its own — see the alpha derivation below. If `backdrop-filter` is
+ *      unsupported/disabled, this rule alone still renders a legible, if
+ *      unblurred, translucent-looking panel.
+ *   2. `backdrop-filter`/`-webkit-backdrop-filter` (below): the blur EFFECT
+ *      layered on top. Purely decorative — removing it never changes what
+ *      text sits on top of, because rule 1 already composited a safe colour
+ *      *before* the blur is even considered. Verified by simulating its
+ *      removal (DevTools override) with no legibility change.
+ *
+ * `color-mix(in srgb, ...)` (not `in oklab`, unlike `ink.ts`/most of this
+ * file) is deliberate: mixing toward the `transparent` keyword in `srgb`
+ * carries the source colour's own R/G/B through unchanged and only scales
+ * alpha (per the CSS Color 5 "mixing with a fully-transparent colour" rule),
+ * i.e. `color-mix(in srgb, var(--color-base-100) 85%, transparent)` is
+ * exactly `rgba(<base-100>, 0.85)` — the same simple non-premultiplied sRGB
+ * alpha blend the browser then uses to composite over whatever is behind
+ * it. That equivalence is what makes the ratios below computable by hand at
+ * all (`in oklab` would perceptually re-derive the RGB channels first,
+ * decoupling the declared mix from the actual composited pixel). Already
+ * precedented in this codebase at `features/editor/lib/theme.ts`'s
+ * selection-background mix, for the same reason.
+ *
+ * ALPHA DERIVATION (worst-case backdrop = pure white behind the dark
+ * theme's panel, pure black behind the light theme's panel — the direction
+ * that pushes each theme's near-monochrome panel color TOWARD its own body
+ * text color, i.e. the actually-adversarial case, not the friendlier
+ * opposite extreme):
+ *   - 85% is the chosen alpha. Composite by hand (sRGB gamma-space linear
+ *     blend, `alpha*panel + (1-alpha)*backdrop` per channel, then WCAG
+ *     relative luminance):
+ *       Light theme, panel (#fbfaf8) over pure BLACK: composited ≈
+ *       #d5d4d2. `--color-base-content` (#1c1b19) on that: 11.68:1.
+ *       Dark theme, panel (#0e0f11) over pure WHITE: composited ≈
+ *       #323333. `--color-base-content` (#e8e6e3) on that: 10.16:1.
+ *     Both clear the 4.5:1 text floor with wide margin (minimum alpha that
+ *     hits exactly 4.5:1 was ≈0.63 for dark-over-white, the binding case;
+ *     85% leaves headroom for the gradient tint below and for the
+ *     non-`color-mix` fallback browsers' rounding). The footer's
+ *     `text-base-content/70` caption (itself translucent, so doubly
+ *     dependent on the panel colour it sits on) was checked the same way:
+ *     5.24:1 (light) / 5.87:1 (dark) worst-case — also clear. (NOT
+ *     re-verified for the `/60` "Which dictionaries..." caption in the
+ *     Editor category: that one already measured 4.463:1 — under the floor
+ *     — against the fully OPAQUE panel before this change, per this file's
+ *     own footer comment; translucency makes an already-pre-existing gap
+ *     numerically worse, not a new one, and fixing it is a text-opacity
+ *     change outside this pass's scope.)
+ *   - The 3:1 non-text floor: every control inside the panel (buttons,
+ *     inputs, toggles, the tab rail) paints its own OPAQUE daisyUI surface
+ *     color on top of this panel, same as before — none of them are
+ *     themselves translucent, so their already-measured contrast against
+ *     `--color-base-100`/`--color-base-200` is unaffected by the panel
+ *     turning translucent underneath them.
+ *
+ * GRADIENT: a decorative `--md-accent` tint, top-left to transparent,
+ * capped at 8% peak alpha (again via the same `in srgb, ... transparent`
+ * mix). Composited on top of the worst-case panel colour above, at its
+ * strongest (top-left corner, 8%) point: body text 10.63:1 (light) /
+ * 9.00:1 (dark); the `/70` footer caption 4.99:1 (light) / 5.34:1 (dark).
+ * Still clears 4.5:1 in both cases — an *additional* opaque layer painted
+ * on top of an already-opaque-enough base can only add coverage, never
+ * remove it, which is why this is safe by construction rather than a
+ * separate lucky measurement. The gradient fades to fully transparent
+ * before the tab rail / content pane in practice, so real running text
+ * mostly sees less tint than this deliberately worst-cased "peak
+ * everywhere" measurement.
+ *
+ * `prefers-reduced-transparency: reduce` drops all three (tint, gradient,
+ * blur) back to the fully opaque pre-existing `--color-base-100` fill —
+ * the same surface this dialog shipped with before this change.
+ *
+ * Performance: `backdrop-filter` is scoped to this 640x600 panel only, not
+ * the full-viewport scrim behind it, and nothing here is transitioned or
+ * animated.
+ */
+.settings-panel {
+  background-color: color-mix(in srgb, var(--color-base-100) 85%, transparent);
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--md-accent) 8%, transparent) 0%,
+    transparent 45%
+  );
+  border: 1px solid var(--color-base-300);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .settings-panel {
+    background-color: var(--color-base-100);
+    background-image: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 /*
  * Category nav buttons — flat rows, matching `MoreMenu.vue`'s
  * `.more-menu-item` convention (hover/active carried by a flat background
