@@ -199,7 +199,7 @@ watch(open, (isOpen) => {
   <div
     v-if="open"
     ref="dialogRef"
-    class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 print:hidden"
+    class="fixed inset-0 z-[60] flex items-center justify-center bg-black/25 p-4 print:hidden"
     role="dialog"
     aria-modal="true"
     aria-labelledby="settings-dialog-title"
@@ -665,21 +665,30 @@ watch(open, (isOpen) => {
  * animated.
  */
 .settings-panel {
-  background-color: color-mix(in srgb, var(--color-base-100) 85%, transparent);
+  background-color: color-mix(in srgb, var(--color-base-100) 78%, transparent);
   background-image: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--md-accent) 8%, transparent) 0%,
-    transparent 45%
+    color-mix(in srgb, var(--md-accent) 14%, transparent) 0%,
+    color-mix(in srgb, var(--md-accent) 4%, transparent) 38%,
+    transparent 70%
   );
-  border: 1px solid var(--color-base-300);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
+  /* A brighter hairline than `--color-base-300`: a lit edge is most of what
+     makes a surface read as glass rather than as flat translucency, and it
+     does the work even when the backdrop is the same tone as the panel —
+     which, over this app's own monochrome editor, it usually is. */
+  border: 1px solid color-mix(in srgb, var(--color-base-content) 14%, transparent);
+  /* `saturate` alongside `blur` is what separates "glass" from "fog": the
+     blur alone greys out whatever is behind it, and pushing saturation back
+     up keeps the colour of the backdrop legible through the panel. */
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
 }
 
 @media (prefers-reduced-transparency: reduce) {
   .settings-panel {
     background-color: var(--color-base-100);
     background-image: none;
+    border-color: var(--color-base-300);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
