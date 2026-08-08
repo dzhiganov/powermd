@@ -9,12 +9,12 @@ describe('revokeWithGitHub', () => {
     vi.unstubAllEnvs()
   })
 
-  it('DELETEs the applications/{client_id}/token endpoint with Basic auth and the token in the body', async () => {
+  it('DELETEs the applications/{client_id}/grant endpoint with Basic auth and the token in the body', async () => {
     vi.stubEnv('GITHUB_APP_CLIENT_ID', 'Iv1.test-client-id')
     vi.stubEnv('GITHUB_APP_CLIENT_SECRET', 'super-secret-value')
 
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      expect(url).toBe('https://api.github.com/applications/Iv1.test-client-id/token')
+      expect(url).toBe('https://api.github.com/applications/Iv1.test-client-id/grant')
       expect(init?.method).toBe('DELETE')
       const headers = init?.headers as Record<string, string>
       expect(headers.Authorization).toBe(`Basic ${btoa('Iv1.test-client-id:super-secret-value')}`)
@@ -29,7 +29,22 @@ describe('revokeWithGitHub', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 
-  it('treats a 404 (GitHub has no record of the token) as revoked too', async () => {
+  it('revokes the grant, not just the token — the endpoint path is /grant', async () => {
+    vi.stubEnv('GITHUB_APP_CLIENT_ID', 'id')
+    vi.stubEnv('GITHUB_APP_CLIENT_SECRET', 'secret')
+
+    const fetchMock = vi.fn(async (url: string) => {
+      expect(url).toContain('/grant')
+      expect(url).not.toMatch(/\/token$/)
+      return new Response(null, { status: 204 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await revokeWithGitHub('ghu_to_revoke')
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  it('treats a 404 (GitHub has no record of the grant) as revoked too', async () => {
     vi.stubEnv('GITHUB_APP_CLIENT_ID', 'id')
     vi.stubEnv('GITHUB_APP_CLIENT_SECRET', 'secret')
     vi.stubGlobal(

@@ -61,13 +61,14 @@ export const tokenSubmitted = createEvent<string>()
 export const credentialKindDeclared = createEvent<CredentialKind>()
 /** Disconnect: forget the token and the sync connection, and stop syncing.
  * Never deletes any document, locally or on GitHub. For an `'app'`
- * credential, best-effort revokes the token itself on GitHub's side (see
- * the "Disconnect: revoke on GitHub's side, then clear locally" block
- * below) — but local state is ALWAYS cleared regardless of whether that
- * revoke succeeds, so a network failure can never trap the user in a
- * connected-looking state. Revoking the token does not uninstall the
- * GitHub App from any repository — that's a separate grant the user has to
- * remove themselves (see `model/oauth.ts`'s `getAppInstallUrl`,
+ * credential, best-effort revokes the authorization itself (and every token
+ * issued under it, not just the current one) on GitHub's side (see the
+ * "Disconnect: revoke on GitHub's side, then clear locally" block below) —
+ * but local state is ALWAYS cleared regardless of whether that revoke
+ * succeeds, so a network failure can never trap the user in a
+ * connected-looking state. Revoking the authorization does not uninstall
+ * the GitHub App from any repository — that's a separate grant the user has
+ * to remove themselves (see `model/oauth.ts`'s `getManageInstallationsUrl`,
  * surfaced by `ui/GitHubSyncPanel.vue`). Other model files in this feature
  * reset their own stores on this event too. */
 export const disconnectRequested = createEvent()

@@ -90,11 +90,12 @@ export function refreshAppToken(refreshToken: string): Promise<AppTokenResult> {
   return postJson<AppTokenResult>('/api/github/refresh', { refreshToken })
 }
 
-/** `POST /api/github/revoke` — revokes a GitHub-App-issued access token on
- * GitHub's side. Called only from `model/connection.ts`'s
- * `disconnectRequested` handling, and only for an `'app'`-kind credential
- * (see `lib/credentialKind.ts`) — a personal access token is never sent
- * here, since GitHub's revoke endpoint only works for tokens this app's own
+/** `POST /api/github/revoke` — revokes the GitHub App authorization behind
+ * `token` (and every token issued under it) on GitHub's side, not just that
+ * one token. Called only from `model/connection.ts`'s `disconnectRequested`
+ * handling, and only for an `'app'`-kind credential (see
+ * `lib/credentialKind.ts`) — a personal access token is never sent here,
+ * since GitHub's revoke endpoint only works for tokens this app's own
  * GitHub App issued. */
 export function revokeAppToken(token: string): Promise<AppRevokeResult> {
   return postJson<AppRevokeResult>('/api/github/revoke', { token })

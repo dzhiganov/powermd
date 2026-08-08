@@ -30,6 +30,7 @@ import { $repos, $reposLoading, $reposError, reposRequested } from '../model/rep
 import {
   $oauthConfigured,
   getAppInstallUrl,
+  getManageInstallationsUrl,
   getManualRevokeUrl,
   signInRequested,
 } from '../model/oauth'
@@ -61,6 +62,7 @@ const lastDisconnectOutcome = useUnit($lastDisconnectOutcome)
 
 const oauthConfigured = useUnit($oauthConfigured)
 const installUrl = getAppInstallUrl()
+const manageInstallationsUrl = getManageInstallationsUrl()
 const manualRevokeUrl = getManualRevokeUrl()
 
 const repos = useUnit($repos)
@@ -206,10 +208,11 @@ const lastSyncLabel = computed(() => {
 
     <!-- The result of the most recent disconnect's revoke attempt (nothing
          shown for a PAT disconnect, or before any disconnect has happened
-         this session — see `$lastDisconnectOutcome`'s doc comment). Always
-         paired with the installation-vs-authorization explanation: revoking
-         the token never uninstalls the App from any repository, that's a
-         separate grant. -->
+         this session — see `$lastDisconnectOutcome`'s doc comment). Kept
+         brief on success — a quiet, secondary link is all that's offered,
+         not a lecture about installations. Only a failed revoke gets a
+         prominent, actionable link, since that's the case that actually
+         needs the user to do something. -->
     <div
       v-if="
         status === 'disconnected' &&
@@ -220,11 +223,18 @@ const lastSyncLabel = computed(() => {
     >
       <p v-if="lastDisconnectOutcome.status === 'revoked'" class="text-xs text-base-content/70">
         GitHub access revoked.
+        <a
+          :href="manageInstallationsUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="underline"
+        >
+          Manage repository access
+        </a>
       </p>
       <p v-else class="text-xs" :style="errorInk" role="alert">
-        Disconnected locally, but GitHub couldn't confirm the token was revoked.
+        Disconnected locally, but GitHub couldn't confirm the authorization was revoked.
         <a
-          v-if="manualRevokeUrl !== null"
           :href="manualRevokeUrl"
           target="_blank"
           rel="noopener noreferrer"
@@ -232,19 +242,6 @@ const lastSyncLabel = computed(() => {
           :style="infoInk"
         >
           Revoke it manually on GitHub
-        </a>
-      </p>
-      <p class="text-xs text-base-content/70">
-        This doesn't remove the app's access to your repositories — that's a separate grant.
-        <a
-          v-if="installUrl !== null"
-          :href="installUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="underline"
-          :style="infoInk"
-        >
-          Manage repository access
         </a>
       </p>
     </div>
@@ -348,7 +345,6 @@ const lastSyncLabel = computed(() => {
         it on the ones you want to sync, then refresh.
       </p>
       <a
-        v-if="installUrl !== null"
         :href="installUrl"
         target="_blank"
         rel="noopener noreferrer"

@@ -38,37 +38,46 @@ function readPublicEnv(name: 'VITE_GITHUB_APP_CLIENT_ID' | 'VITE_GITHUB_APP_SLUG
  * option or falls back to the PAT form being the only one shown. */
 export const $oauthConfigured = createStore(CLIENT_ID !== null)
 
-/** The GitHub App's own "install on repositories" page, or `null` if
- * `VITE_GITHUB_APP_SLUG` isn't configured. Used by `ui/GitHubSyncPanel.vue`
- * for two related but distinct purposes: to surface an install path when
- * the connected account has the App installed on zero repositories (an
- * empty repo picker with no way out, otherwise), and — after a disconnect —
- * as the "manage repository access" link, since revoking a token
- * (`api/github/revoke.ts`) never uninstalls the App from any repository.
- * Visiting this same URL for an App already installed lets GitHub's own UI
- * update which repositories it can reach, which is exactly the
- * "installation" side of the installation-vs-authorization distinction this
- * feature has to keep honest — see `model/connection.ts`'s
- * `disconnectRequested` doc comment. */
-export function getAppInstallUrl(): string | null {
-  return APP_SLUG !== null ? `https://github.com/apps/${APP_SLUG}/installations/new` : null
+/** GitHub's own "your installed apps" settings page — stable and generic,
+ * never derived from this App's slug, so it can never break when the App is
+ * renamed (renaming a GitHub App changes its slug, but this URL doesn't
+ * depend on it at all). This is what `ui/GitHubSyncPanel.vue` links to as
+ * "manage repository access" after a disconnect, since revoking a token's
+ * authorization (`api/github/revoke.ts`) never uninstalls the App from any
+ * repository — that's a separate grant the user manages from here. See
+ * `model/connection.ts`'s `disconnectRequested` doc comment for the fuller
+ * installation-vs-authorization distinction. */
+export function getManageInstallationsUrl(): string {
+  return 'https://github.com/settings/installations'
 }
 
-/** GitHub's own per-application authorization page for this App — lets the
- * user review and manually revoke it themselves. Built from the same public
- * client id used to start the OAuth flow (`CLIENT_ID` above; a GitHub App's
- * client id isn't secret — see `.env.example`), or `null` if
- * `VITE_GITHUB_APP_CLIENT_ID` isn't configured. Surfaced by
- * `ui/GitHubSyncPanel.vue` only as a fallback, when
- * `model/connection.ts`'s server-side revoke
- * (`$lastDisconnectOutcome.status === 'revoke-failed'`) could not confirm
- * the token was revoked — local state is already cleared by then either
- * way, this is just the honest "here's how to finish the job yourself"
- * path. */
-export function getManualRevokeUrl(): string | null {
-  return CLIENT_ID !== null
-    ? `https://github.com/settings/connections/applications/${CLIENT_ID}`
-    : null
+/** The GitHub App's own "install on repositories" deep link, built from
+ * `VITE_GITHUB_APP_SLUG` — this is the slug's one legitimate use, since
+ * there is no slug-independent way to link a user straight into installing
+ * a *specific* app for the first time. Falls back to the generic
+ * installations settings page (`getManageInstallationsUrl`) whenever the
+ * slug isn't configured, so the "Install GitHub App" button always links
+ * somewhere valid rather than not rendering at all or pointing at a 404 —
+ * this never happens for a *wrong* (stale, post-rename) slug though, since
+ * that can't be detected without a live call to GitHub; only "unset" is
+ * knowable client-side. Used by `ui/GitHubSyncPanel.vue` when the connected
+ * account has the App installed on zero repositories. */
+export function getAppInstallUrl(): string {
+  return APP_SLUG !== null
+    ? `https://github.com/apps/${APP_SLUG}/installations/new`
+    : getManageInstallationsUrl()
+}
+
+/** GitHub's own "authorized GitHub Apps" settings page — stable and
+ * generic, not derived from this App's client id or slug, so (like
+ * `getManageInstallationsUrl`) it can never break on a rename. Surfaced by
+ * `ui/GitHubSyncPanel.vue` only when `model/connection.ts`'s server-side
+ * revoke (`$lastDisconnectOutcome.status === 'revoke-failed'`) could not
+ * confirm the authorization was revoked — local state is already cleared by
+ * then either way, this is just the honest "here's how to finish the job
+ * yourself" path. */
+export function getManualRevokeUrl(): string {
+  return 'https://github.com/settings/apps/authorizations'
 }
 
 // --- Sign-in: redirect out --------------------------------------------------

@@ -1,9 +1,11 @@
 /**
- * `POST /api/github/revoke` — revokes a GitHub App user access token via
- * GitHub's own token-revocation endpoint (`../_lib/githubRevoke.ts`), so
- * that "Disconnect" (`src/features/github/model/connection.ts`'s
- * `disconnectRequested`) actually ends the authorization on GitHub's side,
- * not just locally.
+ * `POST /api/github/revoke` — revokes the GitHub App's authorization grant
+ * for the caller's user access token via GitHub's own grant-revocation
+ * endpoint (`../_lib/githubRevoke.ts`), so that "Disconnect"
+ * (`src/features/github/model/connection.ts`'s `disconnectRequested`)
+ * actually ends the authorization on GitHub's side — not just the one
+ * token — so the next "Sign in with GitHub" shows the consent screen again
+ * instead of silently reconnecting.
  *
  * Same contract as `./token.ts`/`./refresh.ts`: this function talks to
  * exactly one fixed upstream URL (built in `../_lib/githubRevoke.ts` from a
