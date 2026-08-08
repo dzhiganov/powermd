@@ -4,7 +4,6 @@ import { useUnit } from 'effector-vue/composition'
 import { ThemeToggle, $showTooltips } from '@/features/settings'
 import { DrawerToggleButton, DocumentTitle } from '@/features/documents'
 import { ExportMenu, ImportButton } from '@/features/transfer'
-import { SyncStatusIndicator } from '@/features/github'
 
 import { $viewMode, viewModeChanged } from '../model/layout'
 import type { ViewMode } from '../model/layout'
@@ -97,14 +96,10 @@ const viewModeOptions: ViewModeOption[] = [
 
     <!-- Instrument cluster — always right-pinned, regardless of `side`. -->
     <div class="flex flex-1 items-center justify-end gap-0.5">
-      <!-- Unobtrusive, always-visible sync state once a GitHub sync
-           connection exists (hidden entirely before then) — see its own
-           doc comment. Every document/folder syncs automatically in the
-           background now, so there's no more per-document "Commit"/"Save"
-           action to gate on the active document the way the old per-file
-           flow did. -->
-      <SyncStatusIndicator :show-tooltips="showTooltips" />
-
+      <!-- The GitHub sync status readout used to live here
+           (`SyncStatusIndicator.vue`) — it now lives in the bottom
+           `StatusBar.vue` instead, alongside the word count, so it isn't
+           duplicated in both places. -->
       <ThemeToggle />
       <!-- Own toolbar icon (user request: no longer duplicated inside the
            More menu below — its `menuItem` prop variant is unused now, see
@@ -116,7 +111,8 @@ const viewModeOptions: ViewModeOption[] = [
            "GitHub sync" category (see `features/github/ui/
            GitHubSyncPanel.vue`) rather than a dedicated modal, so the More
            menu below no longer carries its own separate entry for it —
-           `SyncStatusIndicator` above and the menu's "Settings" item are
+           `SyncStatusIndicator` (now down in `StatusBar.vue`, see the
+           comment above `ThemeToggle`) and the menu's "Settings" item are
            both already sufficient ways in. -->
       <MoreMenu :show-tooltips="showTooltips" />
 

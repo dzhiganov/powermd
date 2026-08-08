@@ -11,13 +11,13 @@ import {
   $drawerSide,
   drawerSideChanged,
 } from '@/features/settings'
-import { WordCount } from '@/features/editor'
 
 import Toolbar from './Toolbar.vue'
 import MobileTabs from './MobileTabs.vue'
 import EditorPane from './EditorPane.vue'
 import PreviewPane from './PreviewPane.vue'
 import Splitter from './Splitter.vue'
+import StatusBar from './StatusBar.vue'
 import { $viewMode, $splitRatio, $mobileTab } from '../model/layout'
 
 const viewMode = useUnit($viewMode)
@@ -90,15 +90,7 @@ const centered = true
         :show-tooltips="showTooltips"
         :side="drawerSide"
         @dock-changed="drawerSideChanged"
-      >
-        <!-- Word count moves from the old global footer bar (removed in
-             the Phase 2 visual redesign) into the sidebar's own footer,
-             beside its dock-side control — see `DocumentDrawer.vue`'s
-             `footer-extra` slot doc comment. -->
-        <template #footer-extra>
-          <WordCount />
-        </template>
-      </DocumentDrawer>
+      />
 
       <main
         class="order-2 flex min-h-0 flex-1 overflow-hidden print:block print:h-auto print:min-h-0 print:overflow-visible"
@@ -109,5 +101,11 @@ const centered = true
         <PreviewPane v-show="showPreview" :centered="centered" />
       </main>
     </div>
+
+    <!-- Word count + GitHub sync status, pulled out of the documents
+         drawer's footer and the header respectively into one dedicated
+         bottom bar — see `StatusBar.vue` for the full layout/alignment
+         rationale. -->
+    <StatusBar :show-tooltips="showTooltips" :side="drawerSide" />
   </div>
 </template>

@@ -456,17 +456,13 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
              control is the same `settings`-owned preference the Settings
              modal's "Documents panel side" Left/Right buttons already
              expose (see the `emit` doc comment above) — reachable here too
-             for convenience, not a new feature. Word count moves here from
-             `AppShell.vue`'s old global footer bar, via the
-             `footer-extra` slot (a slot, not a direct `@/features/editor`
-             import, for the same "documents doesn't import other features
-             directly" reason `showTooltips`/`side` are props). -->
-        <footer
-          class="flex h-8 shrink-0 items-center justify-between gap-2 border-t border-base-300 px-2.5"
-        >
-          <slot name="footer-extra" />
+             for convenience, not a new feature. Word count used to live
+             here too (via a `footer-extra` slot) but has since moved out
+             into its own bottom-of-app status bar — see
+             `features/layout/ui/StatusBar.vue`. -->
+        <footer class="flex h-8 shrink-0 items-center justify-end border-t border-base-300 px-2.5">
           <div
-            class="ml-auto flex items-center gap-0.5 rounded-full p-0.5"
+            class="flex items-center gap-0.5 rounded-full p-0.5"
             role="group"
             aria-label="Documents panel side"
             style="background: var(--md-seg, var(--color-base-200))"
