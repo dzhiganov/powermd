@@ -155,7 +155,10 @@ function handleEscape() {
   padding: 5px;
   border: 1px solid;
   border-radius: 10px;
-  box-shadow: 0 12px 32px rgb(0 0 0 / 40%);
+  /* Per-theme — see `--md-shadow-pop` in `app/styles/main.css`. The literal
+     that used to sit here was tuned against the dark theme and applied to
+     both, which made this menu look bruised on a near-white canvas. */
+  box-shadow: var(--md-shadow-pop, 0 12px 32px rgb(0 0 0 / 40%));
 }
 
 .more-menu-item {

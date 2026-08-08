@@ -179,7 +179,16 @@ body {
    * `--danger`. */
   --color-error-content: #ffffff;
 
-  --md-rail: #efedea;
+  /* Brighter than `--color-base-100` (#fbfaf8), not darker. The dark theme
+   * recesses the rail below the canvas and that reads as depth; doing the
+   * same here just read as grey, because a warm mid-tone next to an
+   * off-white canvas has nowhere to recede *to* — it only looks dirty. The
+   * rail is instead the brightest surface in the theme, with the canvas
+   * slightly warmer, which is the inverse relationship and the one that
+   * looks clean. The two are only three steps apart, so the boundary is
+   * carried by the panel's `border-base-300` (#e2dfd9), not by the fill —
+   * it was already drawing that border regardless. */
+  --md-rail: #ffffff;
   --md-t2: #6d6a64;
   --md-t3: #7c7972;
   --md-t4: #8a8780;
@@ -187,6 +196,12 @@ body {
   --md-sel: #e5e1d9;
   --md-seg: #eae7e2;
   --md-seg-active: #ffffff;
+  /* POPOVER SHADOW — per theme, because a shadow is light that the surface
+   * failed to block, and how much of it you see depends entirely on what it
+   * lands on. A dark theme swallows a heavy shadow; on a near-white canvas
+   * the same value reads as a bruise under the menu. Light gets a shorter,
+   * far weaker drop, and leans on the popover's border for its edge. */
+  --md-shadow-pop: 0 4px 12px rgb(0 0 0 / 8%);
   /* FLAT SEGMENTED-CONTROL TEXT — inactive-segment/icon foreground for the
    * Write/Split/Read switcher and the sidebar dock control (`.view-tab`/
    * `.dock-btn` in `Toolbar.vue`/`DocumentDrawer.vue`). A formula (mixed
@@ -248,6 +263,10 @@ body {
   --md-sel: #16181b;
   --md-seg: #141619;
   --md-seg-active: #22252a;
+  /* The original value, kept verbatim — see the light theme's own
+   * `--md-shadow-pop` comment. This is the one that was already there and
+   * the one the dark theme was tuned against; only light needed changing. */
+  --md-shadow-pop: 0 12px 32px rgb(0 0 0 / 40%);
   /* Same formula as the light theme block — see its own `--md-seg-fg`
    * comment for the rationale. Resolves to a different actual colour here
    * since it mixes toward this theme's `--color-base-content` (#e8e6e3, a
@@ -286,7 +305,7 @@ body {
  *   Light (`#635f57`, a dark warm grey):
  *     - vs `--color-base-100` (#fbfaf8, pane/editor/preview bg): 6.091:1
  *     - vs `--color-base-200` (#f4f2ef, header/footer bg):       5.686:1
- *     - vs `--md-rail`        (#efedea, sidebar bg):              5.438:1
+ *     - vs `--md-rail`        (#ffffff, sidebar bg):              6.355:1
  *     All three clear the 4.5:1 AA text floor (and trivially the 3:1
  *     non-text/UI-indicator floor used for the focus ring and the unsaved
  *     dot).
