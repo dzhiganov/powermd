@@ -323,10 +323,16 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
                  `features/editor/lib/shortcuts.ts`), so this is a visual
                  affordance only, not a new global keybinding that would
                  shadow it. -->
+            <!-- `--md-seg-fg`, not `--md-t4`. `aria-hidden` makes this
+                 incidental for WCAG purposes, but it was the single lowest-
+                 contrast text in the whole app (3.44:1) and soft contrast
+                 pushed it to 3.09:1 — and a shortcut hint nobody can read
+                 is not serving the purpose it exists for. `--md-seg-fg` is
+                 the token already measured >=4.5:1 in both themes. -->
             <span
               v-else
               class="shrink-0 font-mono text-[10.5px] tracking-wide"
-              style="color: var(--md-t4, var(--color-base-content))"
+              style="color: var(--md-seg-fg, var(--color-base-content))"
               aria-hidden="true"
             >
               ⌘K

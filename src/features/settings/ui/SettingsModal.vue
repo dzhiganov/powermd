@@ -50,6 +50,7 @@ import {
   AUTO_SYNC_INTERVAL_MINUTES_OPTIONS,
   type AutoSyncIntervalMinutes,
 } from '../model/uiPreferences'
+import { $softContrast, softContrastToggled } from '../model/softContrast'
 import {
   $resetConfirmOpen,
   resetRequested,
@@ -70,6 +71,7 @@ const drawerSide = useUnit($drawerSide)
 const showFormattingToolbar = useUnit($showFormattingToolbar)
 const scrollSyncEnabled = useUnit($scrollSyncEnabled)
 const autoSyncIntervalMinutes = useUnit($autoSyncIntervalMinutes)
+const softContrast = useUnit($softContrast)
 
 const dialogRef = ref<HTMLElement | null>(null)
 const firstControlRef = ref<HTMLElement | null>(null)
@@ -407,6 +409,22 @@ watch(open, (isOpen) => {
               />
             </label>
 
+            <!-- Independent of the light/dark choice above — applies to
+                 whichever theme is active, softening its near-black
+                 (dark) or near-white (light) surfaces toward grey. Off by
+                 default. See `app/styles/main.css`'s `[data-soft='true']`
+                 blocks for the token overrides this drives. -->
+            <label class="flex items-center justify-between">
+              <span class="text-sm text-base-content">Soft contrast</span>
+              <input
+                type="checkbox"
+                class="toggle toggle-sm"
+                :checked="softContrast"
+                aria-label="Soft contrast"
+                @change="softContrastToggled()"
+              />
+            </label>
+
             <div class="flex flex-col gap-1">
               <span id="settings-drawer-side-label" class="text-sm text-base-content"
                 >Documents panel side</span
@@ -559,8 +577,9 @@ watch(open, (isOpen) => {
       </h2>
       <p class="mt-2 text-sm text-base-content/70">
         Restores font size, font family, line wrapping, spell check, autosave delay, reading width,
-        tooltips, formatting toolbar, documents panel side, scroll sync, auto-sync interval, and
-        theme to their defaults. Your documents, folders, and GitHub connection are not affected.
+        tooltips, formatting toolbar, documents panel side, scroll sync, auto-sync interval, theme,
+        and soft contrast to their defaults. Your documents, folders, and GitHub connection are not
+        affected.
       </p>
       <div class="mt-5 flex justify-end gap-2">
         <button
@@ -691,6 +710,59 @@ watch(open, (isOpen) => {
     border-color: var(--color-base-300);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
+  }
+}
+
+/*
+ * SOFT CONTRAST COMPENSATION (`[data-soft='true']`, set on `<html>` by
+ * `features/settings/model/softContrast.ts`) — bumps this panel's tint
+ * from 78% to 85% opaque. Necessary, not cosmetic: the ALPHA DERIVATION
+ * comment above measured the worst case as this panel's `--color-base-100`
+ * composited OVER an adversarial pure-white(dark theme)/pure-black(light
+ * theme) backdrop at 78%. Soft contrast moves `--color-base-100` itself
+ * closer to the app's own text colour (see `app/styles/main.css`'s
+ * `[data-soft='true']` blocks), which — composited over that SAME
+ * adversarial backdrop — lands even closer to a flat mid-grey than the
+ * un-softened colour did, so the footer's `/70` caption loses contrast
+ * against it. Measured at the un-adjusted 78%: the caption drops to 4.21:1
+ * (dark) / 4.50:1 (light) — the dark case genuinely breaks the mandatory
+ * 4.5:1 text floor, not just a known-limitation non-text case. Raising
+ * opacity to 85% is the fix: it makes the composited worst case lean more
+ * on the panel's own (softened but still far more legible than a 50/50
+ * blend) colour and less on the adversarial backdrop. Re-measured at 85%:
+ * caption 5.17:1 (dark) / 4.92:1 (light) — both clear 4.5:1 with margin
+ * again. Body text (not `/70`) stays comfortably clear either way (6.7:1+
+ * at 85%).
+ *
+ * `:global(...)` wraps the WHOLE selector (`[data-soft='true']
+ * .settings-panel`), not just the `[data-soft='true']` half — verified
+ * against this project's actual compiled output that
+ * `:global([data-soft='true']) .settings-panel` (unscoping only the
+ * ancestor half, leaving `.settings-panel` to pick up the usual
+ * `[data-v-hash]`) silently compiles away the `.settings-panel` part of
+ * the selector entirely in this Vue/Vite version, leaving a bare
+ * `[data-soft='true']` rule that matches `<html>` itself instead of this
+ * panel — a real miscompile, not a hypothetical. Fully unscoping avoids it.
+ * The trade-off: this rule now carries no `[data-v-hash]`, so its
+ * specificity (1 attribute + 1 class = the same (0,2,0) as the base rule's
+ * `.settings-panel[data-v-hash]`, 1 class + 1 attribute) TIES the base
+ * rule instead of beating it outright — at equal specificity CSS falls
+ * back to source order, and this rule is textually later in the same
+ * compiled output, so it still wins.
+ *
+ * Wrapped in the same `prefers-reduced-transparency: no-preference` guard
+ * (inverted from the base rule's own media query) — without it, this rule
+ * would apply unconditionally (including for a reduced-transparency user)
+ * and, being later in source order at tied specificity, would wrongly win
+ * over the `@media (prefers-reduced-transparency: reduce)` rule above in
+ * that case too, reintroducing a translucent fill where that rule
+ * explicitly wants a flat, fully opaque one. Scoping this rule's own
+ * applicability to `no-preference` means it simply never enters the
+ * cascade when reduced-transparency is active, leaving that rule as the
+ * only one setting `background-color` in that case. */
+@media (prefers-reduced-transparency: no-preference) {
+  :global([data-soft='true'] .settings-panel) {
+    background-color: color-mix(in srgb, var(--color-base-100) 85%, transparent);
   }
 }
 

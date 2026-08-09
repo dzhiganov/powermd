@@ -57,6 +57,23 @@ watch(
 // `$theme` store keeps this feature's theme-reactivity consistent with
 // how `ink.ts`/CodeMirror's own theming already work — off the DOM
 // attribute, not a cross-feature store dependency.
+//
+// `data-soft` (the "Soft contrast" preference,
+// `features/settings/model/softContrast.ts`) is watched for exactly the
+// same reason and by the same mechanism: `buildMermaidThemeConfig` in
+// `mermaidTheme.ts` resolves its seed colours by reading
+// `getComputedStyle` off a live probe element, which already picks up
+// `[data-soft='true']`'s overridden `--color-*`/`--md-*` tokens
+// (`app/styles/main.css`) automatically — no change needed there. Diagrams
+// DO follow soft contrast, deliberately, for the same reason every other
+// surface in the preview does: a diagram's background/border/line colours
+// are drawn from the same base-100/200/300/accent tokens the rest of the
+// pane uses (see `buildMermaidThemeConfig`'s own doc comment), so leaving
+// them un-softened while the pane around them softens would read as the
+// diagram floating on a mismatched, stale surface. The only thing missing
+// without this line in the filter is the RE-RENDER trigger: without it, a
+// diagram rendered before the toggle would keep its old, baked-in SVG
+// colours until the next unrelated markdown edit.
 let themeObserver: MutationObserver | null = null
 
 onMounted(() => {
@@ -74,7 +91,7 @@ onMounted(() => {
   })
   themeObserver.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ['data-theme'],
+    attributeFilter: ['data-theme', 'data-soft'],
   })
 })
 

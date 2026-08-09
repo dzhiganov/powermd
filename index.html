@@ -20,12 +20,16 @@
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbfaf8" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e0f11" />
     <script>
-      // Sets data-theme before first paint so the page doesn't flash the
-      // default theme then snap to the stored/resolved one. The stored
-      // value is the user's *choice* — 'light', 'dark', or 'system' — must
-      // match THEME_STORAGE_KEY / THEMES in src/shared/config/theme.ts, kept
-      // in sync by hand since this script runs before any JS module (and
-      // can't import it). 'system' (and anything missing/invalid, e.g. a
+      // Sets data-theme AND data-soft before first paint so the page
+      // doesn't flash the default theme / full-contrast surfaces then snap
+      // to the stored ones. The stored theme value is the user's *choice*
+      // — 'light', 'dark', or 'system' — must match THEME_STORAGE_KEY /
+      // THEMES in src/shared/config/theme.ts. The stored soft-contrast
+      // value is a plain 'true'/'false' string — must match
+      // SOFT_CONTRAST_STORAGE_KEY in
+      // src/features/settings/model/softContrast.ts. BOTH kept in sync by
+      // hand since this script runs before any JS module (and can't import
+      // either constant). 'system' (and anything missing/invalid, e.g. a
       // first visit) resolves against prefers-color-scheme right here,
       // matching what src/features/settings/model/theme.ts's
       // `$resolvedTheme` computes once the app hydrates — that store also
@@ -41,6 +45,8 @@
               ? 'dark'
               : 'light'
         document.documentElement.dataset.theme = theme
+        document.documentElement.dataset.soft =
+          localStorage.getItem('markdown-editor:soft-contrast') === 'true' ? 'true' : 'false'
       } catch (e) {}
     </script>
   </head>

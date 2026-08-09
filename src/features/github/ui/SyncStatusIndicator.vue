@@ -164,7 +164,15 @@ const errorInk = computed(() => ({ color: ink('--color-error') }))
          `app/styles/main.css`'s "KNOWN CONTRAST LIMITATIONS" comment,
          which flags exactly this). `--md-t3` clears 3:1 in both
          (measured ~3.89:1 light / ~3.37:1 dark against this bar's actual
-         rendered background). -->
+         rendered background).
+
+         SOFT CONTRAST (`[data-soft='true']`, `app/styles/main.css`): this
+         bar's background (`--color-base-200`) is exactly why that
+         feature's `--color-base-200` override uses a smaller soften
+         percentage than every other surface token — this icon's `--md-t3`
+         ratio was the tightest currently-passing 3:1 case in the app.
+         Re-measured with soft contrast on: ~3.68:1 light / ~3.04:1 dark —
+         both still clear 3:1. -->
     <CheckCircleIcon
       v-else
       class="h-3.5 w-3.5 shrink-0"

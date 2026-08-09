@@ -176,4 +176,38 @@ const links: AboutLink[] = [
     backdrop-filter: none;
   }
 }
+
+/*
+ * SOFT CONTRAST COMPENSATION — same fix, same derivation, as
+ * `SettingsModal.vue`'s `.settings-panel` override of its own (identical)
+ * glass panel: softening `--color-base-100` (see `app/styles/main.css`'s
+ * `[data-soft='true']` blocks) moves this panel's worst-case composited
+ * colour (over an adversarial pure-white/pure-black backdrop) closer to a
+ * flat mid-grey, dropping the footer's `/70` caption below 4.5:1 at the
+ * original 78% (measured 4.21:1 dark / 4.50:1 light). Bumping to 85%
+ * restores it (5.17:1 dark / 4.92:1 light) — see that file's comment for
+ * the full numbers; this panel shares the exact same `--color-base-100`
+ * token and alpha, so the same fix at the same value applies unchanged.
+ *
+ * `:global(...)` wraps the WHOLE selector, not just `[data-soft='true']`
+ * — see `SettingsModal.vue`'s identical rule for why: unscoping only the
+ * ancestor half and leaving `.about-panel`/`.settings-panel` to pick up
+ * the usual `[data-v-hash]` silently compiles away the class part of the
+ * selector entirely in this Vue/Vite version (confirmed against this
+ * project's actual compiled output), leaving a bare `[data-soft='true']`
+ * rule that matches `<html>` instead of the panel. Fully unscoping loses
+ * the `[data-v-hash]` specificity boost, tying (not beating) the base
+ * rule's specificity, but this rule is still textually later in the same
+ * compiled output, so it wins on source order at that tie.
+ *
+ * Guarded by the same `no-preference` media query for the same reason as
+ * `SettingsModal.vue`'s rule: without it, this rule would apply
+ * unconditionally and, tied-but-later, would wrongly win over the
+ * `reduce` rule above for a reduced-transparency user too, reintroducing
+ * translucency where that rule explicitly wants none. */
+@media (prefers-reduced-transparency: no-preference) {
+  :global([data-soft='true'] .about-panel) {
+    background-color: color-mix(in srgb, var(--color-base-100) 85%, transparent);
+  }
+}
 </style>
