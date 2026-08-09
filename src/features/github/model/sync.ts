@@ -18,6 +18,12 @@ import {
 import { sha256Hex } from '../lib/hash'
 import { assignPaths } from '../lib/pathAssignment'
 import { decideSyncSchedule } from '../lib/schedule'
+import { computeBackoffDelayMs, MAX_PUSH_ATTEMPTS } from '../lib/backoff'
+import {
+  clearStoredLastPushedCommit,
+  getStoredLastPushedCommit,
+  storeLastPushedCommit,
+} from '../lib/lastPushedCommit'
 import type { SyncConfig } from '../lib/config'
 import {
   $connectionStatus,
@@ -179,36 +185,77 @@ function commitMessageFor(dirty: DirtyDoc[]): string {
 
 /**
  * The commit this client last put on the branch, or `null` before the first
- * push of a session.
+ * push of this connection (a fresh connection, or nothing yet successfully
+ * pushed since the last reload — see `lib/lastPushedCommit.ts`, which is
+ * where this is actually persisted; this module never keeps its own
+ * in-memory copy, so every read/write below goes straight to storage and
+ * survives a reload or PWA restart).
  *
  * A ref read immediately after a write can still return the previous tip —
  * GitHub's own propagation, not the HTTP cache, which requests already opt
  * out of. A push queued right behind a successful one therefore builds on a
  * parent that has already been superseded, and is rejected as not a fast
  * forward. Preferring the commit we just made removes the dependency on that
- * read entirely for consecutive pushes from this client.
+ * read entirely for consecutive pushes from this client — reload included,
+ * which is exactly when it used to be forgotten right when it was most
+ * needed (a reload right after an `updateRef` that landed on GitHub but
+ * whose response never made it back).
  *
  * Trusting it is safe: `updateRef` is never forced, so if another writer has
  * genuinely moved the branch, the update is rejected and the retry refetches.
  * The worst case is one wasted attempt, not a clobbered commit.
  */
-let lastPushedCommitSha: string | null = null
-
 function forgetLastPushedCommit(): void {
-  lastPushedCommitSha = null
+  clearStoredLastPushedCommit()
 }
 
 // Forgotten on disconnect and on every (re)connect: a sha remembered from one
 // repository or branch means nothing in another, and trusting it there would
-// build on a commit that does not exist in the new history.
+// build on a commit that does not exist in the new history. Belt-and-braces
+// alongside `lib/lastPushedCommit.ts`'s own owner/repo/branch scoping check
+// on every read — either alone already prevents cross-connection reuse.
 disconnectRequested.watch(forgetLastPushedCommit)
 syncConnected.watch(forgetLastPushedCommit)
 
-const MAX_PUSH_ATTEMPTS = 4
+/** `pushBatch` throws this when it discovers, after waiting out a backoff
+ * delay, that the connection it was pushing to no longer exists (a
+ * disconnect) or has been replaced by a different repo/branch (a fresh
+ * `syncConnected`) — see the abort check in the `GitHubRefConflictError`
+ * catch branch below. Deliberately distinct from every other failure this
+ * module can throw: `runSyncFx.fail`'s consumers (the error toast and
+ * `$syncError`) special-case it below to stay silent, since a disconnect the
+ * user just asked for is not a sync failure worth reporting as one, and
+ * `$dirtySinceLastSync`/`$lastSyncAt` are `.on(runSyncFx.done, …)`-only
+ * (untouched by `.fail`), so a document that was never actually pushed stays
+ * correctly marked dirty for the next attempt. */
+export class SyncAbortedError extends Error {
+  constructor() {
+    super('Sync stopped: the connection changed before this retry completed.')
+    this.name = 'SyncAbortedError'
+  }
+}
 
-/** Multiplied by the attempt number, so retries wait ~0.5s, 1s, 1.5s rather
- * than all firing inside the same tick against an unchanged ref. */
-const RETRY_BACKOFF_MS = 500
+/** `pushBatch` throws this instead of `GitHubRefConflictError` when every
+ * retry is exhausted AND a fresh re-read of the branch tip, taken right
+ * after the last rejection, comes back identical to the tip that final
+ * attempt was built on — i.e. GitHub's own reported tip never actually
+ * moved, so nothing outraced this client; the read (or the write's own
+ * visibility) simply hadn't caught up yet within the retry window. That is
+ * propagation lag, not a lost or conflicting edit, and the message says so
+ * explicitly rather than reusing `GitHubRefConflictError`'s "identities
+ * involved" wording, which implies a real concurrent writer. The next
+ * scheduled sync (or "Sync now") retries automatically — nothing here
+ * changes `$dirtySinceLastSync`, so the documents involved stay queued. */
+export class GitHubSyncLagError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'GitHubSyncLagError'
+  }
+}
+
+function sameConnectionTarget(a: SyncConfig, b: SyncConfig | null): boolean {
+  return b !== null && a.owner === b.owner && a.repo === b.repo && a.branch === b.branch
+}
 
 /** Refetches the branch ref/base tree and builds+commits a fresh tree on top
  * of it, then moves the ref. On a non-fast-forward rejection (the ref moved
@@ -252,18 +299,23 @@ async function pushBatch(
   }
 
   // Prefer the commit this client last made over a ref read that may not have
-  // caught up with it yet (see `lastPushedCommitSha`). If that commit can no
-  // longer be fetched — a different repo, a force push, a deleted branch —
-  // fall back to whatever the ref actually says.
+  // caught up with it yet (see the doc comment on `forgetLastPushedCommit`
+  // above). Persisted (`lib/lastPushedCommit.ts`), scoped to this exact
+  // owner/repo/branch, and re-read here on every attempt rather than cached
+  // in a local variable, so a value written by an earlier attempt in this
+  // same retry loop is picked up too. If that commit can no longer be
+  // fetched — a different repo, a force push, a deleted branch — fall back
+  // to whatever the ref actually says.
+  const rememberedSha = getStoredLastPushedCommit(owner, repo, branch)
   let baseSha = ref.sha
   let baseTreeSha: string
-  if (lastPushedCommitSha !== null && lastPushedCommitSha !== ref.sha) {
+  if (rememberedSha !== null && rememberedSha !== ref.sha) {
     try {
-      baseTreeSha = (await getCommit(token, owner, repo, lastPushedCommitSha)).treeSha
-      baseSha = lastPushedCommitSha
+      baseTreeSha = (await getCommit(token, owner, repo, rememberedSha)).treeSha
+      baseSha = rememberedSha
     } catch {
       baseTreeSha = (await getCommit(token, owner, repo, ref.sha)).treeSha
-      lastPushedCommitSha = null
+      forgetLastPushedCommit()
     }
   } else {
     baseTreeSha = (await getCommit(token, owner, repo, ref.sha)).treeSha
@@ -282,25 +334,59 @@ async function pushBatch(
 
   try {
     await updateRef(token, owner, repo, branch, commit.sha)
-    lastPushedCommitSha = commit.sha
+    storeLastPushedCommit(owner, repo, branch, commit.sha)
   } catch (error) {
     // The branch moved between this cycle's `getBranchRef` and this update —
-    // a concurrent writer. Refetch and rebuild against the new base rather
-    // than ever force-pushing over their commit.
+    // a concurrent writer, OR (the common real-world case this retry loop
+    // was built for) GitHub's own read replicas simply hadn't caught up with
+    // an earlier write yet. Refetch and rebuild against the new base rather
+    // than ever force-pushing over anyone's commit.
     if (error instanceof GitHubRefConflictError && attempt < MAX_PUSH_ATTEMPTS) {
-      // Back off before rebuilding. A ref read immediately after a write can
-      // still return the previous tip, so retrying with no delay just rebuilds
-      // on the same stale base and fails identically — the retries burn out
-      // in milliseconds without ever seeing the commit that was just made.
-      await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS * attempt))
+      // Exponential backoff with jitter (`lib/backoff.ts`) — a ref read
+      // immediately after a write can still return the previous tip for
+      // several seconds, so retrying with too short a delay just rebuilds on
+      // the same stale base and fails identically every time, burning out
+      // every attempt before GitHub's replicas ever catch up. This is a
+      // background sync with no user waiting on it, so a total window of
+      // ~30s+ across every attempt is cheap insurance.
+      await new Promise((resolve) => setTimeout(resolve, computeBackoffDelayMs(attempt)))
+
+      // The wait above can take several seconds, easily long enough for the
+      // user to disconnect (or reconnect to a different repo/branch) while
+      // this retry loop is mid-backoff. Check before rebuilding+retrying —
+      // and, critically, before ever calling `updateRef` again — so a torn-
+      // down connection can't have this loop keep pushing to it (or to
+      // whatever replaced it) after the fact. `$syncConnection` (not just
+      // `disconnectRequested`) is checked so a reconnect-to-a-different-target
+      // mid-backoff is caught the same way a plain disconnect is.
+      if (!sameConnectionTarget(connection, $syncConnection.getState())) {
+        throw new SyncAbortedError()
+      }
       return pushBatch(token, connection, dirty, attempt + 1)
     }
-    // A non-fast-forward that survives every retry is not a passing race, so
-    // report the identities involved rather than the status alone. The tip
-    // this attempt built on, the commit it produced, and that commit's parent
-    // are the three values that distinguish "the branch really moved" from
-    // "the ref we read was never the tip" — indistinguishable otherwise.
+    // A non-fast-forward that survives every retry is either a genuine
+    // concurrent writer or propagation lag that never resolved within the
+    // retry window — indistinguishable from the rejection alone, but not
+    // from a fresh read taken right now: if GitHub's tip has actually moved
+    // past what this attempt built on, a writer really did race this one; if
+    // it's still sitting at the exact same sha, nothing ever raced it, this
+    // client's own read (or the write's visibility) was simply still
+    // catching up. Best-effort — a failed re-read here just falls through to
+    // the ordinary conflict message below, which is still accurate.
     if (error instanceof GitHubRefConflictError) {
+      const freshRef = await getBranchRef(token, owner, repo, branch).catch(() => null)
+      if (freshRef !== null && freshRef.sha === ref.sha) {
+        throw new GitHubSyncLagError(
+          `GitHub hasn't finished propagating an earlier push yet (the branch ` +
+            `tip is still ${ref.sha.slice(0, 8)} after ${attempt} attempt(s) over ` +
+            `~30s). Nothing was lost — your changes are still saved locally and ` +
+            `this will sync automatically once GitHub catches up.`,
+        )
+      }
+      // The tip this attempt built on, the commit it produced, and that
+      // commit's parent are the three values that distinguish "the branch
+      // really moved" from "the ref we read was never the tip" —
+      // indistinguishable otherwise.
       throw new GitHubRefConflictError(
         `${error.message} (read tip ${ref.sha.slice(0, 8)}, built commit ` +
           `${commit.sha.slice(0, 8)} on parent ${ref.sha.slice(0, 8)}, ` +
@@ -414,7 +500,8 @@ const settleElapsed = debounce(settleArmed, SETTLE_DEBOUNCE_MS)
  * beyond what's already in stores: the absolute time (epoch ms) a
  * `schedule-at` timer is currently armed for, or `null`. Plain module state
  * plus a real `setTimeout`/`clearTimeout` rather than an Effector primitive
- * — same precedent as `lastPushedCommitSha` above — because the deadline
+ * — same "plain module state, not a store" shape `pushBatch`'s retry
+ * backoff above uses for its own wait — because the deadline
  * this represents must stay FIXED once armed (only ever replaced by an
  * earlier one, e.g. the interval setting shrinking — see
  * `decideSyncSchedule`'s own doc comment), which patronum's `debounce`
@@ -613,7 +700,16 @@ function describeSyncError(error: unknown): string {
 }
 
 export const $syncError = createStore<string | null>(null)
-  .on(runSyncFx.fail, (_, { error }) => describeSyncError(error))
+  .on(runSyncFx.fail, (state, { error }) =>
+    // A `SyncAbortedError` means the retry loop stopped because the user
+    // disconnected (or reconnected elsewhere) mid-backoff — not a sync
+    // failure to report. `disconnectRequested` has already reset this store
+    // to `null` by the time this late-arriving `.fail` lands anyway (see
+    // `SyncAbortedError`'s own doc comment); leaving the state unchanged
+    // here rather than writing a fresh (misleading, post-disconnect) message
+    // over it is what keeps that true.
+    error instanceof SyncAbortedError ? state : describeSyncError(error),
+  )
   .on(runSyncFx.done, () => null)
   .reset(disconnectRequested)
 
@@ -637,6 +733,10 @@ export const $syncStatus = combine(
 
 sample({
   clock: runSyncFx.fail,
+  // A `SyncAbortedError` is expected, silent housekeeping (see its own doc
+  // comment) — not something worth interrupting the user with a toast for,
+  // especially since it fires right after they asked to disconnect.
+  filter: ({ error }) => !(error instanceof SyncAbortedError),
   fn: ({ error }): { text: string; tone: 'error' } => ({
     text: describeSyncError(error),
     tone: 'error',
