@@ -158,12 +158,9 @@ const links: AboutLink[] = [
  */
 .about-panel {
   background-color: color-mix(in srgb, var(--color-base-100) 78%, transparent);
-  background-image: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--md-accent) 14%, transparent) 0%,
-    color-mix(in srgb, var(--md-accent) 4%, transparent) 38%,
-    transparent 70%
-  );
+  /* No gradient — it banded into visible diagonal lines. See
+     `SettingsModal.vue`'s `.settings-panel` for the arithmetic; this panel
+     is full-window, so it spans even further and bands even wider. */
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   backdrop-filter: blur(24px) saturate(180%);
 }

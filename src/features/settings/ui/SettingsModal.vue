@@ -685,12 +685,14 @@ watch(open, (isOpen) => {
  */
 .settings-panel {
   background-color: color-mix(in srgb, var(--color-base-100) 78%, transparent);
-  background-image: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--md-accent) 14%, transparent) 0%,
-    color-mix(in srgb, var(--md-accent) 4%, transparent) 38%,
-    transparent 70%
-  );
+  /* NO GRADIENT — it banded. A 14%-to-0% fade across ~600px is about 36
+     discrete 8-bit levels spread over 600 pixels, i.e. a visible step every
+     ~17px, which read as faint diagonal lines across the panel rather than
+     as a sheen. Worse in the light theme, where banding is more visible in
+     bright tones. Any large-area, low-delta gradient bands like this in
+     8-bit; the real fix is noise dithering, which is not worth the weight
+     here since blur, saturation and the lit edge below are what make this
+     read as glass — the gradient was never carrying that. */
   /* A brighter hairline than `--color-base-300`: a lit edge is most of what
      makes a surface read as glass rather than as flat translucency, and it
      does the work even when the backdrop is the same tone as the panel —

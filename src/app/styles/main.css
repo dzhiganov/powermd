@@ -397,18 +397,35 @@ body {
  *     accent colour, and every consumer of those tokens was already
  *     measured against the (also unchanged) surfaces above.
  */
+/* The light values moved MUCH further than the dark ones, and deliberately.
+ * An equal step in 8-bit values is nowhere near an equal step perceptually:
+ * dark's #0e0f11 -> #1b1c1e is 13 levels but roughly DOUBLES the surface
+ * luminance, which reads instantly. Light's original softening was the same
+ * 12-level move (#fbfaf8 -> #efeeec) and was a ~5% relative change — a real
+ * difference by the numbers, and invisible in practice, which is what got
+ * reported. These values step far enough to actually read as grey while
+ * every combination still clears the contrast floors (re-measured). */
 [data-theme='light'][data-soft='true'] {
-  --color-base-100: #efeeec;
-  --color-base-200: #eeece9;
-  --color-base-300: #d7d4ce;
-  --md-rail: #f3f2f2;
-  --md-hov: #dedbd6;
-  --md-sel: #dad6ce;
-  --md-seg: #dfdcd7;
-  --md-seg-active: #f3f2f2;
-  --md-code: #e4e1dc;
-  --md-pop: #f3f2f2;
-  --md-line2: #dfdcd6;
+  --color-base-100: #e9e7e2;
+  --color-base-200: #e2e0da;
+  --color-base-300: #cbc7c0;
+  /* Still BRIGHTER than the canvas — see `--md-rail`'s own comment in the
+   * base light block. Softening must not quietly invert that. */
+  --md-rail: #f2f0ec;
+  --md-hov: #dcd8d1;
+  --md-sel: #d6d1c8;
+  --md-seg: #dbd7d0;
+  --md-seg-active: #f2f0ec;
+  /* Brighter than the canvas, like `--md-rail` above and unlike the base
+   * light theme, where the code surface sits slightly *below* the canvas.
+   * Syntax-highlight colours are fixed, so darkening the surface they sit
+   * on is the one move that directly costs contrast — measured 4.24:1 for
+   * the darkest token, under the floor. Going brighter keeps code blocks
+   * just as distinct from the canvas (the same ~7-level separation the base
+   * theme uses, in the other direction) and restores the ratio. */
+  --md-code: #f0eeea;
+  --md-pop: #f2f0ec;
+  --md-line2: #dbd7d0;
 }
 
 [data-theme='dark'][data-soft='true'] {

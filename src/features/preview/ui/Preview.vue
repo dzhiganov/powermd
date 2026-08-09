@@ -228,6 +228,19 @@ const previewMaxWidth = 'min(680px, var(--md-reading-width, 75ch))'
   --tw-prose-pre-bg: var(--md-code);
 }
 
+/* INLINE code gets the same dedicated code surface as fenced blocks above.
+ * daisyUI's own prose rule (`:root .prose :where(code):not(pre>code)`)
+ * paints it with `--color-base-200`, the generic elevated-chrome surface —
+ * which meant the inline-code chip tracked the header's colour rather than
+ * the code surface's, for no reason other than that being daisyUI's
+ * default. Soft contrast is what exposed it: darkening `base-200` dropped
+ * this text to 4.44:1, under the floor, while `--md-code` (the surface it
+ * should have been on all along) clears it. The selector is deliberately
+ * more specific than daisyUI's rather than relying on source order. */
+.markdown-preview :deep(code:not(pre > code)) {
+  background-color: var(--md-code);
+}
+
 .markdown-preview :deep(a) {
   word-break: break-word;
 }
