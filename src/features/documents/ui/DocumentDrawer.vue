@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useUnit } from 'effector-vue/composition'
 import { PlusIcon, FolderPlusIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 
 import { useDialogFocusTrap } from '@/shared/lib/useDialog'
 import { ink } from '@/shared/lib/ink'
+import { isMac } from '@/shared/lib/platform'
 
 import {
   $documentList,
@@ -31,6 +32,7 @@ import {
   $searchResults,
   searchQueryChanged,
   searchCleared,
+  searchFocusRequested,
 } from '../model/search'
 import DocumentRow from './DocumentRow.vue'
 import FolderGroup from './FolderGroup.vue'
@@ -84,6 +86,31 @@ function clearSearch() {
   searchCleared()
   searchInputRef.value?.focus()
 }
+
+// Global Ctrl+Shift+F/Cmd+Shift+F (`src/app/documentsSearchShortcut.ts`)
+// fires `drawerOpened` (this feature's own event, opens the drawer if it
+// was closed) and this event together. `await nextTick()` matters when the
+// drawer was closed: the `<aside>` above is `:inert="!open"` while closed
+// (see its own comment — it's never `v-if`, just off-screen/inert), so
+// `.focus()` would silently no-op if called before Vue has flushed the DOM
+// update that clears `inert`. Same "watch + nextTick" shape this file
+// already uses for `creatingFolder`/`pendingDelete` below.
+const searchFocusSubscription = searchFocusRequested.watch(async () => {
+  await nextTick()
+  searchInputRef.value?.focus()
+  searchInputRef.value?.select()
+})
+onUnmounted(searchFocusSubscription.unsubscribe)
+
+// The search field's `⌘K`-style hint chip (below) advertises this same
+// shortcut — not `formatShortcut` (`shared/lib/platform.ts`): that helper
+// renders every modifier in the SAME order regardless of platform, but
+// macOS's own convention orders Shift before Cmd (`⇧⌘F`) while Windows/
+// Linux orders Ctrl before Shift (`Ctrl+Shift+F`) — two different orders
+// from one input string isn't something a single left-to-right join can
+// produce. `isMac()` (the same helper `formatShortcut` itself is built on)
+// is reused directly instead of adding a second platform helper.
+const acrossDocumentsShortcutLabel = isMac() ? '⇧⌘F' : 'Ctrl+Shift+F'
 
 // Folders sort alphabetically (case-insensitive) — flat, no manual
 // reordering (out of scope; moving is a per-document menu action, not
@@ -315,14 +342,18 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
             >
               <XMarkIcon class="h-3 w-3" />
             </button>
-            <!-- Decorative shortcut hint (Phase 4 visual redesign, matching
-                 the reference design's `⌘K` chip) — shown only while the
-                 field is empty (the clear button above takes this same slot
-                 once there's a query, so the two never overlap). `Mod-k` is
-                 already bound inside the editor to "Insert link" (see
-                 `features/editor/lib/shortcuts.ts`), so this is a visual
-                 affordance only, not a new global keybinding that would
-                 shadow it. -->
+            <!-- Shortcut hint chip (Phase 4 visual redesign reference
+                 design) — shown only while the field is empty (the clear
+                 button above takes this same slot once there's a query, so
+                 the two never overlap). Used to advertise `⌘K`, a shortcut
+                 that was never actually bound to this search box — `Mod-k`
+                 is (and stays) the editor's "Insert link" binding (see
+                 `features/editor/lib/shortcuts.ts`). It now shows the real
+                 shortcut instead: the global Ctrl+Shift+F/Cmd+Shift+F
+                 handler (`src/app/documentsSearchShortcut.ts`) opens this
+                 drawer if closed and focuses this exact input — see
+                 `acrossDocumentsShortcutLabel`'s own comment above for why
+                 that label isn't built with `formatShortcut`. -->
             <!-- `--md-seg-fg`, not `--md-t4`. `aria-hidden` makes this
                  incidental for WCAG purposes, but it was the single lowest-
                  contrast text in the whole app (3.44:1) and soft contrast
@@ -331,11 +362,11 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
                  the token already measured >=4.5:1 in both themes. -->
             <span
               v-else
-              class="shrink-0 font-mono text-[10.5px] tracking-wide"
+              class="shrink-0 font-mono text-[10.5px] tracking-wide whitespace-nowrap"
               style="color: var(--md-seg-fg, var(--color-base-content))"
               aria-hidden="true"
             >
-              ⌘K
+              {{ acrossDocumentsShortcutLabel }}
             </span>
           </div>
 

@@ -39,6 +39,13 @@ import { $documentList, $folders } from './documents'
 export const searchQueryChanged = createEvent<string>()
 /** Escape, or the box's own clear button. */
 export const searchCleared = createEvent()
+/** Focus (and select) the search box without changing its contents — fired
+ * from `src/app/documentsSearchShortcut.ts`'s global Ctrl+Shift+F/
+ * Cmd+Shift+F handler, alongside `documents`' own `drawerOpened` (this
+ * feature doesn't know the drawer might need opening first; that's the one
+ * place that knows both, same shape as every other cross-feature link in
+ * `wiring.ts`). `DocumentDrawer.vue` is the sole subscriber. */
+export const searchFocusRequested = createEvent()
 
 export const $searchQuery = createStore('')
   .on(searchQueryChanged, (_, query) => query)

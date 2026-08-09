@@ -69,6 +69,7 @@ import {
 
 import { initUrlSync } from './urlSync'
 import { initPaneJump } from './paneJump'
+import { initDocumentsSearchShortcut } from './documentsSearchShortcut'
 
 import '@/features/settings'
 import '@/features/editor'
@@ -115,6 +116,12 @@ sample({ clock: $scrollSyncEnabled, target: scrollSyncEnabledChanged })
 // `$scrollSyncEnabled`. See `src/app/paneJump.ts` for why it doesn't need a
 // `SyncSession` to exist.
 initPaneJump()
+
+// Ctrl+Shift+F / Cmd+Shift+F — jumps to the `documents` feature's existing
+// across-documents search, opening its drawer first if needed. See
+// `documentsSearchShortcut.ts`'s own doc comment for why this is a plain
+// `window` keydown listener rather than a CodeMirror `keymap` binding.
+initDocumentsSearchShortcut()
 
 // --- documents <-> editor -------------------------------------------------
 //

@@ -8,6 +8,7 @@ import { languages } from '@codemirror/language-data'
 import { daisyMarkdownTheme } from './theme'
 import { imagePasteHandler } from './imagePaste'
 import { editorShortcutsKeymap } from './shortcuts'
+import { editorSearchExtension } from './search'
 import { jumpFlashField } from './jumpFlash'
 
 /**
@@ -110,6 +111,11 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         history(),
         editorShortcutsKeymap,
         keymap.of([...defaultKeymap, ...historyKeymap]),
+        // In-file find & replace (Ctrl+F/Cmd+F) — see `lib/search.ts`'s doc
+        // comment for the full rationale, the custom-styled panel, and why
+        // its keymap is `Prec.high` (resolves an `Escape` collision with
+        // `defaultKeymap`'s `simplifySelection` above, deterministically).
+        ...editorSearchExtension,
         markdown({ codeLanguages: languages }),
         wrapCompartment.of(currentLineWrap ? EditorView.lineWrapping : []),
         spellcheckCompartment.of(

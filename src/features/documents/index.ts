@@ -15,6 +15,7 @@ export {
   documentCreated,
   documentDuplicated,
   documentMoveRequested,
+  drawerOpened,
   drawerClosed,
   saveRequested,
   autosaveIntervalChanged,
@@ -34,6 +35,7 @@ export {
 export {
   searchQueryChanged,
   searchCleared,
+  searchFocusRequested,
   $searchQuery,
   $isSearching,
   $searchResults,

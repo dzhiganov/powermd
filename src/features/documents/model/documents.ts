@@ -100,6 +100,12 @@ export const documentDeleteCancelled = createEvent()
 
 export const drawerToggled = createEvent()
 export const drawerClosed = createEvent()
+/** Opens the drawer unconditionally (a no-op if already open) — unlike
+ * `drawerToggled`, which would *close* it if called while already open.
+ * Fired from `src/app/documentsSearchShortcut.ts`'s global Ctrl+Shift+F/
+ * Cmd+Shift+F handler, which always wants "open, if not already", never a
+ * toggle. */
+export const drawerOpened = createEvent()
 
 // --- Folders (flat — a document is at root or in exactly one folder, no
 // nesting) -----------------------------------------------------------------
@@ -1163,7 +1169,10 @@ sample({
 
 // --- Drawer --------------------------------------------------------------
 
-$drawerOpen.on(drawerToggled, (open) => !open).on(drawerClosed, () => false)
+$drawerOpen
+  .on(drawerToggled, (open) => !open)
+  .on(drawerClosed, () => false)
+  .on(drawerOpened, () => true)
 
 const persistDrawerOpenFx = createEffect((open: boolean) => {
   writeStorage(DRAWER_OPEN_KEY, String(open))
