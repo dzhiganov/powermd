@@ -18,6 +18,20 @@ import type { Options } from 'rehype-sanitize'
  */
 export const previewSchema: Options = {
   ...defaultSchema,
+  /**
+   * `u` is added to GitHub's default tag list for the underline action.
+   * Markdown has no underline syntax, so the toolbar and `Mod-u` emit
+   * `<u>` — which the default schema strips, silently swallowing the
+   * formatting the moment it is applied. (Strikethrough needs nothing here:
+   * `~~` goes through remark-gfm, and `del`/`s` are already allowed.)
+   *
+   * This is the security boundary, so it is worth being exact about what
+   * this widens. `u` carries no URL, no script, no event handler and no
+   * layout capability — it is a text-decoration element and nothing else.
+   * Its attributes are untouched, so the `*` allow-list below still governs
+   * what may appear on it, exactly as for every other tag.
+   */
+  tagNames: [...(defaultSchema.tagNames ?? []), 'u'],
   attributes: {
     ...defaultSchema.attributes,
     '*': [...(defaultSchema.attributes?.['*'] ?? []), 'dataLine'],

@@ -4,6 +4,8 @@ import { useUnit } from 'effector-vue/composition'
 import {
   BoldIcon,
   ItalicIcon,
+  UnderlineIcon,
+  StrikethroughIcon,
   LinkIcon,
   CodeBracketIcon,
   CodeBracketSquareIcon,
@@ -56,6 +58,21 @@ interface ToolbarAction {
 const actions: ToolbarAction[] = [
   { id: 'bold', label: 'Bold', icon: BoldIcon, run: (v) => toggleWrapInline(v, '**') },
   { id: 'italic', label: 'Italic', icon: ItalicIcon, run: (v) => toggleWrapInline(v, '*') },
+  // The only action here that emits raw HTML: Markdown has no underline
+  // syntax at all, so there is nothing else to emit. `<u>` is allow-listed
+  // in the preview's sanitize schema for this; see `sanitizeSchema.ts`.
+  {
+    id: 'underline',
+    label: 'Underline',
+    icon: UnderlineIcon,
+    run: (v) => toggleWrapInline(v, '<u>', '</u>'),
+  },
+  {
+    id: 'strikethrough',
+    label: 'Strikethrough',
+    icon: StrikethroughIcon,
+    run: (v) => toggleWrapInline(v, '~~'),
+  },
   { id: 'link', label: 'Link', icon: LinkIcon, run: (v) => toggleLink(v) },
   {
     id: 'inline-code',

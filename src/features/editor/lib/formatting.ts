@@ -12,49 +12,56 @@ import type { EditorView } from '@codemirror/view'
  * Built on a single `state.changeByRange` + `dispatch`: every range's
  * change lands in one transaction, so this is always exactly one undo step
  * no matter how many cursors/selections are active.
+ *
+ * `close` defaults to `open` because every Markdown inline marker is
+ * symmetric — `**`, `*`, `~~`, backticks. It is a separate parameter for
+ * underline alone, which has no Markdown syntax and so emits `<u>`/`</u>`.
+ * Tracking the two lengths independently is the point: with one shared
+ * length, unwrapping `<u>x</u>` would strip four characters off the end
+ * instead of three and silently eat a character of the user's own text.
  */
-export function toggleWrapInline(view: EditorView, marker: string): void {
+export function toggleWrapInline(view: EditorView, open: string, close: string = open): void {
   const tr = view.state.changeByRange((range) => {
     const state = view.state
     const selected = state.sliceDoc(range.from, range.to)
-    const before = state.sliceDoc(Math.max(0, range.from - marker.length), range.from)
-    const after = state.sliceDoc(range.to, range.to + marker.length)
+    const before = state.sliceDoc(Math.max(0, range.from - open.length), range.from)
+    const after = state.sliceDoc(range.to, range.to + close.length)
 
     const selectionWrapsMarkers =
-      selected.length >= marker.length * 2 &&
-      selected.startsWith(marker) &&
-      selected.endsWith(marker)
+      selected.length >= open.length + close.length &&
+      selected.startsWith(open) &&
+      selected.endsWith(close)
 
     if (selectionWrapsMarkers) {
-      const inner = selected.slice(marker.length, selected.length - marker.length)
+      const inner = selected.slice(open.length, selected.length - close.length)
       return {
         changes: { from: range.from, to: range.to, insert: inner },
         range: EditorSelection.range(range.from, range.from + inner.length),
       }
     }
 
-    if (!range.empty && before === marker && after === marker) {
+    if (!range.empty && before === open && after === close) {
       return {
         changes: [
-          { from: range.from - marker.length, to: range.from, insert: '' },
-          { from: range.to, to: range.to + marker.length, insert: '' },
+          { from: range.from - open.length, to: range.from, insert: '' },
+          { from: range.to, to: range.to + close.length, insert: '' },
         ],
-        range: EditorSelection.range(range.from - marker.length, range.to - marker.length),
+        range: EditorSelection.range(range.from - open.length, range.to - open.length),
       }
     }
 
     if (range.empty) {
       return {
-        changes: { from: range.from, insert: marker + marker },
-        range: EditorSelection.cursor(range.from + marker.length),
+        changes: { from: range.from, insert: open + close },
+        range: EditorSelection.cursor(range.from + open.length),
       }
     }
 
     return {
-      changes: { from: range.from, to: range.to, insert: marker + selected + marker },
+      changes: { from: range.from, to: range.to, insert: open + selected + close },
       range: EditorSelection.range(
-        range.from + marker.length,
-        range.from + marker.length + selected.length,
+        range.from + open.length,
+        range.from + open.length + selected.length,
       ),
     }
   })

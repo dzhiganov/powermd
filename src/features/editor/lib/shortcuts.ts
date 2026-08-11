@@ -29,6 +29,8 @@ export interface EditorShortcut {
 export const EDITOR_SHORTCUTS: EditorShortcut[] = [
   { keys: 'Mod-b', description: 'Bold' },
   { keys: 'Mod-i', description: 'Italic' },
+  { keys: 'Mod-u', description: 'Underline' },
+  { keys: 'Mod-Shift-x', description: 'Strikethrough' },
   { keys: 'Mod-k', description: 'Insert link' },
   { keys: 'Mod-s', description: 'Save now' },
   { keys: 'Mod-Shift-v', description: 'Toggle view mode' },
@@ -50,6 +52,28 @@ const bindings: KeyBinding[] = [
     preventDefault: true,
     run: (view) => {
       toggleWrapInline(view, '*')
+      return true
+    },
+  },
+  {
+    // Markdown has no underline, so this is the one formatting action that
+    // emits raw HTML rather than markup. `<u>` is allow-listed in the
+    // preview's sanitize schema for exactly this; nothing else about the
+    // security boundary changes.
+    key: 'Mod-u',
+    preventDefault: true,
+    run: (view) => {
+      toggleWrapInline(view, '<u>', '</u>')
+      return true
+    },
+  },
+  {
+    // Mod-Shift-x, the same chord GitHub, Obsidian and Notion use for
+    // strikethrough — worth matching rather than inventing.
+    key: 'Mod-Shift-x',
+    preventDefault: true,
+    run: (view) => {
+      toggleWrapInline(view, '~~')
       return true
     },
   },
