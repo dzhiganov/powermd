@@ -17,6 +17,8 @@ import {
   lineWrapChanged,
   editorFontMetricsChanged,
   spellcheckSettingsChanged,
+  wikiLinkDocumentsChanged,
+  activeWikiLinkDocumentIdChanged,
 } from '@/features/editor'
 import {
   sourceReceived,
@@ -174,6 +176,23 @@ sample({
   clock: activeDocumentLoaded,
   target: loadContent,
 })
+
+// Wiki-link (`[[Title]]`) inline autocomplete (`features/editor/lib/
+// wikiLinkCompletion.ts`) needs the live `{ id, title }` document list and
+// the active document's id — both `documents`-owned, neither of which
+// `editor` may read directly (see that module's own doc comment). Same
+// one-kick-then-sample shape as every other injected mirror in this file
+// (e.g. `lineWrapChanged` below): the store's already-current value at this
+// module's evaluation time needs an explicit first push, since `sample`'s
+// `clock` only reacts to *later* updates.
+wikiLinkDocumentsChanged($documentList.getState().map((doc) => ({ id: doc.id, title: doc.title })))
+sample({
+  source: $documentList,
+  fn: (docs) => docs.map((doc) => ({ id: doc.id, title: doc.title })),
+  target: wikiLinkDocumentsChanged,
+})
+activeWikiLinkDocumentIdChanged($activeId.getState())
+sample({ source: $activeId, target: activeWikiLinkDocumentIdChanged })
 
 // --- documents <-> layout ----------------------------------------------------
 //

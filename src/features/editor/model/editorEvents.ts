@@ -1,5 +1,7 @@
 import { createEvent, createStore } from 'effector'
 
+import type { WikiLinkDocument } from '../lib/wikiLinkCompletion'
+
 /** Fired by the editor's Mod-S binding (see `lib/shortcuts.ts`) — save
  * immediately, bypassing the documents feature's autosave debounce.
  * Consumed in `src/app/wiring.ts`, the one place allowed to know both
@@ -73,3 +75,38 @@ export const $spellcheckSettings = createStore<{ enabled: boolean; language: str
   enabled: true,
   language: 'default',
 }).on(spellcheckSettingsChanged, (_, settings) => settings)
+
+/**
+ * The editor feature's own mirror of `features/documents`' live `{ id,
+ * title }` list — same "settings/documents owns the data, the acting
+ * feature keeps its own mirror" shape as `$lineWrapEnabled`/
+ * `$spellcheckSettings` above, just sourced from `documents` instead of
+ * `settings`. Feeds `lib/wikiLinkCompletion.ts`'s completion source,
+ * which reads `$wikiLinkDocuments.getState()`/`$activeWikiLinkDocumentId
+ * .getState()` fresh on every keystroke (see that module's doc comment)
+ * rather than this store ever being snapshotted once — that's what makes
+ * a title renamed, or a document created, while the editor is open show
+ * up in the `[[` menu without a reload.
+ *
+ * `wiring.ts` mirrors `@/features/documents`' `$documentList` into this
+ * (one-kick-then-sample, same shape as every other mirror in that file).
+ */
+export const wikiLinkDocumentsChanged = createEvent<WikiLinkDocument[]>()
+export const $wikiLinkDocuments = createStore<WikiLinkDocument[]>([]).on(
+  wikiLinkDocumentsChanged,
+  (_, documents) => documents,
+)
+
+/**
+ * The editor feature's own mirror of `features/documents`' `$activeId` —
+ * the one piece of information `filterWikiLinkCandidates` needs to leave
+ * the current document out of its own suggestion list (linking to itself
+ * is never a useful suggestion). Kept as its own event/store rather than
+ * folded into `$wikiLinkDocuments` above so `wiring.ts` can feed each from
+ * its own natural source (`$documentList` vs `$activeId`) independently.
+ */
+export const activeWikiLinkDocumentIdChanged = createEvent<string | null>()
+export const $activeWikiLinkDocumentId = createStore<string | null>(null).on(
+  activeWikiLinkDocumentIdChanged,
+  (_, id) => id,
+)

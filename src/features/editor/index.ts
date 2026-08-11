@@ -11,6 +11,9 @@ export {
   lineWrapChanged,
   editorFontMetricsChanged,
   spellcheckSettingsChanged,
+  wikiLinkDocumentsChanged,
+  activeWikiLinkDocumentIdChanged,
 } from './model/editorEvents'
 export { EDITOR_SHORTCUTS } from './lib/shortcuts'
 export type { EditorShortcut } from './lib/shortcuts'
+export type { WikiLinkDocument } from './lib/wikiLinkCompletion'

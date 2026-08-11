@@ -10,6 +10,8 @@ import { imagePasteHandler } from './imagePaste'
 import { editorShortcutsKeymap } from './shortcuts'
 import { editorSearchExtension } from './search'
 import { jumpFlashField } from './jumpFlash'
+import { createWikiLinkCompletionExtension } from './wikiLinkCompletion'
+import { $wikiLinkDocuments, $activeWikiLinkDocumentId } from '../model/editorEvents'
 
 /**
  * Marks a dispatched transaction as programmatic so the update listener can
@@ -20,6 +22,19 @@ import { jumpFlashField } from './jumpFlash'
  * too. This annotation covers any future programmatic `dispatch` path.
  */
 const programmatic = Annotation.define<boolean>()
+
+/**
+ * Built once at module scope (not per `createState` call) — the getters
+ * inside it always read `$wikiLinkDocuments`/`$activeWikiLinkDocumentId`'s
+ * *current* value when CodeMirror calls the completion source, so there is
+ * nothing document- or view-specific to rebuild on every mount/`loadDocument`
+ * rebuild. Same "built once, reused across every `createState` call" shape
+ * as `imagePasteHandler`/`editorSearchExtension` below.
+ */
+const wikiLinkCompletionExtension = createWikiLinkCompletionExtension(
+  () => $wikiLinkDocuments.getState(),
+  () => $activeWikiLinkDocumentId.getState(),
+)
 
 /** Shape shared by `initialSpellcheck`/`setSpellcheck` below — kept as one
  * object (not two separate enabled/language options) since both values are
@@ -124,6 +139,7 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         daisyMarkdownTheme,
         imagePasteHandler,
         jumpFlashField,
+        wikiLinkCompletionExtension,
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return
           // A `view.setState` rebuild (document load, see `loadDocument`)
