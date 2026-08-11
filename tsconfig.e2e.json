@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.e2e.tsbuildinfo",
+    "target": "es2023",
+    // Both DOM and `node` types are needed here, unlike tsconfig.api.json's
+    // deliberate DOM-only split: these files run under Node (the Playwright
+    // Test runner, using `node:fs`) but their `page.evaluate` callback
+    // bodies execute browser-side and reference `document`/`window`/
+    // `requestAnimationFrame`/`performance`. `skipLibCheck` (already set
+    // below, matching every other tsconfig in this project) is what keeps
+    // that combination from hitting the `fetch`/`Request`/`Response`
+    // redeclaration conflict tsconfig.api.json's own comment describes —
+    // verified by `npm run typecheck` actually passing with both enabled.
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "module": "nodenext",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["e2e/**/*.ts", "playwright.config.ts"]
+}

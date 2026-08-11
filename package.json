@@ -10,6 +10,9 @@
     "typecheck": "vue-tsc -b --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "e2e:ui": "playwright test --ui",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -42,6 +45,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.62.1",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
     "@types/hast": "^3.0.5",
