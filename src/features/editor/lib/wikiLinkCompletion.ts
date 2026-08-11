@@ -219,20 +219,39 @@ export const wikiLinkCompletionTheme = EditorView.theme({
     boxShadow: 'var(--md-shadow-pop)',
     overflow: 'hidden',
   },
-  '.cm-tooltip-autocomplete > ul': {
+  /* `.cm-tooltip.cm-tooltip-autocomplete > ul`, not `.cm-tooltip-autocomplete
+     > ul`. The library's own base theme styles this list through the
+     two-class form and sets `font-family: monospace` there, which outranks a
+     single-class selector — so the single-class version of this rule applied
+     its font-SIZE (the base rule declares none) while silently losing the
+     font-FAMILY, and the menu rendered in the editor's monospace instead of
+     the app's UI face. Measured, not guessed: the computed family on this
+     `ul` read `monospace` while its own container read `IBM Plex Sans`.
+     Matching the base theme's specificity is what makes this stick. */
+  '.cm-tooltip.cm-tooltip-autocomplete > ul': {
     fontFamily: 'var(--font-sans)',
-    fontSize: '12.5px',
+    fontSize: '13px',
+    lineHeight: '1.5',
     maxHeight: '14em',
-    minWidth: '10em',
+    minWidth: '12em',
+    /* The container rounds and clips, but the list is what actually scrolls;
+       without its own radius the first and last rows square off the corners
+       the container just rounded. */
+    borderRadius: '8px',
+    padding: '4px',
   },
-  '.cm-tooltip-autocomplete > ul > li': {
+  '.cm-tooltip.cm-tooltip-autocomplete > ul > li': {
     display: 'flex',
     alignItems: 'center',
-    padding: '5px 10px',
+    padding: '6px 10px',
+    borderRadius: '6px',
     borderLeft: '3px solid transparent',
     color: 'var(--color-base-content)',
   },
-  '.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+  /* Same two-class form as the rules above — the base theme styles the
+     selected row through it too, so a single-class selector here would lose
+     the same argument the font-family lost. */
+  '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
     background: 'var(--md-hov)',
     borderLeft: '3px solid var(--md-accent)',
     fontWeight: '600',
