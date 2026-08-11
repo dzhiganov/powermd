@@ -18,7 +18,12 @@ import {
   editorFontMetricsChanged,
   spellcheckSettingsChanged,
 } from '@/features/editor'
-import { sourceReceived, renderMarkdownForExport } from '@/features/preview'
+import {
+  sourceReceived,
+  renderMarkdownForExport,
+  buildTitleResolver,
+  resolveWikiLinksInHtml,
+} from '@/features/preview'
 import { initScrollSync, scrollSyncEnabledChanged } from '@/features/scroll-sync'
 import {
   initDocuments,
@@ -70,6 +75,7 @@ import {
 import { initUrlSync } from './urlSync'
 import { initPaneJump } from './paneJump'
 import { initDocumentsSearchShortcut } from './documentsSearchShortcut'
+import { initWikiLinks } from './wikiLinks'
 
 import '@/features/settings'
 import '@/features/editor'
@@ -122,6 +128,11 @@ initPaneJump()
 // `documentsSearchShortcut.ts`'s own doc comment for why this is a plain
 // `window` keydown listener rather than a CodeMirror `keymap` binding.
 initDocumentsSearchShortcut()
+
+// Wiki-link (`[[Title]]`) navigation and creation — see `wikiLinks.ts`'s
+// own doc comment for why this needs both `documents` and `preview` and
+// so lives here, same shape as `initPaneJump()` just above.
+initWikiLinks()
 
 // --- documents <-> editor -------------------------------------------------
 //
@@ -209,7 +220,28 @@ sample({
 // welcome text instead of `documents` importing `editor`. Also installs
 // the window-level drag/drop guard for the app's lifetime — see
 // `features/transfer/model/transfer.ts`'s `initTransfer`.
-initTransfer({ renderMarkdown: renderMarkdownForExport })
+//
+// Composed with wiki-link resolution here rather than passing
+// `renderMarkdownForExport` straight through: `transfer` never touches the
+// live preview DOM (unlike `ui/Preview.vue`, an export is a fresh
+// worker-rendered HTML string with no `<a class="wiki-link">` anchor ever
+// having been resolved against anything), so without this step every
+// wiki-link in an exported/copied document would still carry only the
+// neutral, unresolved-looking marker `pipeline.ts` always emits — see
+// `resolveWikiLinksInHtml`'s own doc comment. `$documentList.getState()`
+// is read fresh on every export call (not a `sample`-fed snapshot), so an
+// export always reflects the document list at the moment it was
+// requested, not whatever it was when this module first evaluated.
+function renderMarkdownForExportWithWikiLinks(source: string): Promise<string> {
+  return renderMarkdownForExport(source).then((html) =>
+    resolveWikiLinksInHtml(
+      html,
+      buildTitleResolver($documentList.getState().map((doc) => ({ id: doc.id, title: doc.title }))),
+    ),
+  )
+}
+
+initTransfer({ renderMarkdown: renderMarkdownForExportWithWikiLinks })
 
 // --- settings <-> editor / documents (Step 8) -------------------------------
 //

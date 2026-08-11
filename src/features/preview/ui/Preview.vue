@@ -6,7 +6,9 @@ import { ink } from '@/shared/lib/ink'
 
 import { $html } from '../model/preview'
 import { previewScrollHandleMounted, previewScrollHandleUnmounted } from '../model/scrollHandle'
+import { $wikiLinkTargets } from '../model/wikiLinks'
 import { renderMermaidDiagrams } from '../lib/mermaidRenderer'
+import { buildTitleResolver, decorateWikiLinks } from '../lib/wikiLinkResolver'
 
 defineProps<{
   /** Constrains and centres the prose column to a comfortable reading
@@ -16,6 +18,7 @@ defineProps<{
 }>()
 
 const html = useUnit($html)
+const wikiLinkTargets = useUnit($wikiLinkTargets)
 
 // This component (not `layout/ui/PreviewPane.vue`) owns the scroll
 // container — mirrors the editor feature, where `.cm-scroller` is
@@ -40,10 +43,30 @@ const content = ref<HTMLDivElement | null>(null)
 watch(
   html,
   () => {
-    if (content.value) renderMermaidDiagrams(content.value)
+    if (!content.value) return
+    renderMermaidDiagrams(content.value)
+    // Wiki-link resolution needs the exact same `flush: 'post'` timing as
+    // mermaid above, and for the same reason: `content.value`'s children
+    // are only the *new* render's markup once Vue has actually patched
+    // the `v-html` binding. Decorating before that would style anchors
+    // that are about to be discarded — the very next `v-html` patch would
+    // silently throw the decoration away along with them.
+    decorateWikiLinks(content.value, buildTitleResolver(wikiLinkTargets.value))
   },
   { flush: 'post' },
 )
+
+// A markdown edit is not the only thing that can change whether a given
+// wiki-link resolves — renaming, creating, or deleting *any* document can,
+// with the markdown source (and hence `$html`) never changing at all (the
+// document being renamed/created/deleted isn't necessarily the one
+// currently open). No `flush: 'post'` needed here, unlike the watcher
+// above: this path never follows a `v-html` patch, it only re-decorates
+// anchors that already exist in `content.value` from the last time the
+// watcher above ran, so there is no new DOM to wait for Vue to produce.
+watch(wikiLinkTargets, (targets) => {
+  if (content.value) decorateWikiLinks(content.value, buildTitleResolver(targets))
+})
 
 // A markdown edit changes `$html` (handled above); a theme toggle alone
 // does not — `$html` only depends on the markdown source, not on
@@ -243,6 +266,49 @@ const previewMaxWidth = 'min(680px, var(--md-reading-width, 75ch))'
 
 .markdown-preview :deep(a) {
   word-break: break-word;
+}
+
+/* Wiki-links (`[[Title]]` / `[[Title|alias]]`, see `lib/remarkWikiLink.ts`
+ * and `lib/wikiLinkResolver.ts`). Both states reuse `--tw-prose-links`
+ * (`linkColor` above) for the text itself rather than introducing a
+ * second accent colour — that colour is already measured >=4.5:1 against
+ * `--color-base-100` in both themes (see the `.markdown-preview` block's
+ * own comment), comfortably above the 3:1 a *non-text* indicator like
+ * `text-decoration` needs too, so reusing it here is what keeps both
+ * states on the safe side of the contrast floor in all four
+ * theme/soft-contrast combinations without measuring a second colour.
+ * `cursor: pointer` on both: neither state is a normal same-page `href`
+ * navigation (`src/app/wikiLinks.ts` intercepts every click), but both are
+ * still genuinely clickable, so the cursor should say so.
+ */
+.markdown-preview :deep(.wiki-link) {
+  cursor: pointer;
+  color: v-bind(linkColor);
+  text-decoration-line: underline;
+}
+
+/* Resolved: a normal solid underline — visually identical to any other
+ * markdown link. No colour difference from `.wiki-link` above; this rule
+ * exists only as the explicit, named counterpart to the unresolved rule
+ * below, for anyone reading the two states side by side. */
+.markdown-preview :deep(.wiki-link--resolved) {
+  text-decoration-style: solid;
+}
+
+/* Unresolved (the Obsidian convention: a link to a title that doesn't
+ * exist yet, styled so it's visibly different from one that does) — a
+ * dashed underline instead of solid, same colour and weight as a resolved
+ * link otherwise. Deliberately NOT a colour or opacity change: this
+ * file's own `.hljs-comment` rule above already establishes the
+ * "difference via style, not via dimming" rule for exactly this contrast
+ * reason (opacity risks dropping the *text* below 4.5:1 depending on
+ * what's behind it), and `text-decoration-style` carries the distinction
+ * on the non-text underline instead, which only has to clear 3:1 — this
+ * reuses `linkColor` for both, already measured >=4.5:1 in both themes
+ * (see the `.markdown-preview` block's own comment above), well past the
+ * lighter 3:1 floor a decoration line actually needs. */
+.markdown-preview :deep(.wiki-link--unresolved) {
+  text-decoration-style: dashed;
 }
 
 /* Modifier-click pane-jump's "landed here" flash (`src/app/paneJump.ts`,

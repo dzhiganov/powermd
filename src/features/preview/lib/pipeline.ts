@@ -9,6 +9,7 @@ import rehypeStringify from 'rehype-stringify'
 
 import { rehypeDataLine } from './rehypeDataLine'
 import { rehypeStripStrayWhitespace } from './rehypeStripStrayWhitespace'
+import { remarkWikiLink } from './remarkWikiLink'
 import { previewSchema } from './sanitizeSchema'
 
 /**
@@ -18,6 +19,17 @@ import { previewSchema } from './sanitizeSchema'
  *
  * 1. `remarkParse` + `remarkGfm` — markdown source -> mdast, with GitHub-
  *    flavoured tables, strikethrough, task lists, and autolinks.
+ * 1.5. `remarkWikiLink` (ours) — `[[Title]]` / `[[Title|alias]]` -> a
+ *    `wikiLink` mdast node carrying the raw title as data, still with no
+ *    opinion on whether that title resolves to anything (this stage has
+ *    no access to the document list — see `remarkWikiLink.ts`'s own doc
+ *    comment for the full worker/main-thread split). Placed after
+ *    `remarkGfm` and before `remarkRehype` so it can rely on
+ *    `mdast-util-find-and-replace`'s own text-node-only scope for
+ *    requirement #5 (never transforms inside inline code or fenced code) —
+ *    running any later, once inline code/fences are already hast
+ *    `code`/`pre` elements instead of mdast leaf nodes, would need its own
+ *    code-awareness instead of getting it for free.
  * 2. `remarkRehype({ allowDangerousHtml: true })` — mdast -> hast. Raw HTML
  *    typed directly into the source (e.g. a literal `<script>` tag or a
  *    hand-written `<table>`) becomes a `raw` hast node holding the literal
@@ -79,6 +91,7 @@ import { previewSchema } from './sanitizeSchema'
 const processor = unified()
   .use(remarkParse)
   .use(remarkGfm)
+  .use(remarkWikiLink)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRaw)
   .use(rehypeStripStrayWhitespace)
