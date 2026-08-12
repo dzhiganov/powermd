@@ -36,6 +36,28 @@ export const $lineWrapEnabled = createStore<boolean>(true).on(
 )
 
 /**
+ * The editor feature's own mirror of `features/settings`' persisted word
+ * completion preference — same "settings owns the preference, the acting
+ * feature keeps its own mirror" shape as `$lineWrapEnabled` above.
+ * `Editor.vue` reads this both for `useCodeMirror`'s *initial* Compartment
+ * value and to react to later toggles by reconfiguring that Compartment live
+ * (see `lib/useCodeMirror.ts`'s `setWordCompletion`) — never a state
+ * rebuild, so undo history and cursor position survive a toggle exactly
+ * like a line-wrap change does.
+ *
+ * Defaults to `false`, matching `features/settings/model/editorPreferences
+ * .ts`'s own default (off — see that file's doc comment for why), so this
+ * renders correctly before `wiring.ts` has applied the real persisted
+ * value, which it does synchronously before this module's default could
+ * ever paint.
+ */
+export const wordCompletionChanged = createEvent<boolean>()
+export const $wordCompletionEnabled = createStore<boolean>(false).on(
+  wordCompletionChanged,
+  (_, enabled) => enabled,
+)
+
+/**
  * Fired whenever `features/settings`' persisted editor font size or font
  * family preference changes (`wiring.ts` mirrors it in — same
  * "settings owns the preference, the acting feature keeps its own mirror"

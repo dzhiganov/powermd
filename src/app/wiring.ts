@@ -19,6 +19,7 @@ import {
   spellcheckSettingsChanged,
   wikiLinkDocumentsChanged,
   activeWikiLinkDocumentIdChanged,
+  wordCompletionChanged,
 } from '@/features/editor'
 import {
   sourceReceived,
@@ -69,6 +70,7 @@ import {
   $editorFontFamily,
   $spellCheckEnabled,
   $spellCheckLanguage,
+  $wordCompletionEnabled as $wordCompletionPreference,
   $autoSyncIntervalMinutes,
   helpOpened,
   settingsOpened,
@@ -277,6 +279,14 @@ initTransfer({ renderMarkdown: renderMarkdownForExportWithWikiLinks })
 // later updates (same reasoning as the `sourceReceived` kick above).
 lineWrapChanged($lineWrapPreference.getState())
 sample({ clock: $lineWrapPreference, target: lineWrapChanged })
+
+// Word completion: same one-kick-then-sample shape as line wrap above — a
+// real CodeMirror Compartment reconfigure (see `features/editor/lib/
+// useCodeMirror.ts`'s `setWordCompletion`), so the editor feature keeps its
+// own live mirror (`$wordCompletionEnabled` in `model/editorEvents.ts`)
+// rather than reading the settings store directly.
+wordCompletionChanged($wordCompletionPreference.getState())
+sample({ clock: $wordCompletionPreference, target: wordCompletionChanged })
 
 // Editor font size/family: CodeMirror needs no Compartment reconfigure for
 // either (both already repaint `.cm-scroller` purely via the CSS custom

@@ -1,9 +1,6 @@
 import { syntaxTree } from '@codemirror/language'
-import type { Extension } from '@codemirror/state'
-import { EditorView } from '@codemirror/view'
 import type { SyntaxNode } from '@lezer/common'
 import {
-  autocompletion,
   insertCompletionText,
   pickedCompletion,
   type Completion,
@@ -11,8 +8,6 @@ import {
   type CompletionResult,
   type CompletionSource,
 } from '@codemirror/autocomplete'
-
-import { ink } from '@/shared/lib/ink'
 
 /**
  * Inline `[[Title]]` wiki-link autocomplete — typing `[[` opens a
@@ -92,18 +87,24 @@ export function filterWikiLinkCandidates(
  * `]]` has already been typed (an already-closed link has nothing left to
  * complete), and excluding `[`/`\n` keeps a match from ever spanning a
  * second `[[` or a line break.
+ *
+ * Exported so `wordCompletion.ts` can test the same pattern against the
+ * cursor and bail out when it matches — see that module's own doc comment
+ * for why the two sources must never both offer suggestions at once.
  */
-const WIKI_LINK_TRIGGER = /\[\[[^[\]\n]*/
+export const WIKI_LINK_TRIGGER = /\[\[[^[\]\n]*/
 
 /** Node names `@lezer/markdown` (via `@codemirror/lang-markdown`) gives
  * code content — both flavours of fenced/indented code block and both
  * flavours of inline code carry their literal text in one of these, never
  * in a plain `text`/paragraph node. Checked by walking up from the cursor
  * so a `[[` typed anywhere inside — fence markers included — is covered,
- * not just the innermost text node. */
-const CODE_NODE_NAMES = new Set(['CodeBlock', 'FencedCode', 'InlineCode', 'CodeText'])
+ * not just the innermost text node. Exported for `wordCompletion.ts`, which
+ * makes the same deliberate choice to stay out of code (see its own doc
+ * comment) and would otherwise need a second copy of this walk. */
+export const CODE_NODE_NAMES = new Set(['CodeBlock', 'FencedCode', 'InlineCode', 'CodeText'])
 
-function isInsideCode(context: CompletionContext): boolean {
+export function isInsideCode(context: CompletionContext): boolean {
   let node: SyntaxNode | null = syntaxTree(context.state).resolveInner(context.pos, -1)
   while (node) {
     if (CODE_NODE_NAMES.has(node.name)) return true
@@ -192,114 +193,9 @@ export function buildWikiLinkCompletionSource(
   }
 }
 
-/**
- * Styling for the completion tooltip, built from the same `--md-*`/
- * `--color-*` design tokens `lib/searchTheme.ts` uses for the find-and-
- * replace panel — border/background/shadow tokens already measured
- * >=3:1 (non-text) / >=4.5:1 (text) against every one of this app's four
- * theme x soft-contrast combinations there, reused verbatim rather than
- * re-measured from scratch here.
- *
- * The selected row is marked by more than colour alone (WCAG 1.4.1):
- * `var(--md-hov)` background PLUS a solid left accent bar PLUS bold text —
- * a colour-blind or high-contrast-forced user still sees a distinct shape,
- * not just a hue shift.
- *
- * `icons: false` is set on the `autocompletion()` call in
- * `wikiLinkCompletionExtension` below (not here), so there is no
- * `.cm-completionIcon` box to style — every option is a plain title, and
- * the library's built-in icon glyphs (function/class/keyword/...) have no
- * meaningful mapping onto "a document title" anyway.
- */
-export const wikiLinkCompletionTheme = EditorView.theme({
-  '.cm-tooltip.cm-tooltip-autocomplete': {
-    background: 'var(--md-pop)',
-    border: '1px solid color-mix(in oklab, var(--color-base-content) 55%, transparent)',
-    /* Square, deliberately. Rounded rows inside a rounded box, with an
-       accent bar down the side of the selected one, is a lot of decoration
-       for a list of four words. */
-    borderRadius: '0',
-    boxShadow: 'var(--md-shadow-pop)',
-    overflow: 'hidden',
-    /* FIXED width, so the menu never resizes under the cursor. It used to
-       size to its widest row, which meant it visibly shrank while you typed:
-       measured 211px with three matches and 158px the moment filtering left
-       one. A menu that changes shape as you type is the thing you are trying
-       to read. Long titles ellipsis instead (see `.cm-completionLabel`). */
-    width: '19em',
-    maxWidth: 'calc(100vw - 2rem)',
-  },
-  /* `.cm-tooltip.cm-tooltip-autocomplete > ul`, not `.cm-tooltip-autocomplete
-     > ul`. The library's own base theme styles this list through the
-     two-class form and sets `font-family: monospace` there, which outranks a
-     single-class selector — so the single-class version of this rule applied
-     its font-SIZE (the base rule declares none) while silently losing the
-     font-FAMILY, and the menu rendered in the editor's monospace instead of
-     the app's UI face. Measured, not guessed: the computed family on this
-     `ul` read `monospace` while its own container read `IBM Plex Sans`.
-     Matching the base theme's specificity is what makes this stick. */
-  '.cm-tooltip.cm-tooltip-autocomplete > ul': {
-    fontFamily: 'var(--font-sans)',
-    fontSize: '13px',
-    lineHeight: '1.5',
-    maxHeight: '14em',
-    padding: '0',
-  },
-  '.cm-tooltip.cm-tooltip-autocomplete > ul > li': {
-    display: 'flex',
-    alignItems: 'center',
-    padding: '6px 10px',
-    color: 'var(--color-base-content)',
-  },
-  /* Same two-class form as the rules above — the base theme styles the
-     selected row through it too, so a single-class selector here would lose
-     the same argument the font-family lost.
-
-     Background and weight carry the selection; no accent bar, no rounding.
-     Bold is applied via `-webkit-text-stroke` rather than `font-weight`
-     deliberately: a real weight change re-measures the text, and since the
-     menu is a fixed width that is harmless here, but it also shifts the row's
-     own glyphs sideways as you arrow through — thickening strokes in place
-     does not. */
-  '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
-    background: 'var(--md-sel)',
-    WebkitTextStroke: '0.4px currentColor',
-    color: 'var(--color-base-content)',
-  },
-  '.cm-completionLabel': {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  '.cm-completionMatchedText': {
-    textDecoration: 'none',
-    fontWeight: '700',
-    color: ink('--md-accent'),
-  },
-})
-
-/**
- * The live extension used by `lib/useCodeMirror.ts` — sourced from this
- * feature's own `$wikiLinkDocuments`/`$activeWikiLinkDocumentId` mirror
- * stores (`model/editorEvents.ts`), fed by `src/app/wiring.ts`. `override`
- * replaces every other completion source (there are none currently
- * registered — `@codemirror/lang-markdown` ships none of its own) rather
- * than adding alongside, so this is unambiguously the only thing `[[` can
- * trigger. `icons: false` — see `wikiLinkCompletionTheme`'s doc comment.
- * `closeOnBlur` and the default keymap (Escape/ArrowUp/ArrowDown/Enter —
- * see `@codemirror/autocomplete`'s own `completionKeymap`; Tab is not
- * bound by the library by default, so it is not wired here either) are
- * left at their library defaults.
- */
-export function createWikiLinkCompletionExtension(
-  getDocuments: () => readonly WikiLinkDocument[],
-  getCurrentDocumentId: () => string | null,
-): Extension[] {
-  return [
-    autocompletion({
-      override: [buildWikiLinkCompletionSource(getDocuments, getCurrentDocumentId)],
-      icons: false,
-    }),
-    wikiLinkCompletionTheme,
-  ]
-}
+// The tooltip's own styling (`inlineCompletionTheme`) and the single
+// `autocompletion()` extension that registers this source alongside
+// `wordCompletion.ts`'s both now live in `useCodeMirror.ts` /
+// `completionTheme.ts` — see `useCodeMirror.ts`'s `buildCompletionExtension`
+// for why the two sources share one `autocompletion()` instance rather than
+// each getting its own.

@@ -13,6 +13,7 @@ export {
   spellcheckSettingsChanged,
   wikiLinkDocumentsChanged,
   activeWikiLinkDocumentIdChanged,
+  wordCompletionChanged,
 } from './model/editorEvents'
 export { EDITOR_SHORTCUTS } from './lib/shortcuts'
 export type { EditorShortcut } from './lib/shortcuts'

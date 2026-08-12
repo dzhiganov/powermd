@@ -1,6 +1,7 @@
 import { onMounted, onUnmounted, shallowRef, type Ref } from 'vue'
-import { Annotation, Compartment, EditorState } from '@codemirror/state'
+import { Annotation, Compartment, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
+import { autocompletion, type CompletionSource } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
@@ -10,7 +11,9 @@ import { imagePasteHandler } from './imagePaste'
 import { editorShortcutsKeymap } from './shortcuts'
 import { editorSearchExtension } from './search'
 import { jumpFlashField } from './jumpFlash'
-import { createWikiLinkCompletionExtension } from './wikiLinkCompletion'
+import { buildWikiLinkCompletionSource } from './wikiLinkCompletion'
+import { buildWordCompletionSource } from './wordCompletion'
+import { inlineCompletionTheme } from './completionTheme'
 import { $wikiLinkDocuments, $activeWikiLinkDocumentId } from '../model/editorEvents'
 
 /**
@@ -31,10 +34,47 @@ const programmatic = Annotation.define<boolean>()
  * rebuild. Same "built once, reused across every `createState` call" shape
  * as `imagePasteHandler`/`editorSearchExtension` below.
  */
-const wikiLinkCompletionExtension = createWikiLinkCompletionExtension(
+const wikiLinkCompletionSource = buildWikiLinkCompletionSource(
   () => $wikiLinkDocuments.getState(),
   () => $activeWikiLinkDocumentId.getState(),
 )
+
+/**
+ * Same "built once, reused" shape as `wikiLinkCompletionSource` above — the
+ * closure-local extraction cache inside it (see `wordCompletion.ts`'s own
+ * doc comment) needs to persist across `createState` rebuilds exactly the
+ * same way `wikiLinkCompletionSource`'s getters do, otherwise a
+ * `loadDocument` call (switching documents) would rebuild a fresh, empty
+ * cache anyway — harmless correctness-wise, just throws away a cache entry
+ * that's about to be invalidated by the document switch either way.
+ */
+const wordCompletionSource = buildWordCompletionSource()
+
+/**
+ * The two completion sources (`[[Title]]` wiki links, in-document word
+ * completion) are registered on a SINGLE `autocompletion()` extension rather
+ * than one each. `@codemirror/autocomplete` doesn't support two independent
+ * `autocompletion()` instances contributing to two separate menus at once —
+ * `override` fully replaces whatever completion sources are active — so one
+ * instance with both sources in its `override` list is not just tidier, it
+ * is the only way both can coexist at all. Each source is independently
+ * responsible for returning `null` when the other's trigger applies (see
+ * `wordCompletion.ts`'s own `WIKI_LINK_TRIGGER` check), which is what keeps
+ * the two from ever both offering suggestions for the same keystroke.
+ *
+ * Word completion is the one togglable half (`features/settings`' "Word
+ * completion" preference — off by default, see `model/editorPreferences.ts`
+ * for why) — wiki-link completion has no such setting and is always
+ * included. Returning a fresh extension value (rather than mutating
+ * anything) is what makes this safe to feed straight into
+ * `wordCompletionCompartment.reconfigure` in `setWordCompletion` below.
+ */
+function buildCompletionExtension(wordCompletionEnabled: boolean): Extension {
+  const sources: CompletionSource[] = wordCompletionEnabled
+    ? [wikiLinkCompletionSource, wordCompletionSource]
+    : [wikiLinkCompletionSource]
+  return [autocompletion({ override: sources, icons: false }), inlineCompletionTheme]
+}
 
 /** Shape shared by `initialSpellcheck`/`setSpellcheck` below — kept as one
  * object (not two separate enabled/language options) since both values are
@@ -75,6 +115,12 @@ interface UseCodeMirrorOptions {
    * closure variable below). Later changes go through `setSpellcheck`
    * instead, which reconfigures the `Compartment` in place. */
   initialSpellcheck: SpellcheckOptions
+  /** Initial word-completion enabled state, read once when the view is
+   * created (and again on every `loadDocument` rebuild — see the
+   * `currentWordCompletionEnabled` closure variable below). Later changes go
+   * through `setWordCompletion` instead, which reconfigures the
+   * `Compartment` in place. */
+  initialWordCompletionEnabled: boolean
   /** Called with the full document string whenever the user edits it. */
   onChange: (value: string) => void
   /** Called once, synchronously, right after the `EditorView` is created.
@@ -117,6 +163,14 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
   const spellcheckCompartment = new Compartment()
   let currentSpellcheck = options.initialSpellcheck
 
+  // Same reasoning again: word completion (see `buildCompletionExtension`
+  // above) is a real extension — swapping it in/out has to reconfigure the
+  // Compartment in place, never a `view.setState` rebuild, and
+  // `currentWordCompletionEnabled` carries the live value across every
+  // `createState` call the same way `currentLineWrap`/`currentSpellcheck` do.
+  const completionCompartment = new Compartment()
+  let currentWordCompletionEnabled = options.initialWordCompletionEnabled
+
   // Builds a fresh state for `doc`. Reused for the initial mount and for
   // every document load, so both go through exactly the same extension set.
   function createState(doc: string): EditorState {
@@ -139,7 +193,7 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         daisyMarkdownTheme,
         imagePasteHandler,
         jumpFlashField,
-        wikiLinkCompletionExtension,
+        completionCompartment.of(buildCompletionExtension(currentWordCompletionEnabled)),
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return
           // A `view.setState` rebuild (document load, see `loadDocument`)
@@ -301,6 +355,27 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
   }
 
   /**
+   * Toggles word completion on the *live* view via
+   * `completionCompartment.reconfigure` — same shape as `setLineWrap` above:
+   * a plain `dispatch` with only an `effects` entry, no document change and
+   * no `setState`. Rebuilds the WHOLE completion extension (both sources,
+   * see `buildCompletionExtension`) rather than something narrower, since
+   * `override` is the only way `@codemirror/autocomplete` accepts a source
+   * list at all — there's no separate "just add/remove one source" API to
+   * reach for instead. Wiki-link completion is unaffected either way: it's
+   * unconditionally present in `buildCompletionExtension`'s returned list
+   * regardless of `enabled`.
+   */
+  function setWordCompletion(enabled: boolean) {
+    currentWordCompletionEnabled = enabled
+    const current = view.value
+    if (!current) return
+    current.dispatch({
+      effects: completionCompartment.reconfigure(buildCompletionExtension(enabled)),
+    })
+  }
+
+  /**
    * Forces the browser to re-run its spellchecker over text already on
    * screen, by toggling `contentEditable` off and back on — a widely-used
    * nudge that makes the browser treat the element as freshly initialised
@@ -356,5 +431,5 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
     view.value?.requestMeasure()
   }
 
-  return { loadDocument, setLineWrap, setSpellcheck, requestMeasure }
+  return { loadDocument, setLineWrap, setSpellcheck, setWordCompletion, requestMeasure }
 }

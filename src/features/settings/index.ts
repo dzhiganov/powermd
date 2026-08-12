@@ -14,6 +14,7 @@ export {
   $readingWidthCh,
   $spellCheckEnabled,
   $spellCheckLanguage,
+  $wordCompletionEnabled,
   editorFontSizeChanged,
   editorFontFamilyChanged,
   lineWrapToggled,
@@ -21,6 +22,7 @@ export {
   readingWidthChanged,
   spellCheckToggled,
   spellCheckLanguageChanged,
+  wordCompletionToggled,
   SPELLCHECK_LANGUAGES,
 } from './model/editorPreferences'
 export type { EditorFontFamily, SpellCheckLanguage } from './model/editorPreferences'

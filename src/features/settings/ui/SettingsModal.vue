@@ -14,6 +14,7 @@ import {
   $readingWidthCh,
   $spellCheckEnabled,
   $spellCheckLanguage,
+  $wordCompletionEnabled,
   editorFontSizeChanged,
   editorFontFamilyChanged,
   lineWrapToggled,
@@ -21,6 +22,7 @@ import {
   readingWidthChanged,
   spellCheckToggled,
   spellCheckLanguageChanged,
+  wordCompletionToggled,
   SPELLCHECK_LANGUAGES,
   FONT_SIZE_MIN,
   FONT_SIZE_MAX,
@@ -66,6 +68,7 @@ const autosaveMs = useUnit($autosaveDebounceMs)
 const readingWidth = useUnit($readingWidthCh)
 const spellCheckEnabled = useUnit($spellCheckEnabled)
 const spellCheckLanguage = useUnit($spellCheckLanguage)
+const wordCompletionEnabled = useUnit($wordCompletionEnabled)
 const showTooltips = useUnit($showTooltips)
 const drawerSide = useUnit($drawerSide)
 const showFormattingToolbar = useUnit($showFormattingToolbar)
@@ -327,6 +330,23 @@ watch(open, (isOpen) => {
               />
             </label>
 
+            <div class="flex flex-col gap-1">
+              <label class="flex items-center justify-between">
+                <span class="text-sm text-base-content">Word completion</span>
+                <input
+                  type="checkbox"
+                  class="toggle toggle-sm"
+                  :checked="wordCompletionEnabled"
+                  aria-label="Word completion"
+                  @change="wordCompletionToggled()"
+                />
+              </label>
+              <p class="text-xs text-base-content/70">
+                Suggests words already used elsewhere in the current document as you type. Off by
+                default so it never intercepts Enter while you're writing.
+              </p>
+            </div>
+
             <label class="flex items-center justify-between">
               <span class="text-sm text-base-content">Spell check</span>
               <input
@@ -576,10 +596,10 @@ watch(open, (isOpen) => {
         Reset settings to defaults?
       </h2>
       <p class="mt-2 text-sm text-base-content/70">
-        Restores font size, font family, line wrapping, spell check, autosave delay, reading width,
-        tooltips, formatting toolbar, documents panel side, scroll sync, auto-sync interval, theme,
-        and soft contrast to their defaults. Your documents, folders, and GitHub connection are not
-        affected.
+        Restores font size, font family, line wrapping, word completion, spell check, autosave
+        delay, reading width, tooltips, formatting toolbar, documents panel side, scroll sync,
+        auto-sync interval, theme, and soft contrast to their defaults. Your documents, folders, and
+        GitHub connection are not affected.
       </p>
       <div class="mt-5 flex justify-end gap-2">
         <button

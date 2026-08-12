@@ -8,6 +8,7 @@ export type EditorFontFamily = 'mono' | 'serif'
 const FONT_SIZE_KEY = 'markdown-editor:editor-font-size'
 const FONT_FAMILY_KEY = 'markdown-editor:editor-font-family'
 const LINE_WRAP_KEY = 'markdown-editor:line-wrap'
+const WORD_COMPLETION_ENABLED_KEY = 'markdown-editor:word-completion-enabled'
 const AUTOSAVE_MS_KEY = 'markdown-editor:autosave-ms'
 const READING_WIDTH_KEY = 'markdown-editor:reading-width'
 const SPELLCHECK_ENABLED_KEY = 'markdown-editor:spellcheck-enabled'
@@ -21,6 +22,26 @@ export const FONT_SIZE_MAX = 20
 const DEFAULT_FONT_SIZE = 14.5
 
 const DEFAULT_LINE_WRAP = true
+
+/**
+ * Off by default — the one preference in this file that deliberately does
+ * NOT default to "on, because it's helpful" the way line wrap/spell check
+ * do. `@codemirror/autocomplete`'s default keymap binds Enter to
+ * "accept the selected completion" (`completionKeymap`, unconditionally
+ * active whenever a menu is open — see `features/editor/lib/useCodeMirror
+ * .ts`'s `buildCompletionExtension`), which is exactly the key a prose
+ * writer reaches for constantly to start a new line/paragraph. With word
+ * completion on, a menu that happens to be open because the word just typed
+ * matched something elsewhere in the document would silently swallow that
+ * Enter and insert a completion instead of a newline — a real, recurring
+ * interruption to normal writing flow, not a hypothetical edge case. Line
+ * wrap and spell check carry no equivalent risk: neither one ever captures
+ * a keystroke the user didn't intend for it. Opt-in here means a user who
+ * wants the feature turns it on once in Settings -> Editor and never has to
+ * think about it again; a user who doesn't want it is never surprised by
+ * Enter doing the wrong thing.
+ */
+const DEFAULT_WORD_COMPLETION_ENABLED = false
 
 export const AUTOSAVE_MS_MIN = 200
 export const AUTOSAVE_MS_MAX = 3000
@@ -150,6 +171,26 @@ export const $lineWrapEnabled = createStore<boolean>(readBoolean(LINE_WRAP_KEY, 
 sample({
   clock: $lineWrapEnabled,
   fn: (enabled) => ({ key: LINE_WRAP_KEY, value: String(enabled) }),
+  target: persistFx,
+})
+
+// --- Word completion -------------------------------------------------------
+//
+// In-document word completion (`features/editor/lib/wordCompletion.ts`):
+// suggests words that already appear elsewhere in the current document as
+// the user types. See `DEFAULT_WORD_COMPLETION_ENABLED` above for why this
+// one preference defaults to off rather than on.
+
+export const wordCompletionToggled = createEvent()
+export const $wordCompletionEnabled = createStore<boolean>(
+  readBoolean(WORD_COMPLETION_ENABLED_KEY, DEFAULT_WORD_COMPLETION_ENABLED),
+)
+  .on(wordCompletionToggled, (enabled) => !enabled)
+  .on(defaultsRestored, () => DEFAULT_WORD_COMPLETION_ENABLED)
+
+sample({
+  clock: $wordCompletionEnabled,
+  fn: (enabled) => ({ key: WORD_COMPLETION_ENABLED_KEY, value: String(enabled) }),
   target: persistFx,
 })
 

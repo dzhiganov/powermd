@@ -10,6 +10,7 @@ import {
   $lineWrapEnabled,
   editorFontMetricsChanged,
   $spellcheckSettings,
+  $wordCompletionEnabled,
 } from '../model/editorEvents'
 
 defineProps<{
@@ -21,36 +22,39 @@ defineProps<{
 
 const container = ref<HTMLDivElement | null>(null)
 
-const { loadDocument, setLineWrap, setSpellcheck, requestMeasure } = useCodeMirror(container, {
-  // Read once, synchronously, at mount. If the restored/seeded document has
-  // already been pushed into `$content` by then, the view opens with it;
-  // otherwise it opens empty and the `loadContent` subscription below fills
-  // it the moment IndexedDB resolves.
-  doc: $content.getState(),
-  // Same one-shot read: `wiring.ts` applies the persisted settings value to
-  // `$lineWrapEnabled` synchronously before this component ever mounts, so
-  // this already reflects the real preference, not just the store's
-  // hardcoded default.
-  initialLineWrap: $lineWrapEnabled.getState(),
-  // Same one-shot read as `initialLineWrap` above, for the spell check
-  // enabled/language pair.
-  initialSpellcheck: $spellcheckSettings.getState(),
-  onChange: (value) => contentChanged(value),
-  onViewReady: (view) => {
-    // Wraps the raw `EditorView` into the narrow `EditorScrollHandle` shape
-    // right here, so nothing outside this feature ever touches CodeMirror
-    // directly — see `lib/scrollHandle.ts`.
-    editorScrollHandleMounted(createEditorScrollHandle(view))
-    // The raw view itself, kept internal to this feature (see
-    // `model/view.ts`) — the formatting toolbar and any other in-feature UI
-    // dispatch commands against it directly.
-    editorViewMounted(view)
-  },
-  onViewDestroy: () => {
-    editorScrollHandleUnmounted()
-    editorViewDestroyed()
-  },
-})
+const { loadDocument, setLineWrap, setSpellcheck, setWordCompletion, requestMeasure } =
+  useCodeMirror(container, {
+    // Read once, synchronously, at mount. If the restored/seeded document has
+    // already been pushed into `$content` by then, the view opens with it;
+    // otherwise it opens empty and the `loadContent` subscription below fills
+    // it the moment IndexedDB resolves.
+    doc: $content.getState(),
+    // Same one-shot read: `wiring.ts` applies the persisted settings value to
+    // `$lineWrapEnabled` synchronously before this component ever mounts, so
+    // this already reflects the real preference, not just the store's
+    // hardcoded default.
+    initialLineWrap: $lineWrapEnabled.getState(),
+    // Same one-shot read as `initialLineWrap` above, for the spell check
+    // enabled/language pair.
+    initialSpellcheck: $spellcheckSettings.getState(),
+    // Same one-shot read again, for the word-completion on/off preference.
+    initialWordCompletionEnabled: $wordCompletionEnabled.getState(),
+    onChange: (value) => contentChanged(value),
+    onViewReady: (view) => {
+      // Wraps the raw `EditorView` into the narrow `EditorScrollHandle` shape
+      // right here, so nothing outside this feature ever touches CodeMirror
+      // directly — see `lib/scrollHandle.ts`.
+      editorScrollHandleMounted(createEditorScrollHandle(view))
+      // The raw view itself, kept internal to this feature (see
+      // `model/view.ts`) — the formatting toolbar and any other in-feature UI
+      // dispatch commands against it directly.
+      editorViewMounted(view)
+    },
+    onViewDestroy: () => {
+      editorScrollHandleUnmounted()
+      editorViewDestroyed()
+    },
+  })
 
 // A programmatic document load (initial restore, or switching documents in
 // the drawer) rebuilds the editor state: undo history discarded, cursor and
@@ -87,6 +91,16 @@ onUnmounted(fontMetricsSubscription.unsubscribe)
 // change, applying it live via the Compartment reconfigure.
 const spellcheckSubscription = $spellcheckSettings.watch((settings) => setSpellcheck(settings))
 onUnmounted(spellcheckSubscription.unsubscribe)
+
+// Settings feature owns the persisted word-completion preference too;
+// `wiring.ts` mirrors it into this feature's own `$wordCompletionEnabled`
+// (see its doc comment in `model/editorEvents.ts`). Same `.watch`-fires-
+// immediately-then-on-every-later-change shape as `wrapSubscription` above,
+// applying the toggle live via the Compartment reconfigure.
+const wordCompletionSubscription = $wordCompletionEnabled.watch((enabled) =>
+  setWordCompletion(enabled),
+)
+onUnmounted(wordCompletionSubscription.unsubscribe)
 </script>
 
 <template>
