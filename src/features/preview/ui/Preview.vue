@@ -9,6 +9,7 @@ import { previewScrollHandleMounted, previewScrollHandleUnmounted } from '../mod
 import { $wikiLinkTargets } from '../model/wikiLinks'
 import { renderMermaidDiagrams } from '../lib/mermaidRenderer'
 import { buildTitleResolver, decorateWikiLinks } from '../lib/wikiLinkResolver'
+import { decorateTaskCheckboxes } from '../lib/taskCheckbox'
 
 defineProps<{
   /** Constrains and centres the prose column to a comfortable reading
@@ -52,6 +53,11 @@ watch(
     // that are about to be discarded — the very next `v-html` patch would
     // silently throw the decoration away along with them.
     decorateWikiLinks(content.value, buildTitleResolver(wikiLinkTargets.value))
+    // Task-list checkboxes need the same timing for the same reason: every
+    // fresh `v-html` patch comes back from the sanitizer with every
+    // checkbox `disabled` again (see `lib/taskCheckbox.ts`'s doc comment),
+    // so this has to re-enable them on every render, not just the first.
+    decorateTaskCheckboxes(content.value)
   },
   { flush: 'post' },
 )
@@ -282,6 +288,34 @@ const previewMaxWidth = 'min(680px, var(--md-reading-width, 75ch))'
 
 .markdown-preview :deep(a) {
   word-break: break-word;
+}
+
+/* GFM task-list checkboxes (`lib/taskCheckbox.ts` enables them, post-
+ * sanitize, on the live DOM — see that module's doc comment for why not
+ * the sanitizer schema). `accent-color` reuses `linkColor` — already
+ * measured >=4.5:1 against `--color-base-100` in both themes (see the
+ * `.markdown-preview` block's own comment above), comfortably past the
+ * 3:1 a non-text control like this only needs — rather than introducing a
+ * second colour to measure, the same reasoning the wiki-link rules below
+ * already use for their own non-text (underline) indicator. `cursor:
+ * pointer`: same as the wiki-link rule below, this is genuinely clickable
+ * even though it's a native form control, not a link.
+ *
+ * `:focus-visible` gets its own explicit outline rather than relying on
+ * the browser default: a plain unstyled checkbox's native focus ring is
+ * often a thin, low-contrast dotted line (varies by browser/OS), and this
+ * control is reachable and toggleable purely by keyboard (Tab, Space) —
+ * see `lib/taskCheckbox.ts`'s `aria-label`, which is what gives it an
+ * accessible name in the first place.
+ */
+.markdown-preview :deep(.task-list-checkbox) {
+  cursor: pointer;
+  accent-color: v-bind(linkColor);
+}
+
+.markdown-preview :deep(.task-list-checkbox:focus-visible) {
+  outline: 2px solid v-bind(linkColor);
+  outline-offset: 2px;
 }
 
 /* Wiki-links (`[[Title]]` / `[[Title|alias]]`, see `lib/remarkWikiLink.ts`

@@ -80,6 +80,7 @@ import { initUrlSync } from './urlSync'
 import { initPaneJump } from './paneJump'
 import { initDocumentsSearchShortcut } from './documentsSearchShortcut'
 import { initWikiLinks } from './wikiLinks'
+import { initTaskListToggle } from './taskListToggle'
 
 import '@/features/settings'
 import '@/features/editor'
@@ -137,6 +138,12 @@ initDocumentsSearchShortcut()
 // own doc comment for why this needs both `documents` and `preview` and
 // so lives here, same shape as `initPaneJump()` just above.
 initWikiLinks()
+
+// GFM task-list checkbox toggling (click a rendered checkbox in the
+// preview, flip `- [ ]`/`- [x]` in the markdown) — see
+// `taskListToggle.ts`'s own doc comment for why this needs both `preview`
+// and `editor` and so lives here, same shape as `initWikiLinks()` above.
+initTaskListToggle()
 
 // --- documents <-> editor -------------------------------------------------
 //
