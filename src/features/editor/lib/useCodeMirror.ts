@@ -1,7 +1,7 @@
 import { onMounted, onUnmounted, shallowRef, type Ref } from 'vue'
 import { Annotation, Compartment, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
-import { autocompletion, type CompletionSource } from '@codemirror/autocomplete'
+import { acceptCompletion, autocompletion, type CompletionSource } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
@@ -75,6 +75,44 @@ function buildCompletionExtension(wordCompletionEnabled: boolean): Extension {
     : [wikiLinkCompletionSource]
   return [autocompletion({ override: sources, icons: false }), inlineCompletionTheme]
 }
+
+/**
+ * Tab accepts the currently-highlighted completion, for both menus this
+ * feature registers (word completion, wiki links — see
+ * `buildCompletionExtension` above; both live on the same `autocompletion()`
+ * instance, so one binding covers either). `@codemirror/autocomplete`'s own
+ * built-in keymap (installed by `autocompletion()` itself, see
+ * `completionKeymap`) only binds Enter -> `acceptCompletion`; this adds the
+ * same command under Tab as a second way to accept, without touching that
+ * built-in Enter binding at all.
+ *
+ * `acceptCompletion` returns `false` when no completion is currently
+ * selected/active — CodeMirror's keymap dispatch treats a `false` return as
+ * "this binding didn't handle the key", so it moves on to the next handler
+ * bound to the same key rather than calling `preventDefault`. This project
+ * binds plain `Tab` nowhere else (no `defaultKeymap`/`historyKeymap` entry,
+ * no `editorShortcutsKeymap` entry, and `@codemirror/commands`'
+ * `indentWithTab` — the opt-in binding that WOULD make Tab indent — is never
+ * installed here), so "no other handler" means the key event reaches the
+ * DOM unhandled and the browser's own native Tab behaviour runs: focus
+ * moves to the next focusable element after the editor, exactly what Tab
+ * already did before this change (CodeMirror deliberately ships Tab
+ * unbound by default for this reason — binding it, e.g. via
+ * `indentWithTab`, is something a host application has to opt into, since
+ * leaving it native is what keeps a plain contentEditable surface from
+ * becoming a keyboard trap). Verified in the browser before this change:
+ * with no completion menu open, Tab moves focus off the editor and Shift-Tab
+ * moves it back — this binding only ever matches the bare `Tab` key
+ * (CodeMirror keymaps match key+modifiers as one unit), so `Shift-Tab` is
+ * untouched and continues doing exactly that.
+ *
+ * Registered as a plain (non-`Prec`) keymap — no other extension in this
+ * file's extension list claims `Tab`, so precedence relative to them never
+ * matters; `@codemirror/autocomplete`'s own Enter binding is internally
+ * `Prec.highest`, which this doesn't need to match or beat since the two
+ * bindings are on different keys and never compete for the same keydown.
+ */
+const completionAcceptKeymap = keymap.of([{ key: 'Tab', run: acceptCompletion }])
 
 /** Shape shared by `initialSpellcheck`/`setSpellcheck` below — kept as one
  * object (not two separate enabled/language options) since both values are
@@ -194,6 +232,11 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         imagePasteHandler,
         jumpFlashField,
         completionCompartment.of(buildCompletionExtension(currentWordCompletionEnabled)),
+        // Outside the compartment above (which only carries the
+        // TOGGLABLE word-completion source) — Tab must accept a wiki-link
+        // completion too, and wiki-link completion is unconditionally
+        // present regardless of that toggle (see `buildCompletionExtension`).
+        completionAcceptKeymap,
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return
           // A `view.setState` rebuild (document load, see `loadDocument`)

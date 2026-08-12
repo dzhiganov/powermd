@@ -15,6 +15,7 @@ export {
   $spellCheckEnabled,
   $spellCheckLanguage,
   $wordCompletionEnabled,
+  $wordCompletionExcludedFolderIds,
   editorFontSizeChanged,
   editorFontFamilyChanged,
   lineWrapToggled,
@@ -23,9 +24,13 @@ export {
   spellCheckToggled,
   spellCheckLanguageChanged,
   wordCompletionToggled,
+  wordCompletionFolderExclusionToggled,
   SPELLCHECK_LANGUAGES,
 } from './model/editorPreferences'
 export type { EditorFontFamily, SpellCheckLanguage } from './model/editorPreferences'
+
+export { $documentFolders, documentFoldersChanged } from './model/folderMirror'
+export type { DocumentFolder } from './model/folderMirror'
 
 export {
   $settingsOpen,

@@ -137,6 +137,29 @@ test.describe('wiki-link inline autocomplete', () => {
     await expect(previewLink).toBeVisible()
   })
 
+  test('Tab accepts the highlighted suggestion, same as Enter', async ({ page }) => {
+    await openApp(page)
+    await renameActiveDocument(page, 'Current Doc Tab')
+    await createDocument(page, 'Bravo Notes')
+
+    await selectDocument(page, 'Current Doc Tab')
+    await clearEditor(page)
+
+    await page.keyboard.type('[[Bra')
+    await expect(options(page)).toHaveCount(1)
+    // Same `interactionDelay` (75ms, `@codemirror/autocomplete`'s own
+    // accept guard) wait as `word-completion.spec.ts`'s Tab-accepts test —
+    // see that test's comment for the full reasoning.
+    await page.waitForTimeout(100)
+    await page.keyboard.press('Tab')
+    await expect(tooltip(page)).toBeHidden()
+
+    // Same "cursor lands right after the closing ]]" check as the Enter
+    // variant of this test above.
+    await page.keyboard.type('END')
+    await expect(page.locator('.cm-content')).toHaveText('[[Bravo Notes]]END')
+  })
+
   test('Escape dismisses the menu without inserting anything', async ({ page }) => {
     await openApp(page)
     await renameActiveDocument(page, 'Current Doc C')

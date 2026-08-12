@@ -36,18 +36,27 @@ export const $lineWrapEnabled = createStore<boolean>(true).on(
 )
 
 /**
- * The editor feature's own mirror of `features/settings`' persisted word
- * completion preference — same "settings owns the preference, the acting
- * feature keeps its own mirror" shape as `$lineWrapEnabled` above.
- * `Editor.vue` reads this both for `useCodeMirror`'s *initial* Compartment
- * value and to react to later toggles by reconfiguring that Compartment live
+ * The editor feature's own mirror of whether word completion should be
+ * active right now — same "settings owns the preference, the acting
+ * feature keeps its own mirror" shape as `$lineWrapEnabled` above, except
+ * this one boolean is already the RESOLVED answer, not a 1:1 mirror of a
+ * single settings store: `wiring.ts` combines `features/settings`'
+ * persisted global on/off toggle, its persisted per-folder exclusion list,
+ * and the currently open document's folder id (via
+ * `src/app/lib/wordCompletionScope.ts`'s `isWordCompletionActive`) into
+ * this single value before pushing it here — `editor` never learns that
+ * folders exist at all, the same "editor never imports documents" rule
+ * `lib/wikiLinkCompletion.ts`'s own doc comment documents. `Editor.vue`
+ * reads this both for `useCodeMirror`'s *initial* Compartment value and to
+ * react to later changes (a toggle, an exclusion-list edit, or switching to
+ * a document in a different folder) by reconfiguring that Compartment live
  * (see `lib/useCodeMirror.ts`'s `setWordCompletion`) — never a state
- * rebuild, so undo history and cursor position survive a toggle exactly
+ * rebuild, so undo history and cursor position survive a change exactly
  * like a line-wrap change does.
  *
  * Defaults to `false`, matching `features/settings/model/editorPreferences
  * .ts`'s own default (off — see that file's doc comment for why), so this
- * renders correctly before `wiring.ts` has applied the real persisted
+ * renders correctly before `wiring.ts` has applied the real resolved
  * value, which it does synchronously before this module's default could
  * ever paint.
  */

@@ -111,6 +111,74 @@ test.describe('in-document word completion', () => {
     await expect(page.locator('.cm-content')).toHaveText('widget widen widget')
   })
 
+  test('Tab accepts the highlighted completion, same as Enter', async ({ page }) => {
+    await openApp(page)
+    await setWordCompletionSetting(page, true)
+    await clearEditor(page)
+
+    await page.keyboard.type('widget widg')
+    await expect(tooltip(page)).toBeVisible()
+    await expect(options(page)).toHaveCount(1)
+
+    // `@codemirror/autocomplete`'s own `acceptCompletion` refuses to accept
+    // within `interactionDelay` (75ms by default) of the menu opening — a
+    // deliberate library guard against a keystroke landing right as the
+    // menu appears being misread as an accept. Real typing/reading always
+    // clears that window; this single-shot `.type()` above can otherwise
+    // press Tab well under 75ms after the menu opened, so this waits it out
+    // explicitly rather than depending on incidental round-trip latency.
+    await page.waitForTimeout(100)
+
+    await page.keyboard.press('Tab')
+    await expect(tooltip(page)).toBeHidden()
+    await expect(page.locator('.cm-content')).toHaveText('widget widget')
+    // Tab was consumed by the completion menu, not the browser's own
+    // "move focus off the editor" default — focus never left `.cm-content`.
+    await expect(page.locator('.cm-content')).toBeFocused()
+  })
+
+  test('Tab with no completion menu open still does its normal thing (moves focus off the editor)', async ({
+    page,
+  }) => {
+    await openApp(page)
+    await clearEditor(page)
+
+    await page.keyboard.type('no menu open here')
+    await expect(tooltip(page)).toBeHidden()
+    await expect(page.locator('.cm-content')).toBeFocused()
+
+    await page.keyboard.press('Tab')
+    // Nothing in this project binds plain Tab outside a completion menu
+    // (no `indentWithTab`, see `lib/useCodeMirror.ts`'s own doc comment on
+    // `completionAcceptKeymap`) — the key falls all the way through to the
+    // browser's native behaviour, which moves focus to the next focusable
+    // element. Neither the text nor the menu state changed.
+    await expect(page.locator('.cm-content')).not.toBeFocused()
+    await expect(page.locator('.cm-content')).toHaveText('no menu open here')
+    await expect(tooltip(page)).toBeHidden()
+  })
+
+  test('Shift-Tab is a distinct key combination — never hijacked by completion acceptance', async ({
+    page,
+  }) => {
+    await openApp(page)
+    await setWordCompletionSetting(page, true)
+    await clearEditor(page)
+
+    await page.keyboard.type('widget widg')
+    await expect(tooltip(page)).toBeVisible()
+
+    await page.keyboard.press('Shift+Tab')
+    // Never accepted — the in-progress "widg" is untouched (accepting
+    // would have turned it into "widget", same as the Tab-accepts test
+    // above).
+    await expect(page.locator('.cm-content')).toHaveText('widget widg')
+    // Same native fallback as a Tab with no menu open, just reversed —
+    // this binding only ever matches the bare `Tab` key, so `Shift-Tab`
+    // was never intercepted at all.
+    await expect(page.locator('.cm-content')).not.toBeFocused()
+  })
+
   test('Escape dismisses the menu without inserting anything', async ({ page }) => {
     await openApp(page)
     await setWordCompletionSetting(page, true)

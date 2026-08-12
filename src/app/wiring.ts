@@ -71,6 +71,8 @@ import {
   $spellCheckEnabled,
   $spellCheckLanguage,
   $wordCompletionEnabled as $wordCompletionPreference,
+  $wordCompletionExcludedFolderIds,
+  documentFoldersChanged,
   $autoSyncIntervalMinutes,
   helpOpened,
   settingsOpened,
@@ -81,6 +83,7 @@ import { initPaneJump } from './paneJump'
 import { initDocumentsSearchShortcut } from './documentsSearchShortcut'
 import { initWikiLinks } from './wikiLinks'
 import { initTaskListToggle } from './taskListToggle'
+import { isWordCompletionActive } from './lib/wordCompletionScope'
 
 import '@/features/settings'
 import '@/features/editor'
@@ -287,13 +290,72 @@ initTransfer({ renderMarkdown: renderMarkdownForExportWithWikiLinks })
 lineWrapChanged($lineWrapPreference.getState())
 sample({ clock: $lineWrapPreference, target: lineWrapChanged })
 
-// Word completion: same one-kick-then-sample shape as line wrap above — a
-// real CodeMirror Compartment reconfigure (see `features/editor/lib/
-// useCodeMirror.ts`'s `setWordCompletion`), so the editor feature keeps its
-// own live mirror (`$wordCompletionEnabled` in `model/editorEvents.ts`)
-// rather than reading the settings store directly.
-wordCompletionChanged($wordCompletionPreference.getState())
-sample({ clock: $wordCompletionPreference, target: wordCompletionChanged })
+// Word completion: a real CodeMirror Compartment reconfigure (see
+// `features/editor/lib/useCodeMirror.ts`'s `setWordCompletion`), so the
+// editor feature keeps its own live mirror (`$wordCompletionEnabled` in
+// `model/editorEvents.ts`) rather than reading `settings` (or `documents`)
+// directly — same shape as every other mirror in this file, just combining
+// THREE sources instead of mirroring one 1:1:
+//
+//   - `settings`' global on/off toggle (`$wordCompletionPreference`)
+//   - `settings`' persisted per-folder exclusion list
+//     (`$wordCompletionExcludedFolderIds`)
+//   - the currently OPEN document's folder id (`$activeDocument`, `documents`
+//     -owned)
+//
+// into the single already-decided boolean `editor` receives — see
+// `./lib/wordCompletionScope.ts`'s `isWordCompletionActive` for the pure
+// decision itself (unit-tested there in isolation) and its own doc comment
+// for why `editor` must never resolve this on its own (it has no notion of
+// folders at all, same "editor never imports documents" rule
+// `wikiLinkCompletion.ts` already documents).
+//
+// `combine`, not an array clock (contrast `editorFontMetricsChanged`
+// below): this mirror needs a real payload — the actual resolved boolean,
+// not just a "something changed" signal — so the array-clock dedup hazard
+// documented on `editorFontMetricsChanged` doesn't apply; a `combine`d
+// store only skips a re-emit when the computed boolean is unchanged, which
+// is exactly the right behaviour here (e.g. editing the active document
+// updates `$activeDocument` on every keystroke, but its `folderId` almost
+// never changes, so this would otherwise refire on every keystroke for no
+// reason).
+//
+// This is also what makes "moving a document into or out of an excluded
+// folder takes effect without a reload" work: moving a document
+// (`documentMoveRequested` -> `documentMoveApplied` in `features/documents/
+// model/documents.ts`) updates `$documents`, which `$activeDocument` is
+// `combine`d from, which recomputes this store, which re-fires
+// `wordCompletionChanged` — the exact same live-reactivity chain
+// `$wikiLinkDocuments` already relies on for a renamed/created document
+// showing up in the `[[` menu without a reload.
+const $wordCompletionActive = combine(
+  $wordCompletionPreference,
+  $wordCompletionExcludedFolderIds,
+  $activeDocument,
+  (globalEnabled, excludedFolderIds, activeDocument) =>
+    isWordCompletionActive({
+      globalEnabled,
+      excludedFolderIds,
+      documentFolderId: activeDocument?.folderId ?? null,
+    }),
+)
+wordCompletionChanged($wordCompletionActive.getState())
+sample({ clock: $wordCompletionActive, target: wordCompletionChanged })
+
+// `settings`' Editor category renders the per-folder exclusion list above
+// against real folder names/ids — same one-kick-then-sample mirror shape as
+// `wikiLinkDocumentsChanged` just above, just feeding `settings`' own
+// `$documentFolders` (`features/settings/model/folderMirror.ts`) instead of
+// `editor`'s `$wikiLinkDocuments`. `settings` never imports `documents`
+// directly (see `DocumentDrawer.vue`'s own note on that boundary), so
+// without this the Settings dialog would have no way to know what folders
+// even exist.
+documentFoldersChanged($folders.getState().map((folder) => ({ id: folder.id, name: folder.name })))
+sample({
+  source: $folders,
+  fn: (folders) => folders.map((folder) => ({ id: folder.id, name: folder.name })),
+  target: documentFoldersChanged,
+})
 
 // Editor font size/family: CodeMirror needs no Compartment reconfigure for
 // either (both already repaint `.cm-scroller` purely via the CSS custom

@@ -9,6 +9,7 @@ const FONT_SIZE_KEY = 'markdown-editor:editor-font-size'
 const FONT_FAMILY_KEY = 'markdown-editor:editor-font-family'
 const LINE_WRAP_KEY = 'markdown-editor:line-wrap'
 const WORD_COMPLETION_ENABLED_KEY = 'markdown-editor:word-completion-enabled'
+const WORD_COMPLETION_EXCLUDED_FOLDERS_KEY = 'markdown-editor:word-completion-excluded-folders'
 const AUTOSAVE_MS_KEY = 'markdown-editor:autosave-ms'
 const READING_WIDTH_KEY = 'markdown-editor:reading-width'
 const SPELLCHECK_ENABLED_KEY = 'markdown-editor:spellcheck-enabled'
@@ -77,6 +78,23 @@ function readBoolean(key: string, fallback: boolean): boolean {
   const stored = readStorage(key)
   if (stored === null) return fallback
   return stored === 'true'
+}
+
+/** Reads a persisted JSON array of strings — same defensive shape as
+ * `features/documents/model/documents.ts`'s `readInitialCollapsedFolderIds`
+ * (missing key or malformed JSON both fall back to `[]`, never a thrown
+ * error), used here for the word-completion folder-exclusion list below. */
+function readStringArray(key: string): string[] {
+  const stored = readStorage(key)
+  if (stored === null) return []
+  try {
+    const parsed: unknown = JSON.parse(stored)
+    return Array.isArray(parsed)
+      ? parsed.filter((entry): entry is string => typeof entry === 'string')
+      : []
+  } catch {
+    return []
+  }
 }
 
 const DEFAULT_FONT_FAMILY: EditorFontFamily = 'mono'
@@ -191,6 +209,46 @@ export const $wordCompletionEnabled = createStore<boolean>(
 sample({
   clock: $wordCompletionEnabled,
   fn: (enabled) => ({ key: WORD_COMPLETION_ENABLED_KEY, value: String(enabled) }),
+  target: persistFx,
+})
+
+// --- Word completion: per-folder exclusion --------------------------------
+//
+// Folder ids whose documents get no word-completion suggestions even while
+// the global toggle above is on — e.g. a folder of notes in a language the
+// user is learning, whose vocabulary they don't want leaking into every
+// other document's suggestions. Scoped to word completion only: wiki-link
+// completion is explicitly invoked (`[[`) and stays on everywhere,
+// regardless of this list — see `src/app/lib/wordCompletionScope.ts`, the
+// pure function that combines this list with the global toggle and the
+// open document's folder into the one boolean actually pushed into the
+// editor feature.
+//
+// Stores opaque folder ids only, exactly like `features/documents/model/
+// documents.ts`'s `$collapsedFolderIds` — this feature never imports
+// `documents` (see `ui/DocumentDrawer.vue`'s own note on that boundary), so
+// it has no notion of a `Folder` beyond the id string the settings UI's
+// checkboxes toggle. A folder deleted while its id is still in this list
+// is harmless and requires no special handling here: deleting a folder
+// moves every document that was inside it to root (`folderId: null`,
+// see `documents.ts`'s `deleteFolderFx`), so no document can ever match a
+// stale id again, and the settings UI (fed by `$documentFolders` below,
+// itself sourced from the live folder list) simply stops rendering a
+// checkbox for it — never a "ghost" entry the user can still see or
+// toggle. The stale id itself just sits unused in storage, the same way
+// `$collapsedFolderIds` would if it didn't bother pruning either.
+export const wordCompletionFolderExclusionToggled = createEvent<string>()
+export const $wordCompletionExcludedFolderIds = createStore<string[]>(
+  readStringArray(WORD_COMPLETION_EXCLUDED_FOLDERS_KEY),
+)
+  .on(wordCompletionFolderExclusionToggled, (ids, folderId) =>
+    ids.includes(folderId) ? ids.filter((id) => id !== folderId) : [...ids, folderId],
+  )
+  .on(defaultsRestored, () => [])
+
+sample({
+  clock: $wordCompletionExcludedFolderIds,
+  fn: (ids) => ({ key: WORD_COMPLETION_EXCLUDED_FOLDERS_KEY, value: JSON.stringify(ids) }),
   target: persistFx,
 })
 

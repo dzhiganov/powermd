@@ -15,6 +15,7 @@ import {
   $spellCheckEnabled,
   $spellCheckLanguage,
   $wordCompletionEnabled,
+  $wordCompletionExcludedFolderIds,
   editorFontSizeChanged,
   editorFontFamilyChanged,
   lineWrapToggled,
@@ -23,6 +24,7 @@ import {
   spellCheckToggled,
   spellCheckLanguageChanged,
   wordCompletionToggled,
+  wordCompletionFolderExclusionToggled,
   SPELLCHECK_LANGUAGES,
   FONT_SIZE_MIN,
   FONT_SIZE_MAX,
@@ -32,6 +34,7 @@ import {
   READING_WIDTH_MAX,
   type SpellCheckLanguage,
 } from '../model/editorPreferences'
+import { $documentFolders } from '../model/folderMirror'
 import {
   $settingsOpen,
   $settingsInitialCategory,
@@ -69,6 +72,8 @@ const readingWidth = useUnit($readingWidthCh)
 const spellCheckEnabled = useUnit($spellCheckEnabled)
 const spellCheckLanguage = useUnit($spellCheckLanguage)
 const wordCompletionEnabled = useUnit($wordCompletionEnabled)
+const wordCompletionExcludedFolderIds = useUnit($wordCompletionExcludedFolderIds)
+const documentFolders = useUnit($documentFolders)
 const showTooltips = useUnit($showTooltips)
 const drawerSide = useUnit($drawerSide)
 const showFormattingToolbar = useUnit($showFormattingToolbar)
@@ -347,6 +352,65 @@ watch(open, (isOpen) => {
               </p>
             </div>
 
+            <!-- Per-folder word-completion exclusion: e.g. a folder of
+                 notes in a language you're learning, whose vocabulary you
+                 don't want suggested everywhere else. Scoped to word
+                 completion only — wiki-link completion is explicitly
+                 invoked (`[[`) and always stays on, folder or no folder
+                 (see `src/app/lib/wordCompletionScope.ts`). Lives right
+                 under the toggle it modifies rather than its own section,
+                 since it only ever matters together with it. -->
+            <div class="flex flex-col gap-1">
+              <span id="settings-word-completion-folders-label" class="text-sm text-base-content">
+                Turn off word completion in these folders
+              </span>
+              <!-- No folders at all: an explanatory line instead of an
+                   empty bordered box, so this never reads as broken or
+                   missing content. -->
+              <p v-if="documentFolders.length === 0" class="text-xs text-base-content/70">
+                You don't have any folders yet. Word completion can only be excluded per folder —
+                create one from the documents panel to exclude it here.
+              </p>
+              <!-- Bounded height + its own `overflow-y-auto`: this list
+                   scrolls WITHIN the settings dialog's fixed 640x600 frame
+                   rather than growing it — verified with ~10 folders (see
+                   the task report). The dialog's own category pane
+                   (`overflow-y-auto` on `.settings-panel`'s tabpanel) would
+                   already contain unbounded growth here too, but bounding
+                   the list itself keeps the rest of this category's
+                   controls (spell check, its language picker) from being
+                   pushed far below the fold by a long folder list. -->
+              <ul
+                v-else
+                class="settings-folder-list flex max-h-40 flex-col gap-0.5 overflow-y-auto rounded-box border border-base-300 p-1"
+                role="group"
+                aria-labelledby="settings-word-completion-folders-label"
+              >
+                <li v-for="folder in documentFolders" :key="folder.id">
+                  <label
+                    class="flex items-center justify-between gap-2 rounded px-2 py-1 text-sm text-base-content"
+                  >
+                    <span class="truncate">{{ folder.name }}</span>
+                    <input
+                      type="checkbox"
+                      class="checkbox checkbox-sm shrink-0"
+                      :checked="wordCompletionExcludedFolderIds.includes(folder.id)"
+                      :aria-label="`Turn off word completion in ${folder.name}`"
+                      @change="wordCompletionFolderExclusionToggled(folder.id)"
+                    />
+                  </label>
+                </li>
+              </ul>
+              <p class="text-xs text-base-content/70">
+                Documents at the root (not in any folder) always get suggestions while word
+                completion is on above — this list only ever narrows folders out, never in.
+                <template v-if="!wordCompletionEnabled">
+                  Word completion is off right now, so these choices have no effect until you turn
+                  it back on.
+                </template>
+              </p>
+            </div>
+
             <label class="flex items-center justify-between">
               <span class="text-sm text-base-content">Spell check</span>
               <input
@@ -596,10 +660,10 @@ watch(open, (isOpen) => {
         Reset settings to defaults?
       </h2>
       <p class="mt-2 text-sm text-base-content/70">
-        Restores font size, font family, line wrapping, word completion, spell check, autosave
-        delay, reading width, tooltips, formatting toolbar, documents panel side, scroll sync,
-        auto-sync interval, theme, and soft contrast to their defaults. Your documents, folders, and
-        GitHub connection are not affected.
+        Restores font size, font family, line wrapping, word completion (including which folders
+        it's turned off in), spell check, autosave delay, reading width, tooltips, formatting
+        toolbar, documents panel side, scroll sync, auto-sync interval, theme, and soft contrast to
+        their defaults. Your documents, folders, and GitHub connection are not affected.
       </p>
       <div class="mt-5 flex justify-end gap-2">
         <button
@@ -830,5 +894,28 @@ watch(open, (isOpen) => {
 .settings-tab:focus-visible {
   outline: 2px solid var(--md-accent);
   outline-offset: -2px;
+}
+
+/*
+ * The per-folder word-completion exclusion list's checkboxes
+ * (`checkbox checkbox-sm`, first use of daisyUI's `.checkbox` component in
+ * this app) — its DEFAULT unchecked border is only 20% opaque
+ * (`oklab(<base-content> / 0.2)`, daisyUI 5's own token), which measured
+ * (real composited pixels, screenshot + alpha-compositing, see the task
+ * report) at only ~1.5:1-1.75:1 against this dialog's own translucent
+ * `.settings-panel` across all four theme x soft-contrast combinations —
+ * well under the 3:1 non-text floor a control's own boundary needs to stay
+ * visible. `in srgb` (not `in oklab`, unlike daisyUI's own token, and unlike
+ * `inlineCompletionTheme.ts`'s tooltip border) mixing toward `transparent`
+ * is what `.settings-panel`'s own background rule above already documents
+ * as reducing to a plain, by-hand-computable sRGB alpha blend — the same
+ * reason it's used again here instead of matching daisyUI's oklab-mixed
+ * token. 75% is not a borrowed value: it's chosen and verified for computed
+ * over THIS panel's own translucent background specifically. Re-measured
+ * after this change at every combination (see the task report) — all clear
+ * 3:1 with margin.
+ */
+.settings-folder-list input[type='checkbox'] {
+  border-color: color-mix(in srgb, var(--color-base-content) 75%, transparent);
 }
 </style>
