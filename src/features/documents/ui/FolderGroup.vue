@@ -221,7 +221,12 @@ const documentCount = computed(() => String(props.documents.length))
       </span>
     </div>
 
-    <ul v-show="!collapsed" class="ml-5 flex flex-col gap-1 border-l border-base-300 pl-2">
+    <!-- `ml-4`, not `ml-5`: this border is the guide line running down from
+         the folder's collapse chevron, so it should sit under the chevron's
+         centre. At `ml-5` it landed 4px to its right (measured: chevron
+         centre 985, line 989), which reads as a misalignment rather than as
+         a connection. -->
+    <ul v-show="!collapsed" class="ml-4 flex flex-col gap-1 border-l border-base-300 pl-3">
       <li v-if="documents.length === 0" class="px-3 py-1 text-xs text-base-content/50">Empty</li>
       <li v-for="doc in documents" :key="doc.id">
         <DocumentRow

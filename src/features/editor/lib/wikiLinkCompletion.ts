@@ -215,9 +215,19 @@ export const wikiLinkCompletionTheme = EditorView.theme({
   '.cm-tooltip.cm-tooltip-autocomplete': {
     background: 'var(--md-pop)',
     border: '1px solid color-mix(in oklab, var(--color-base-content) 55%, transparent)',
-    borderRadius: '8px',
+    /* Square, deliberately. Rounded rows inside a rounded box, with an
+       accent bar down the side of the selected one, is a lot of decoration
+       for a list of four words. */
+    borderRadius: '0',
     boxShadow: 'var(--md-shadow-pop)',
     overflow: 'hidden',
+    /* FIXED width, so the menu never resizes under the cursor. It used to
+       size to its widest row, which meant it visibly shrank while you typed:
+       measured 211px with three matches and 158px the moment filtering left
+       one. A menu that changes shape as you type is the thing you are trying
+       to read. Long titles ellipsis instead (see `.cm-completionLabel`). */
+    width: '19em',
+    maxWidth: 'calc(100vw - 2rem)',
   },
   /* `.cm-tooltip.cm-tooltip-autocomplete > ul`, not `.cm-tooltip-autocomplete
      > ul`. The library's own base theme styles this list through the
@@ -233,28 +243,27 @@ export const wikiLinkCompletionTheme = EditorView.theme({
     fontSize: '13px',
     lineHeight: '1.5',
     maxHeight: '14em',
-    minWidth: '12em',
-    /* The container rounds and clips, but the list is what actually scrolls;
-       without its own radius the first and last rows square off the corners
-       the container just rounded. */
-    borderRadius: '8px',
-    padding: '4px',
+    padding: '0',
   },
   '.cm-tooltip.cm-tooltip-autocomplete > ul > li': {
     display: 'flex',
     alignItems: 'center',
     padding: '6px 10px',
-    borderRadius: '6px',
-    borderLeft: '3px solid transparent',
     color: 'var(--color-base-content)',
   },
   /* Same two-class form as the rules above — the base theme styles the
      selected row through it too, so a single-class selector here would lose
-     the same argument the font-family lost. */
+     the same argument the font-family lost.
+
+     Background and weight carry the selection; no accent bar, no rounding.
+     Bold is applied via `-webkit-text-stroke` rather than `font-weight`
+     deliberately: a real weight change re-measures the text, and since the
+     menu is a fixed width that is harmless here, but it also shifts the row's
+     own glyphs sideways as you arrow through — thickening strokes in place
+     does not. */
   '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
-    background: 'var(--md-hov)',
-    borderLeft: '3px solid var(--md-accent)',
-    fontWeight: '600',
+    background: 'var(--md-sel)',
+    WebkitTextStroke: '0.4px currentColor',
     color: 'var(--color-base-content)',
   },
   '.cm-completionLabel': {

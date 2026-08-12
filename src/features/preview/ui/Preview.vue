@@ -264,6 +264,22 @@ const previewMaxWidth = 'min(680px, var(--md-reading-width, 75ch))'
   background-color: var(--md-code);
 }
 
+/* CODE SIZE. Tailwind Typography shrinks `code` to .875em AND `pre` to
+ * .875em, so a `code` inside a `pre` gets both and compounds: measured
+ * 10.65px against 14.5px body text — small enough to be the thing people
+ * complain about, and not a size anyone chose. `1em` on the inner `code`
+ * stops the compounding, and .9em on the two outer elements keeps code
+ * slightly smaller than prose (which is the point of the rule) without
+ * making it hard to read. */
+.markdown-preview :deep(code),
+.markdown-preview :deep(pre) {
+  font-size: 0.9em;
+}
+
+.markdown-preview :deep(pre code) {
+  font-size: 1em;
+}
+
 .markdown-preview :deep(a) {
   word-break: break-word;
 }

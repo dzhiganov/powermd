@@ -360,9 +360,19 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
                  pushed it to 3.09:1 — and a shortcut hint nobody can read
                  is not serving the purpose it exists for. `--md-seg-fg` is
                  the token already measured >=4.5:1 in both themes. -->
+            <!-- `inline-flex items-center leading-none`, and the UI font
+                 rather than mono. On macOS this renders ⇧⌘F, and those glyphs
+                 are not in IBM Plex Mono — the browser substitutes a system
+                 face whose baseline and line-height differ, so a chip laid
+                 out on the text baseline sits visibly off-centre against the
+                 search field next to it. Centring the box instead of
+                 trusting the baseline makes the alignment independent of
+                 whichever font ends up drawing the symbols. `leading-none`
+                 removes the inherited line-height, which is the other half
+                 of the same problem. -->
             <span
               v-else
-              class="shrink-0 font-mono text-[10.5px] tracking-wide whitespace-nowrap"
+              class="inline-flex shrink-0 items-center text-[10.5px] leading-none tracking-wide whitespace-nowrap"
               style="color: var(--md-seg-fg, var(--color-base-content))"
               aria-hidden="true"
             >
