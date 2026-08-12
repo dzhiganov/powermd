@@ -1,7 +1,18 @@
 {
-  "name": "markdown-editor",
+  "name": "powermd",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "A markdown editor that runs entirely in your browser, with live preview, wiki links and optional one-way GitHub sync.",
+  "license": "MIT",
+  "author": "Dmitriy Zhiganov",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dzhiganov/powermd.git"
+  },
+  "homepage": "https://github.com/dzhiganov/powermd#readme",
+  "bugs": {
+    "url": "https://github.com/dzhiganov/powermd/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -57,6 +57,11 @@ const faqs: Faq[] = [
       'GitHub Flavored Markdown — tables, task lists, strikethrough, autolinks — plus syntax highlighting and Mermaid diagrams. HTML in your document is sanitized before it renders.',
   },
   {
+    question: 'Is this open source?',
+    answer:
+      'Yes — MIT licensed, and the full source is on GitHub. Issues and pull requests are welcome.',
+  },
+  {
     question: 'Who made this?',
     answer: 'Dmitriy Zhiganov.',
   },
@@ -67,8 +72,12 @@ interface AboutLink {
   href: string
 }
 
-// These three URLs are exact — never altered/normalised/stripped.
+// These URLs are exact — never altered/normalised/stripped. Source first:
+// it is the one link that is about this app rather than about its author,
+// and an open-source project should say where its source is before it says
+// anything else.
 const links: AboutLink[] = [
+  { label: 'Source on GitHub', href: 'https://github.com/dzhiganov/powermd' },
   { label: 'Website', href: 'https://www.dimazhiganov.dev/' },
   { label: 'LinkedIn', href: 'https://www.linkedin.com/in/dmitriy-zhiganov/' },
   { label: 'YouTube', href: 'https://www.youtube.com/@d.zhiganov' },

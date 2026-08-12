@@ -1,123 +1,169 @@
-# Markdown Editor
+# powermd
 
-A Dillinger.io-style markdown editor. This is the Step 1 app shell —
-no editor or markdown rendering yet, just layout, theming, and the
-project structure.
+A markdown editor that runs entirely in your browser. Write on the left, see
+it rendered on the right, and keep everything on your own machine.
 
-## Stack
+**[Try it →](https://markdown-editor-peach.vercel.app)**
 
-- Vite + Vue 3 + TypeScript (strict)
-- Effector + effector-vue for state
-- Tailwind CSS v4 + DaisyUI
-- @heroicons/vue for icons
-- ESLint (flat config) + Prettier
+![Split view](docs/media/split-light.png)
 
-See `ARCHITECTURE.md` for the folder layout and feature-boundary rules.
+Your documents live in IndexedDB and never leave the browser unless you
+connect GitHub sync yourself. It installs as an app and works with no network
+at all.
 
-## Setup
+---
+
+## Writing
+
+The preview updates as you type, rendering GitHub Flavored Markdown —
+tables, task lists, strikethrough, autolinks — with syntax highlighting and
+Mermaid diagrams. Rendering happens in a Web Worker, so a long document never
+makes typing stutter.
+
+![Typing](docs/media/typing.gif)
+
+Three view modes: editor only, preview only, or both. The split is draggable,
+and scrolling can be synchronised between the panes or left independent.
+
+Formatting has a toolbar and shortcuts — bold, italic, underline,
+strikethrough, links, inline code and code blocks, lists, quotes, tables and
+headings.
+
+### Task lists you can actually tick
+
+`- [ ]` renders as a checkbox you can click. Ticking it edits the markdown,
+so the document stays the source of truth and syncs like anything else.
+
+![Task lists](docs/media/tasks.gif)
+
+### Linking documents together
+
+`[[Document title]]` links one document to another. Typing `[[` suggests
+titles and filters as you type; a link to a document that doesn't exist yet
+is drawn differently and creates it when clicked — so you can write the link
+before you write the page.
+
+![Wiki links](docs/media/wiki-links.gif)
+
+### Completing words you've already used
+
+Optionally, typing suggests words that already appear in the document you're
+in — no dictionary, nothing from elsewhere. It can be switched off for
+particular folders, which matters if one of them holds a language you're
+still learning.
+
+---
+
+## Finding things
+
+`Ctrl+F` finds and replaces within the open document, with match case, whole
+word and regular expressions.
+
+![Find and replace](docs/media/search.png)
+
+`Ctrl+Shift+F` searches across every document by title and content.
+
+---
+
+## Organising
+
+Documents sit in the sidebar and can be grouped into folders. Renaming,
+moving and deleting are all inline. The panel docks to either side.
+
+---
+
+## Syncing to GitHub
+
+Optional, and off until you set it up. Sign in with a GitHub App, choose a
+repository and branch, and your documents and folders are pushed to it on an
+interval.
+
+It is **one-way**: this app writes to GitHub and never reads back. Editing a
+file on GitHub won't change it here, and a later push may overwrite it.
+Deleting a document locally leaves the file on GitHub untouched. It never
+force-pushes.
+
+---
+
+## Appearance
+
+Light and dark themes, or follow the system.
+
+![Dark theme](docs/media/split-dark.png)
+
+A soft-contrast option softens every surface — near-black becomes dark grey,
+near-white becomes light grey — independently of which theme you're on.
+
+![Settings](docs/media/settings.png)
+
+Editor font family and size, reading width, line wrap, spell check and its
+language, autosave interval and the sync interval are all configurable.
+
+Colour choices are measured rather than eyeballed: text holds at least 4.5:1
+and interface elements at least 3:1, in every combination of theme and soft
+contrast.
+
+---
+
+## Offline
+
+powermd is a progressive web app. Install it and it opens and edits with no
+network. Pending syncs wait until you're back online, and a new version tells
+you it's available rather than reloading under you.
+
+---
+
+## Running it yourself
 
 ```bash
 npm install
+npm run dev
 ```
 
-## Run
+Then open http://localhost:5173.
 
 ```bash
-npm run dev        # start the dev server
-npm run build       # type-check and build for production
-npm run preview     # preview the production build
+npm run build       # type-check and build
+npm run preview     # serve the production build
+npm test            # unit tests
+npm run e2e         # end-to-end tests (real Chromium)
+npm run lint
+npm run typecheck
 ```
 
-## Checks
+### Enabling GitHub sync
 
-```bash
-npm run typecheck   # vue-tsc --noEmit
-npm run lint         # eslint, zero warnings allowed
-npm run format       # prettier --write
-npm test             # vitest
-```
+Sync needs a GitHub App of your own. Create one, then set:
 
-## GitHub sync
+| Variable                    | Where  | Purpose                           |
+| --------------------------- | ------ | --------------------------------- |
+| `GITHUB_APP_CLIENT_ID`      | server | Token exchange                    |
+| `GITHUB_APP_CLIENT_SECRET`  | server | Token exchange — never bundled    |
+| `VITE_GITHUB_APP_CLIENT_ID` | client | Starts the authorize flow         |
+| `VITE_GITHUB_APP_SLUG`      | client | Optional; builds the install link |
 
-Documents sync automatically to a GitHub repository (`src/features/github`).
-There are two ways to connect:
+See `.env.example`. The client secret is only ever read by the serverless
+functions in `api/`; it is never exposed to the browser. The access token
+travels in an `Authorization` header and is never logged or placed in a URL.
 
-- **Sign in with GitHub** (primary) — a GitHub App install-and-authorize
-  flow. Scoped to only the repositories the App is installed on, with no
-  token to copy/paste.
-- **Personal access token** (secondary/advanced) — a fine-grained PAT with
-  `Contents: Read and write` on one repository, pasted directly into the
-  app. Still fully supported; existing PAT connections are never broken by
-  the App flow being added.
+---
 
-Both paths end up calling the exact same downstream code (validation,
-storage, the push engine, path assignment) — see
-`src/features/github/model/connection.ts`'s `tokenSubmitted`.
+## How it's built
 
-### Disconnecting
+Vue 3 and TypeScript in strict mode, Effector for state, CodeMirror 6 for the
+editor, unified/remark/rehype for rendering, Tailwind and DaisyUI for styling,
+Vite for the build.
 
-"Disconnect" clears the token, sync target, and every other piece of local
-state regardless of what happens next — but for a "Sign in with GitHub"
-(App) connection it also attempts to revoke the whole authorization first,
-via `api/github/revoke.ts` (GitHub's own
-`DELETE /applications/{client_id}/grant`). This revokes the grant itself —
-not just the one access token — so a later "Sign in with GitHub" shows the
-consent screen again instead of silently reconnecting. A pasted personal
-access token can't be revoked this way and is skipped silently. If the
-revoke call fails (offline, GitHub-side error), local state is still
-cleared — the UI reports that briefly and links to GitHub's generic
-authorized-apps settings page (`src/features/github/model/oauth.ts`'s
-`getManualRevokeUrl`) so it can be finished manually.
+The code is organised by feature, with each feature owning its own model, UI
+and logic. Features don't import each other's internals — anything that needs
+two of them is wired in `src/app/wiring.ts`, and that rule is enforced by
+ESLint rather than convention. `ARCHITECTURE.md` has the details.
 
-Revoking the authorization does **not** uninstall the GitHub App from any
-repository — installation and authorization are separate grants on GitHub's
-side. On a successful revoke, the Sync panel offers a quiet secondary link
-to GitHub's generic installations settings page
-(`src/features/github/model/oauth.ts`'s `getManageInstallationsUrl`) so the
-user can remove repository access too, if they want to.
+Rendered HTML is sanitised before it reaches the DOM, and that boundary is
+the same for the preview, exports and printing.
 
-### GitHub App setup
+---
 
-Create a GitHub App at <https://github.com/settings/apps/new> (or your org's
-equivalent) with:
+## Licence
 
-- **Callback URL(s):** `https://<your-production-domain>/auth/github/callback`
-  and, for local development, `http://localhost:5183/auth/github/callback`
-  — GitHub Apps accept multiple callback URLs, add both.
-- **Request user authorization (OAuth) during installation:** enabled (this
-  app uses the user-to-server flow).
-- **Expire user authorization tokens:** optional — the app works either way
-  (see `src/features/github/model/connection.ts`'s `callWithToken` for the
-  refresh-on-401 handling when expiration is on).
-- **Repository permissions → Contents:** Read and write. `Metadata:
-Read-only` is added automatically by GitHub — no separate action needed.
-- **Where can this GitHub App be installed?:** your choice; installing it on
-  specific repositories is what gives this app its narrow, per-repository
-  scope (the reason a GitHub App was chosen over a classic OAuth App's
-  all-repositories `repo` scope).
-- No webhook is needed — this app never receives one.
-
-### Environment variables
-
-Set these in Vercel (Project Settings → Environment Variables) and in a
-local `.env` (see `.env.example`):
-
-| Variable                    | Where                   | Notes                                                                                                                                                                                                                                                                                                                                  |
-| --------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GITHUB_APP_CLIENT_ID`      | Server only             | Read by `api/github/token.ts`/`api/github/refresh.ts`/`api/github/revoke.ts`.                                                                                                                                                                                                                                                          |
-| `GITHUB_APP_CLIENT_SECRET`  | Server only, **secret** | Never `VITE_`-prefixed, so Vite never bundles it into client code. Read fresh from `process.env` on every request (`api/_lib/env.ts`) — never logged, never echoed in a response.                                                                                                                                                      |
-| `VITE_GITHUB_APP_CLIENT_ID` | Client (public)         | Same value as `GITHUB_APP_CLIENT_ID` — a GitHub App's client id isn't secret; it's visible in the authorize URL regardless. Used to build the "Sign in with GitHub" redirect.                                                                                                                                                          |
-| `VITE_GITHUB_APP_SLUG`      | Client (public)         | The App's slug from its public URL (`github.com/apps/<slug>`) — used ONLY to build the "install this app on a repository" link shown when the connected account has it installed on zero repositories. Optional: if unset, that link falls back to GitHub's generic `github.com/settings/installations` page instead of not rendering. |
-
-Without `VITE_GITHUB_APP_CLIENT_ID` set, the Sync panel falls back to
-showing only the personal-access-token form — useful for local development
-without a configured App.
-
-**Renaming the GitHub App changes its slug** (its client id stays the
-same). `VITE_GITHUB_APP_SLUG` must be updated after a rename, or the
-install-deep-link degrades to the generic installations page above rather
-than pointing at a stale, 404-ing URL. Nothing else in this app depends on
-the slug — the "manage repository access" and "manually revoke" links
-(`src/features/github/model/oauth.ts`'s `getManageInstallationsUrl`/
-`getManualRevokeUrl`) intentionally use GitHub's stable, generic settings
-pages instead, so a rename can never break them.
+MIT. See [LICENSE](LICENSE).
