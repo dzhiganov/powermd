@@ -14,6 +14,7 @@ import { jumpFlashField } from './jumpFlash'
 import { buildWikiLinkCompletionSource } from './wikiLinkCompletion'
 import { buildWordCompletionSource } from './wordCompletion'
 import { inlineCompletionTheme } from './completionTheme'
+import { indentListItem, outdentListItem } from './listIndent'
 import { $wikiLinkDocuments, $activeWikiLinkDocumentId } from '../model/editorEvents'
 
 /**
@@ -89,30 +90,56 @@ function buildCompletionExtension(wordCompletionEnabled: boolean): Extension {
  * `acceptCompletion` returns `false` when no completion is currently
  * selected/active — CodeMirror's keymap dispatch treats a `false` return as
  * "this binding didn't handle the key", so it moves on to the next handler
- * bound to the same key rather than calling `preventDefault`. This project
- * binds plain `Tab` nowhere else (no `defaultKeymap`/`historyKeymap` entry,
- * no `editorShortcutsKeymap` entry, and `@codemirror/commands`'
- * `indentWithTab` — the opt-in binding that WOULD make Tab indent — is never
- * installed here), so "no other handler" means the key event reaches the
- * DOM unhandled and the browser's own native Tab behaviour runs: focus
- * moves to the next focusable element after the editor, exactly what Tab
- * already did before this change (CodeMirror deliberately ships Tab
- * unbound by default for this reason — binding it, e.g. via
- * `indentWithTab`, is something a host application has to opt into, since
- * leaving it native is what keeps a plain contentEditable surface from
- * becoming a keyboard trap). Verified in the browser before this change:
- * with no completion menu open, Tab moves focus off the editor and Shift-Tab
- * moves it back — this binding only ever matches the bare `Tab` key
- * (CodeMirror keymaps match key+modifiers as one unit), so `Shift-Tab` is
- * untouched and continues doing exactly that.
+ * bound to the same key rather than calling `preventDefault`. Below this in
+ * `createState`'s extension list, `listIndentKeymap` (see its own doc
+ * comment) also binds Tab, to indent a list item — this keymap is placed
+ * BEFORE it specifically so completion-accept keeps winning first, same
+ * precedence chain either way: accept a completion, else indent a list
+ * item, else (`@codemirror/commands`' `indentWithTab` is never installed
+ * here) fall all the way through to the browser's own native Tab default —
+ * focus moves to the next focusable element after the editor, exactly what
+ * Tab did before either feature existed (CodeMirror deliberately ships Tab
+ * unbound by default for this reason — binding it is something a host
+ * application has to opt into, since leaving it native is what keeps a
+ * plain contentEditable surface from becoming a keyboard trap). Verified in
+ * the browser: with no completion menu open and the cursor NOT on an
+ * indentable list item, Tab still moves focus off the editor.
  *
- * Registered as a plain (non-`Prec`) keymap — no other extension in this
- * file's extension list claims `Tab`, so precedence relative to them never
- * matters; `@codemirror/autocomplete`'s own Enter binding is internally
+ * Registered as a plain (non-`Prec`) keymap — no OTHER extension in this
+ * file's extension list claims `Tab` (only `listIndentKeymap` does, and
+ * ordering between the two plain keymaps is handled by array position, not
+ * `Prec`); `@codemirror/autocomplete`'s own Enter binding is internally
  * `Prec.highest`, which this doesn't need to match or beat since the two
  * bindings are on different keys and never compete for the same keydown.
  */
 const completionAcceptKeymap = keymap.of([{ key: 'Tab', run: acceptCompletion }])
+
+/**
+ * Second link in the Tab precedence chain (`lib/listIndent.ts` owns the
+ * feature itself — this is just the binding). `acceptCompletion` above
+ * returns `false` whenever no completion is open, which is CodeMirror's
+ * "try the next binding for this key" signal; `indentListItem` is that next
+ * binding, and returns `false` itself whenever the cursor isn't on an
+ * indentable list item (see that module's own doc comment for exactly
+ * when), so a Tab that neither accepts a completion nor indents a list item
+ * falls through a third and final time, all the way to the browser's native
+ * "move focus" default — nothing after this keymap in the extension list
+ * binds plain Tab at all.
+ *
+ * Registered as its own plain (non-`Prec`) `keymap.of`, placed AFTER
+ * `completionAcceptKeymap` in `createState`'s `extensions` array below:
+ * CodeMirror combines same-precedence `keymap` facet inputs in the order
+ * their extensions were provided, tried in that order for a given key, so
+ * this only ever runs once `acceptCompletion` has already declined the
+ * keypress — completion-accept keeps winning the same key exactly as it did
+ * before this feature existed. `Shift-Tab` has no such ordering concern:
+ * nothing else in this project binds it (see `completionAcceptKeymap`'s own
+ * doc comment above), so `outdentListItem` is simply the only handler.
+ */
+const listIndentKeymap = keymap.of([
+  { key: 'Tab', run: indentListItem },
+  { key: 'Shift-Tab', run: outdentListItem },
+])
 
 /** Shape shared by `initialSpellcheck`/`setSpellcheck` below — kept as one
  * object (not two separate enabled/language options) since both values are
@@ -237,6 +264,10 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         // completion too, and wiki-link completion is unconditionally
         // present regardless of that toggle (see `buildCompletionExtension`).
         completionAcceptKeymap,
+        // Must come AFTER `completionAcceptKeymap` above — see
+        // `listIndentKeymap`'s own doc comment for the precedence chain
+        // this ordering produces.
+        listIndentKeymap,
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return
           // A `view.setState` rebuild (document load, see `loadDocument`)

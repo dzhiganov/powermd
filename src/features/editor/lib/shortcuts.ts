@@ -16,22 +16,31 @@ export interface EditorShortcut {
  * `ShortcutsModal.vue`, via `EDITOR_SHORTCUTS`) are built from this list,
  * so they can never drift apart.
  *
- * One entry is the exception, listed here purely so the help modal
- * documents it via this one list instead of a second one — it has no
- * entry in `bindings` below:
+ * Two entries are exceptions, listed here purely so the help modal
+ * documents them via this one list instead of a second one — neither has
+ * an entry in `bindings` below:
  *   - `Mod-Click`: a mouse gesture (the modifier-click pane jump, wired in
  *     `src/app/paneJump.ts` since it spans the editor *and* preview
  *     panes), not a keyboard binding at all.
- * `formatShortcut` (`shared/lib/platform.ts`) still renders it sensibly:
- * `Mod` resolves to ⌘/Ctrl exactly like every other entry, and `Click`
- * (not a single character, not a recognised modifier) passes through
- * unchanged. */
+ *   - `Tab`/`Shift-Tab`: list-item indent/outdent, bound in
+ *     `useCodeMirror.ts`'s `listIndentKeymap` (see `lib/listIndent.ts`) —
+ *     kept out of `bindings` because that keymap has to sit at a specific
+ *     position in `createState`'s extension list (after
+ *     `completionAcceptKeymap`, so an open completion menu keeps winning
+ *     Tab first), not wherever `editorShortcutsKeymap`'s own `Prec.highest`
+ *     placement would put it.
+ * `formatShortcut` (`shared/lib/platform.ts`) still renders both sensibly:
+ * `Mod` resolves to ⌘/Ctrl exactly like every other entry, `Click` (not a
+ * single character, not a recognised modifier) passes through unchanged,
+ * and `Tab` does too. */
 export const EDITOR_SHORTCUTS: EditorShortcut[] = [
   { keys: 'Mod-b', description: 'Bold' },
   { keys: 'Mod-i', description: 'Italic' },
   { keys: 'Mod-u', description: 'Underline' },
   { keys: 'Mod-Shift-x', description: 'Strikethrough' },
   { keys: 'Mod-k', description: 'Insert link' },
+  { keys: 'Tab', description: 'Indent list item' },
+  { keys: 'Shift-Tab', description: 'Outdent list item' },
   { keys: 'Mod-s', description: 'Save now' },
   { keys: 'Mod-Shift-v', description: 'Toggle view mode' },
   { keys: 'Mod-/', description: 'Open keyboard shortcuts help' },
