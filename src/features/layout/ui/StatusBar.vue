@@ -42,10 +42,13 @@ withDefaults(defineProps<{ showTooltips?: boolean; side?: 'left' | 'right' }>(),
        keeps it to one line at any width — see `WordCount.vue`/
        `SyncStatusIndicator.vue`'s own `sm:`-breakpoint rules for how each
        degrades its own content down to fit a narrow phone instead. -->
+  <!-- No background, same reasoning as the header (see `Toolbar.vue`): it
+       spans only the panes now, so it sits on the pane surface rather than
+       banding a second colour across it. The top border still divides it
+       from the text above. -->
   <footer
     class="flex h-8 shrink-0 items-center gap-3 overflow-hidden border-t border-base-300 px-3 text-xs print:hidden"
     :class="side === 'right' ? 'justify-start' : 'justify-end'"
-    style="background: var(--md-head, var(--color-base-200))"
     aria-label="Status bar"
   >
     <WordCount />

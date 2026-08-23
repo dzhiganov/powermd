@@ -625,7 +625,10 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
              here too (via a `footer-extra` slot) but has since moved out
              into its own bottom-of-app status bar — see
              `features/layout/ui/StatusBar.vue`. -->
-        <footer class="flex h-8 shrink-0 items-center justify-end border-t border-base-300 px-2.5">
+        <!-- No `border-t`. The dock control is a small pill floating at the
+             bottom of an otherwise empty column; a rule above it implied a
+             footer section that has no other content to separate. -->
+        <footer class="flex h-8 shrink-0 items-center justify-end px-2.5">
           <div
             class="flex items-center gap-0.5 rounded-full p-0.5"
             role="group"

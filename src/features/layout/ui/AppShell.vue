@@ -65,14 +65,22 @@ const centered = true
 </script>
 
 <template>
+  <!-- ROW, not column. The drawer is now a full-height sibling of everything
+       else, so it runs from the top of the window to the bottom as one
+       block, and the header and status bar span only the panes rather than
+       crossing the sidebar. Previously this was a column — header, then a
+       row holding drawer + panes, then the status bar — which cut the
+       sidebar into a band with chrome above and below it.
+
+       On mobile the drawer is `fixed` and so leaves this row's flow
+       entirely; the column below simply takes the full width, and the
+       header spans everything exactly as before. -->
   <div
-    class="relative flex h-dvh flex-col overflow-hidden bg-base-100 print:block print:h-auto print:overflow-visible"
+    class="relative flex h-dvh overflow-hidden bg-base-100 print:block print:h-auto print:overflow-visible"
   >
     <SettingsModal />
     <ShortcutsModal />
     <AboutModal />
-    <Toolbar :side="drawerSide" />
-    <MobileTabs v-show="!isDesktop" />
     <!-- Fixed corner status indicator (see `SaveIndicator.vue`) — mounted
          once here, not inside `Toolbar.vue`, since it's a viewport-corner
          overlay rather than a toolbar-flow element. Anchored to the corner
@@ -80,34 +88,36 @@ const centered = true
          drawer's own controls, on either side. -->
     <SaveIndicator :side="drawerSide" />
 
-    <!-- Docked-drawer row: on desktop, `DocumentDrawer` is a real flex item
-         here (see its own `md:static`/`md:w-*` rework) that shares this row
-         with `<main>`, so opening/closing it actually resizes the
-         editor/preview panes rather than overlaying them. On mobile the
-         drawer is `fixed`, so it renders outside this row's flow. -->
+    <DocumentDrawer
+      :show-tooltips="showTooltips"
+      :side="drawerSide"
+      @dock-changed="drawerSideChanged"
+    />
+
+    <!-- `order-2` moves this after the drawer when it docks left and before
+         it when it docks right — the same ordering the panes used to carry
+         themselves, just moved up a level now that the drawer's sibling is
+         this whole column rather than `<main>` alone. -->
     <div
-      class="flex min-h-0 flex-1 overflow-hidden print:block print:h-auto print:overflow-visible"
+      class="order-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden print:block print:h-auto print:overflow-visible"
     >
-      <DocumentDrawer
-        :show-tooltips="showTooltips"
-        :side="drawerSide"
-        @dock-changed="drawerSideChanged"
-      />
+      <Toolbar :side="drawerSide" />
+      <MobileTabs v-show="!isDesktop" />
 
       <main
-        class="order-2 flex min-h-0 flex-1 overflow-hidden print:block print:h-auto print:min-h-0 print:overflow-visible"
+        class="flex min-h-0 flex-1 overflow-hidden print:block print:h-auto print:min-h-0 print:overflow-visible"
         :style="{ '--split-ratio': splitRatio }"
       >
         <EditorPane v-show="showEditor" :style="editorInlineStyle" :centered="centered" />
         <Splitter v-show="showSplitter" />
         <PreviewPane v-show="showPreview" :centered="centered" />
       </main>
-    </div>
 
-    <!-- Word count + GitHub sync status, pulled out of the documents
-         drawer's footer and the header respectively into one dedicated
-         bottom bar — see `StatusBar.vue` for the full layout/alignment
-         rationale. -->
-    <StatusBar :show-tooltips="showTooltips" :side="drawerSide" />
+      <!-- Word count + GitHub sync status, pulled out of the documents
+           drawer's footer and the header respectively into one dedicated
+           bottom bar — see `StatusBar.vue` for the full layout/alignment
+           rationale. -->
+      <StatusBar :show-tooltips="showTooltips" :side="drawerSide" />
+    </div>
   </div>
 </template>

@@ -54,9 +54,14 @@ const viewModeOptions: ViewModeOption[] = [
        under 46px, so nothing clips. Every icon button in this header
        stays `btn-xs` (24x24, daisyUI's `--size-field` scale), meeting the
        24x24 minimum hit target regardless of the header's own height. -->
+  <!-- No background of its own: the header sits directly on the pane behind
+       it, so the editor surface runs unbroken from the top of the window.
+       It kept a `--md-head` fill while the sidebar was a separate band, and
+       with the sidebar now a full-height column the header only ever spans
+       the panes — a second surface colour there just drew a line across
+       them for no reason. The bottom border still separates it. -->
   <header
     class="flex h-[46px] shrink-0 items-center gap-4 border-b border-base-300 px-3.5 print:hidden"
-    style="background: var(--md-head, var(--color-base-200))"
   >
     <div class="flex min-w-0 flex-1 items-center gap-3">
       <template v-if="side === 'left'">
