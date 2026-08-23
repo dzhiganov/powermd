@@ -51,6 +51,38 @@ function editorLines(page: Page) {
 }
 
 /**
+ * Parses a computed `color` string down to a plain `[r, g, b]` (0-255,
+ * rounded) tuple, handling BOTH forms Chromium's computed-style serializer
+ * hands back in this suite: the legacy `rgb(r, g, b)` a plain colour literal
+ * serializes as, and `color(srgb r g b)` (channels 0-1) — which is what a
+ * `color-mix()` result serializes as, EVEN at a mixing level (100%) that
+ * makes it numerically identical to a plain colour with no actual mixing.
+ * Comparing those two forms with a bare string `===`/`toBe` fails on syntax
+ * alone despite being the exact same colour (canvas's own `fillStyle`
+ * getter/setter round-trip was tried first and turned out NOT to normalize
+ * this pair to one shared syntax either — it preserves `color(srgb ...)`
+ * verbatim rather than folding it back to hex/rgb — so this does the
+ * arithmetic by hand instead of trusting a browser API to unify them).
+ */
+async function normalizedColor(page: Page, color: string): Promise<[number, number, number]> {
+  return page.evaluate((value) => {
+    const legacy = value.match(/^rgba?\(([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/)
+    if (legacy) {
+      return [Number(legacy[1]), Number(legacy[2]), Number(legacy[3])] as [number, number, number]
+    }
+    const modern = value.match(/^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/)
+    if (modern) {
+      return [
+        Math.round(Number(modern[1]) * 255),
+        Math.round(Number(modern[2]) * 255),
+        Math.round(Number(modern[3]) * 255),
+      ] as [number, number, number]
+    }
+    throw new Error(`Unrecognized colour format: ${value}`)
+  }, color)
+}
+
+/**
  * Three paragraphs, blank-line separated:
  *   line 1-2: "paragraph one" (two lines)
  *   line 3:   blank
@@ -209,5 +241,110 @@ test.describe('focus mode', () => {
     // regardless of this feature; only the preview pane ever prints.
     const editorPane = page.locator('section', { has: page.locator('.cm-content') })
     await expect(editorPane).toHaveCSS('display', 'none')
+  })
+
+  test.describe('dim level slider', () => {
+    // Opens Settings (Editor category) without touching Focus mode itself —
+    // separate from `setFocusModeSetting` above, which always closes the
+    // dialog again; these tests need it open to reach the slider.
+    async function openSettings(page: Page): Promise<void> {
+      await page.getByRole('button', { name: 'More actions' }).click()
+      await page.getByRole('menuitem', { name: 'Settings' }).click()
+    }
+
+    function dimLevelSlider(page: Page) {
+      return page.getByRole('slider', { name: 'Focus dim level' })
+    }
+
+    test('is present, interactive, and reachable when focus mode is off', async ({ page }) => {
+      await openApp(page)
+      await openSettings(page)
+      const slider = dimLevelSlider(page)
+      await expect(slider).toBeVisible()
+      // Not disabled — same "stays interactive, a caption explains it has no
+      // effect yet" pattern as the per-folder word-completion exclusion list
+      // while word completion itself is off (see `SettingsModal.vue`'s own
+      // comment on this control).
+      await expect(slider).toBeEnabled()
+      await expect(
+        page.getByText('Focus mode is off right now, so this has no visible effect'),
+      ).toBeVisible()
+    })
+
+    test('the explanatory caption disappears once focus mode is on', async ({ page }) => {
+      await openApp(page)
+      await setFocusModeSetting(page, true)
+      await openSettings(page)
+      await expect(
+        page.getByText('Focus mode is off right now, so this has no visible effect'),
+      ).toHaveCount(0)
+    })
+
+    test('moving the slider changes the rendered dim colour live, with no reload', async ({
+      page,
+    }) => {
+      await openApp(page)
+      await setFocusModeSetting(page, true)
+      await seedThreeParagraphs(page)
+
+      const lines = editorLines(page)
+      const activeColor = await lines.nth(5).evaluate((el) => getComputedStyle(el).color)
+      const dimColorAtDefault = await lines.nth(0).evaluate((el) => getComputedStyle(el).color)
+      // The default (65) is a real dim, distinct from full-strength text.
+      expect(dimColorAtDefault).not.toBe(activeColor)
+
+      await openSettings(page)
+      const slider = dimLevelSlider(page)
+      await slider.waitFor()
+
+      // `Home` jumps a focused native range input to its `min` attribute —
+      // `FOCUS_DIM_LEVEL_MIN` (63), the derived floor (see
+      // `model/editorPreferences.ts`'s own comment for the arithmetic).
+      await slider.focus()
+      await slider.press('Home')
+      await expect(page.getByText('Focus dim level — 63%')).toBeVisible()
+      await page.getByRole('button', { name: 'Close settings' }).click()
+      const dimColorAtMin = await lines.nth(0).evaluate((el) => getComputedStyle(el).color)
+      expect(dimColorAtMin).not.toBe(dimColorAtDefault)
+      expect(dimColorAtMin).not.toBe(activeColor)
+
+      // `End` jumps to `max` (100) — full-strength `--color-base-content`,
+      // i.e. no mixing at all, so the "dimmed" line's colour should now
+      // match the active paragraph's own (undimmed) colour exactly.
+      await openSettings(page)
+      await slider.focus()
+      await slider.press('End')
+      await expect(page.getByText('Focus dim level — 100%')).toBeVisible()
+      await page.getByRole('button', { name: 'Close settings' }).click()
+      const dimColorAtMax = await lines.nth(0).evaluate((el) => getComputedStyle(el).color)
+      expect(dimColorAtMax).not.toBe(dimColorAtMin)
+      // Not a bare string `toBe` — `color-mix()`'s computed-style
+      // serialization uses `color(srgb ...)` even at 100% (no actual
+      // mixing), while `activeColor` is a plain `rgb(...)` literal. Same
+      // colour, different notation — see `normalizedColor`'s own comment.
+      expect(await normalizedColor(page, dimColorAtMax)).toEqual(
+        await normalizedColor(page, activeColor),
+      )
+    })
+
+    test('persists across reload and is included in "Reset to defaults"', async ({ page }) => {
+      await openApp(page)
+      await openSettings(page)
+      const slider = dimLevelSlider(page)
+      await slider.waitFor()
+      await slider.focus()
+      await slider.press('Home')
+      await expect(page.getByText('Focus dim level — 63%')).toBeVisible()
+      await page.getByRole('button', { name: 'Close settings' }).click()
+
+      await page.reload()
+      await openApp(page)
+      await openSettings(page)
+      await expect(page.getByText('Focus dim level — 63%')).toBeVisible()
+
+      await page.getByRole('button', { name: 'Reset to defaults' }).click()
+      await page.getByRole('button', { name: 'Reset', exact: true }).click()
+      await expect(page.getByText('Focus dim level — 65%')).toBeVisible()
+    })
   })
 })

@@ -8,6 +8,8 @@ import {
   type ViewUpdate,
 } from '@codemirror/view'
 
+import { focusDimColor } from '@/shared/lib/focusDimColor'
+
 /**
  * Focus mode: dims every line in the EDITOR except the paragraph the cursor
  * is currently in. Same "pure core, thin CodeMirror wrapper" split as
@@ -194,42 +196,43 @@ const focusModeViewPlugin = ViewPlugin.fromClass(FocusModeView, {
 
 /**
  * CONTRAST — this feature deliberately lowers contrast, so the dimmed
- * colour is a single fixed, measured value rather than a bare CSS
- * `opacity` on `.cm-line`. Opacity would MULTIPLY with tokens that are
- * already partially transparent by design (`daisyHighlightStyle`'s
- * `t.meta`/`t.comment` at 0.5, `t.quote` at 0.7 — see `theme.ts`) — and
- * `t.meta`/`t.comment` measured BELOW the 4.5:1 floor already, on the light
- * theme, even at their existing full (undimmed) 0.5 opacity (3.285:1 light,
- * 3.149:1 light+soft — see the task report), so multiplying that by any
- * further dim factor could only make an already-failing case worse. A fixed
- * override color sidesteps this entirely: every dimmed line's text — plain
- * prose or any syntax-highlighted token — is forced to the SAME measured
- * tone, so the floor is guaranteed regardless of what colour/opacity the
- * token would otherwise have used. `!important` is required to win against
- * `daisyHighlightStyle`'s own per-tag rules (some of which match at equal or
- * higher selector specificity than a bare descendant selector could beat on
- * specificity alone); nothing else in this codebase uses `!important` on a
- * colour today, so this is a deliberate, narrow exception, not a habit.
+ * colour is a single measured value rather than a bare CSS `opacity` on
+ * `.cm-line`. Opacity would MULTIPLY with tokens that are already partially
+ * transparent by design (`daisyHighlightStyle`'s `t.meta`/`t.comment` at
+ * 0.5, `t.quote` at 0.7 — see `theme.ts`) — and `t.meta`/`t.comment`
+ * measured BELOW the 4.5:1 floor already, on the light theme, even at their
+ * existing full (undimmed) 0.5 opacity (3.285:1 light, 3.149:1 light+soft —
+ * see the task report), so multiplying that by any further dim factor could
+ * only make an already-failing case worse. An override color sidesteps this
+ * entirely: every dimmed line's text — plain prose or any syntax-highlighted
+ * token — is forced to the SAME tone, so the floor is guaranteed regardless
+ * of what colour/opacity the token would otherwise have used. `!important`
+ * is required to win against `daisyHighlightStyle`'s own per-tag rules (some
+ * of which match at equal or higher selector specificity than a bare
+ * descendant selector could beat on specificity alone); nothing else in this
+ * codebase uses `!important` on a colour today, so this is a deliberate,
+ * narrow exception, not a habit.
  *
- * `color-mix(in srgb, ...)` — not `in oklab` (unlike `ink.ts`) — for the
- * same reason `SettingsModal.vue`'s glass-panel comment gives: mixing toward
- * an OPAQUE second colour in `srgb` is a plain per-channel linear blend, so
- * the mix percentage below is exactly what was measured, not an
- * approximation. 65% (of `--color-base-content`, the rest `--color-base-100`)
- * is the chosen ratio — measured (script + WCAG relative-luminance formula,
- * see the task report) against all four theme x soft-contrast combinations:
- *
- *   light 5.253:1 · light+soft 4.901:1 · dark 6.888:1 · dark+soft 6.475:1
- *
- * All four clear the 4.5:1 AA text floor (light+soft is the tightest, with
- * ~0.4:1/9% margin) while still reading as a real, visible dim: full-strength
- * body text measures 13.7:1-16.5:1 in these same four combinations, so 65%
- * cuts the ratio by more than half everywhere. The minimum mix that clears
- * 4.5:1 in the tightest case (light+soft) was measured at ~62.2% — 65% is a
- * deliberate few points of headroom above that, not the bare minimum.
+ * USER-ADJUSTABLE LEVEL — this used to be a single fixed 65% constant
+ * (`color-mix(in srgb, var(--color-base-content) 65%, var(--color-base-100))`,
+ * built with `shared/lib/focusDimColor.ts`'s formula). It is now a Settings
+ * slider ("Focus dim level", next to the Focus mode toggle in
+ * `features/settings/ui/SettingsModal.vue`), so the colour itself has moved
+ * out of this file: `--md-focus-dim-color` is written by
+ * `features/settings/model/editorPreferences.ts`'s `applyEditorCssVarsFx`
+ * (the same mechanism that already applies editor font size/family/reading
+ * width as CSS custom properties, no Compartment reconfigure needed for a
+ * pure colour change), and this rule just reads it — the `var(...)`
+ * fallback below is the OLD fixed value, used only if that property is
+ * somehow never set (e.g. a unit test that mounts this extension without the
+ * settings feature). See `editorPreferences.ts`'s own `FOCUS_DIM_LEVEL_MIN`
+ * comment for the full derivation of the slider's range (still anchored to
+ * the same 4.5:1 WCAG AA floor, across the same four theme x soft-contrast
+ * combinations, that justified the original fixed 65%) — nothing about the
+ * CONTRAST reasoning above changed, only where the specific percentage comes
+ * from.
  */
-const FOCUS_DIM_MIX_PERCENT = 65
-const FOCUS_DIM_COLOR = `color-mix(in srgb, var(--color-base-content) ${FOCUS_DIM_MIX_PERCENT}%, var(--color-base-100))`
+const FOCUS_DIM_COLOR = `var(--md-focus-dim-color, ${focusDimColor(65)})`
 
 /**
  * `@media (prefers-reduced-motion: no-preference)`-gated transition, same

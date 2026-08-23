@@ -17,6 +17,7 @@ import {
   $wordCompletionEnabled,
   $wordCompletionExcludedFolderIds,
   $focusModeEnabled,
+  $focusDimLevel,
   editorFontSizeChanged,
   editorFontFamilyChanged,
   lineWrapToggled,
@@ -27,6 +28,7 @@ import {
   wordCompletionToggled,
   wordCompletionFolderExclusionToggled,
   focusModeToggled,
+  focusDimLevelChanged,
   SPELLCHECK_LANGUAGES,
   FONT_SIZE_MIN,
   FONT_SIZE_MAX,
@@ -34,6 +36,8 @@ import {
   AUTOSAVE_MS_MAX,
   READING_WIDTH_MIN,
   READING_WIDTH_MAX,
+  FOCUS_DIM_LEVEL_MIN,
+  FOCUS_DIM_LEVEL_MAX,
   type SpellCheckLanguage,
 } from '../model/editorPreferences'
 import { $documentFolders } from '../model/folderMirror'
@@ -76,6 +80,7 @@ const spellCheckLanguage = useUnit($spellCheckLanguage)
 const wordCompletionEnabled = useUnit($wordCompletionEnabled)
 const wordCompletionExcludedFolderIds = useUnit($wordCompletionExcludedFolderIds)
 const focusModeEnabled = useUnit($focusModeEnabled)
+const focusDimLevel = useUnit($focusDimLevel)
 const documentFolders = useUnit($documentFolders)
 const showTooltips = useUnit($showTooltips)
 const drawerSide = useUnit($drawerSide)
@@ -112,6 +117,9 @@ function handleAutosaveInput(event: Event) {
 }
 function handleReadingWidthInput(event: Event) {
   readingWidthChanged(Number((event.target as HTMLInputElement).value))
+}
+function handleFocusDimLevelInput(event: Event) {
+  focusDimLevelChanged(Number((event.target as HTMLInputElement).value))
 }
 function handleSpellCheckLanguageChange(event: Event) {
   spellCheckLanguageChanged((event.target as HTMLSelectElement).value as SpellCheckLanguage)
@@ -352,6 +360,43 @@ watch(open, (isOpen) => {
               <p class="text-xs text-base-content/70">
                 Dims everything in the editor except the paragraph you're currently editing. Never
                 affects the preview.
+              </p>
+
+              <!-- Dim level — same slider shape as "Editor font size"/"Reading
+                   width" above/below (a `range range-sm` bound to
+                   `:value`/`@input`, label showing the live number). Left
+                   fully interactive even while focus mode is off, same
+                   pattern as the per-folder word-completion exclusion list
+                   further down: the control stays usable (so a value picked
+                   ahead of time sticks once focus mode is turned on), and a
+                   trailing sentence in the caption below says plainly that it
+                   has no visible effect yet, rather than disabling the
+                   slider outright. Range floor/ceiling
+                   (`FOCUS_DIM_LEVEL_MIN`/`MAX`) are derived, not round
+                   numbers — see that constant's own doc comment in
+                   `model/editorPreferences.ts` for the contrast arithmetic
+                   behind the floor. -->
+              <label class="flex flex-col gap-1 pt-1">
+                <span class="text-sm text-base-content"
+                  >Focus dim level — {{ focusDimLevel }}%</span
+                >
+                <input
+                  type="range"
+                  class="range range-sm"
+                  :min="FOCUS_DIM_LEVEL_MIN"
+                  :max="FOCUS_DIM_LEVEL_MAX"
+                  :value="focusDimLevel"
+                  aria-label="Focus dim level"
+                  @input="handleFocusDimLevelInput"
+                />
+              </label>
+              <p class="text-xs text-base-content/70">
+                Higher values leave dimmed text more visible; the low end is as dim as text can go
+                while staying readable.
+                <template v-if="!focusModeEnabled">
+                  Focus mode is off right now, so this has no visible effect until you turn it back
+                  on.
+                </template>
               </p>
             </div>
 
@@ -680,10 +725,11 @@ watch(open, (isOpen) => {
         Reset settings to defaults?
       </h2>
       <p class="mt-2 text-sm text-base-content/70">
-        Restores font size, font family, line wrapping, focus mode, word completion (including which
-        folders it's turned off in), spell check, autosave delay, reading width, tooltips,
-        formatting toolbar, documents panel side, scroll sync, auto-sync interval, theme, and soft
-        contrast to their defaults. Your documents, folders, and GitHub connection are not affected.
+        Restores font size, font family, line wrapping, focus mode (including its dim level), word
+        completion (including which folders it's turned off in), spell check, autosave delay,
+        reading width, tooltips, formatting toolbar, documents panel side, scroll sync, auto-sync
+        interval, theme, and soft contrast to their defaults. Your documents, folders, and GitHub
+        connection are not affected.
       </p>
       <div class="mt-5 flex justify-end gap-2">
         <button

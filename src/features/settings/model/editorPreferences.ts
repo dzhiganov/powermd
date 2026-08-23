@@ -1,6 +1,7 @@
 import { combine, createEffect, createEvent, createStore, sample } from 'effector'
 
 import { readStorage, writeStorage } from '@/shared/lib/storage'
+import { focusDimColor } from '@/shared/lib/focusDimColor'
 import { defaultsRestored } from './resetDefaults'
 
 export type EditorFontFamily = 'mono' | 'serif'
@@ -11,6 +12,7 @@ const LINE_WRAP_KEY = 'markdown-editor:line-wrap'
 const WORD_COMPLETION_ENABLED_KEY = 'markdown-editor:word-completion-enabled'
 const WORD_COMPLETION_EXCLUDED_FOLDERS_KEY = 'markdown-editor:word-completion-excluded-folders'
 const FOCUS_MODE_ENABLED_KEY = 'markdown-editor:focus-mode-enabled'
+const FOCUS_DIM_LEVEL_KEY = 'markdown-editor:focus-dim-level'
 const AUTOSAVE_MS_KEY = 'markdown-editor:autosave-ms'
 const READING_WIDTH_KEY = 'markdown-editor:reading-width'
 const SPELLCHECK_ENABLED_KEY = 'markdown-editor:spellcheck-enabled'
@@ -54,6 +56,89 @@ const DEFAULT_WORD_COMPLETION_ENABLED = false
  * the first time they open the app.
  */
 const DEFAULT_FOCUS_MODE_ENABLED = false
+
+/**
+ * Range for the "Focus dim level" slider next to the Focus mode toggle
+ * (`ui/SettingsModal.vue`) — the user-adjustable replacement for what used
+ * to be a single fixed 65% constant baked into `features/editor/lib/
+ * focusMode.ts`. The slider's VALUE is the same number that constant used to
+ * be: the percentage of `--color-base-content` kept in the dimmed line's
+ * `color-mix()` (see `shared/lib/focusDimColor.ts`), so a higher number
+ * means LESS dimming (closer to full-strength text) and a lower number means
+ * MORE dimming.
+ *
+ * FOCUS_DIM_LEVEL_MIN — the floor a user is allowed to drag down to, derived
+ * (not picked as a round number) from the same 4.5:1 WCAG AA text-contrast
+ * requirement `focusMode.ts` always documented, computed against all FOUR
+ * theme x soft-contrast combinations (their exact `--color-base-content`/
+ * `--color-base-100` hex pairs live in `app/styles/main.css`):
+ *
+ *   light        #1c1b19 on #fbfaf8
+ *   light+soft   #1c1b19 on #e9e7e2
+ *   dark         #e8e6e3 on #0e0f11
+ *   dark+soft    #e8e6e3 on #1b1c1e
+ *
+ * `color-mix(in srgb, ...)` is a plain per-channel linear blend (see
+ * `focusDimColor.ts`'s own comment), so the mixed channel at level L is
+ * `L/100 * content + (1 - L/100) * base100` per channel, and the WCAG
+ * relative-luminance contrast of that mix against `base100` is a monotonic,
+ * continuous function of L — solvable exactly (binary search to 1e-4,
+ * script + the standard WCAG relative-luminance formula) for the L at which
+ * each combination's ratio hits exactly 4.500:1:
+ *
+ *   light        L = 60.2557
+ *   light+soft   L = 62.2242   <- tightest (matches focusMode.ts's own
+ *                                  original "~62.2%" estimate for its old
+ *                                  fixed 65% constant, before this became
+ *                                  user-adjustable)
+ *   dark         L = 49.9750
+ *   dark+soft    L = 50.9684
+ *
+ * light+soft is the binding constraint (as it was for the original 65%
+ * constant), so the slider's floor has to clear 62.2242 in every theme.
+ * Rounding to a whole-number slider step (matching every other integer-only
+ * range in this file — `AUTOSAVE_MS_MIN`/`READING_WIDTH_MIN` etc. below are
+ * all whole numbers too), the two candidate integers straddling that exact
+ * value were both re-measured with the mixed channels rounded to the nearest
+ * 8-bit integer FIRST (simulating the browser's own pixel quantization,
+ * rather than trusting the unrounded floating-point ratio):
+ *
+ *   L=62  light+soft -> 4.4469:1  (BELOW the 4.5:1 floor — fails)
+ *   L=63  light+soft -> 4.6312:1  (clears, with real margin)
+ *
+ * 63 is therefore the lowest whole-number level that clears 4.5:1 in every
+ * one of the four combinations even after 8-bit rounding — the actual
+ * `FOCUS_DIM_LEVEL_MIN` below. Re-verified against ACTUAL rendered pixels in
+ * a real Chromium tab, not just this formula — `e2e/focus-dim-contrast.spec
+ * .ts` sets focus mode on, dim level to 63, and each theme/soft combination
+ * in turn (via `localStorage` + a full reload), then reads
+ * `getComputedStyle(...).color` off a real dimmed `.cm-line` and the
+ * editor's own rendered background and computes the ratio from those actual
+ * pixels. Measured that way:
+ *
+ *   light        4.9182:1
+ *   light+soft   4.6079:1  <- still the tightest, still clears 4.5:1
+ *   dark         6.5287:1
+ *   dark+soft    6.1633:1
+ *
+ * (Close to, but not bit-identical with, the hand-simulated 8-bit-rounded
+ * figures above — Chromium's own `color-mix()` implementation doesn't
+ * necessarily round at exactly the same intermediate step this comment's
+ * by-hand simulation does. Both agree on the conclusion that matters: every
+ * combination clears 4.5:1 at level 63, light+soft by the smallest margin.)
+ *
+ * FOCUS_DIM_LEVEL_MAX = 100 — full-strength `--color-base-content`, i.e.
+ * effectively no dimming at all ("barely dimmed" was the requirement for the
+ * top of the range; 100 is the literal zero-dimming limit color-mix can
+ * express, so nothing rounder or higher is possible).
+ *
+ * DEFAULT_FOCUS_DIM_LEVEL stays 65 — the exact value the old fixed constant
+ * used — so a user who never touches this new slider keeps seeing exactly
+ * the same dim they always did; only the ability to move it is new.
+ */
+export const FOCUS_DIM_LEVEL_MIN = 63
+export const FOCUS_DIM_LEVEL_MAX = 100
+const DEFAULT_FOCUS_DIM_LEVEL = 65
 
 export const AUTOSAVE_MS_MIN = 200
 export const AUTOSAVE_MS_MAX = 3000
@@ -283,6 +368,35 @@ sample({
   target: persistFx,
 })
 
+// --- Focus mode dim level ---------------------------------------------------
+//
+// How strongly focus mode dims non-active lines — see `FOCUS_DIM_LEVEL_MIN`'s
+// own doc comment above for the full derivation of the range, and
+// `shared/lib/focusDimColor.ts` for what the number actually becomes on
+// screen. Independent of `$focusModeEnabled` above (this level is stored and
+// persisted regardless of whether focus mode is currently on — turning focus
+// mode on later picks up whatever level was last set, the same way changing
+// the level while focus mode is off just has no visible effect yet, exactly
+// like word completion's per-folder exclusion list while word completion
+// itself is off — see `ui/SettingsModal.vue`'s own note on that).
+export const focusDimLevelChanged = createEvent<number>()
+export const $focusDimLevel = createStore<number>(
+  readNumber(
+    FOCUS_DIM_LEVEL_KEY,
+    DEFAULT_FOCUS_DIM_LEVEL,
+    FOCUS_DIM_LEVEL_MIN,
+    FOCUS_DIM_LEVEL_MAX,
+  ),
+)
+  .on(focusDimLevelChanged, (_, level) => clamp(level, FOCUS_DIM_LEVEL_MIN, FOCUS_DIM_LEVEL_MAX))
+  .on(defaultsRestored, () => DEFAULT_FOCUS_DIM_LEVEL)
+
+sample({
+  clock: $focusDimLevel,
+  fn: (level) => ({ key: FOCUS_DIM_LEVEL_KEY, value: String(level) }),
+  target: persistFx,
+})
+
 // --- Spell check ---------------------------------------------------------
 //
 // Two independent preferences — on/off, and which language's dictionary
@@ -345,23 +459,34 @@ sample({
   target: persistFx,
 })
 
-// --- Apply font/width preferences as CSS custom properties ------------------
+// --- Apply font/width/focus-dim preferences as CSS custom properties -------
 //
-// Font size, font family, and reading width are consumed entirely as CSS:
-// the CodeMirror theme's `.cm-scroller` (`features/editor/lib/theme.ts`)
-// and the editor/preview panes' reading column both already read DaisyUI's
-// own `--color-*` variables the same way, repainting themselves the moment
-// `data-theme` changes with no JS involved on the consuming side. Applying
-// these three preferences here is just three more custom properties on
-// `<html>` — no Compartment reconfigure, no remount, needed anywhere
-// downstream (unlike line wrap, which is a real CodeMirror extension and
-// does need one — see `features/editor/lib/useCodeMirror.ts`).
+// Font size, font family, reading width, and the focus-dim level are all
+// consumed entirely as CSS: the CodeMirror theme's `.cm-scroller`
+// (`features/editor/lib/theme.ts`) and the editor/preview panes' reading
+// column both already read DaisyUI's own `--color-*` variables the same way,
+// repainting themselves the moment `data-theme` changes with no JS involved
+// on the consuming side; `focusMode.ts`'s `.cm-focus-dim` rule now reads
+// `--md-focus-dim-color` the same way. Applying these here is just four
+// custom properties on `<html>` — no Compartment reconfigure, no remount,
+// needed anywhere downstream (unlike line wrap or focus mode's own on/off
+// toggle, which are real CodeMirror extensions and do need one — see
+// `features/editor/lib/useCodeMirror.ts`). This is what lets the dim LEVEL
+// change live, from Settings, without touching the CodeMirror instance at
+// all: only the colour a CSS rule already references changes, the same as
+// a theme swap.
 const applyEditorCssVarsFx = createEffect(
-  (vars: { fontSize: number; fontFamily: EditorFontFamily; readingWidth: number }) => {
+  (vars: {
+    fontSize: number
+    fontFamily: EditorFontFamily
+    readingWidth: number
+    focusDimLevel: number
+  }) => {
     const root = document.documentElement
     root.style.setProperty('--md-editor-font-size', `${vars.fontSize}px`)
     root.style.setProperty('--md-editor-font-family', FONT_FAMILY_STACKS[vars.fontFamily])
     root.style.setProperty('--md-reading-width', `${vars.readingWidth}ch`)
+    root.style.setProperty('--md-focus-dim-color', focusDimColor(vars.focusDimLevel))
   },
 )
 
@@ -369,7 +494,13 @@ const $editorCssVars = combine(
   $editorFontSize,
   $editorFontFamily,
   $readingWidthCh,
-  (fontSize, fontFamily, readingWidth) => ({ fontSize, fontFamily, readingWidth }),
+  $focusDimLevel,
+  (fontSize, fontFamily, readingWidth, focusDimLevel) => ({
+    fontSize,
+    fontFamily,
+    readingWidth,
+    focusDimLevel,
+  }),
 )
 
 sample({ clock: $editorCssVars, target: applyEditorCssVarsFx })

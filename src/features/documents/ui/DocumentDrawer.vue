@@ -286,6 +286,19 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
          width animation to reclaim space from at all — the overlay is
          `fixed` and out of flow already.
 
+         `md:relative` (was `md:static`) — DESYNC FIX. `static` was
+         deliberate once (opts this element out of `fixed` at `md:` so it
+         becomes a normal flex item, sized by `md:w-80`/`md:w-0`), but
+         `static` also means it establishes no containing block for an
+         absolutely-positioned descendant. `relative` keeps every bit of
+         that flex-item behaviour (an offset of `0` — see the panel's own
+         `md:right-0`/`md:left-0` below — is a no-op under `relative`, so
+         this element's own box is pinned exactly where flex layout would
+         already put it, byte-for-byte the same as `static` gave) while
+         additionally giving the panel below a containing block to pin
+         itself against. See the panel's own comment for why it now needs
+         one.
+
          `order-1`/`order-3` (both branches, not just `side === 'right'`):
          `AppShell.vue`'s docked-drawer row has a third flex item now (the
          `outline` feature's panel, opposite this one), so this element's
@@ -296,7 +309,7 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
          order has to live here, on the actual flex item, not on whatever
          wrapper `AppShell.vue` might apply it through. -->
     <aside
-      class="fixed inset-y-0 z-50 w-80 max-w-[85vw] transition-none print:hidden md:static md:z-auto md:max-w-none md:shrink-0 md:overflow-hidden md:transition-[width] md:duration-500 md:ease-out motion-reduce:md:transition-none"
+      class="fixed inset-y-0 z-50 w-80 max-w-[85vw] transition-none print:hidden md:relative md:z-auto md:max-w-none md:shrink-0 md:overflow-hidden md:transition-[width] md:duration-500 md:ease-out motion-reduce:md:transition-none"
       :class="[
         side === 'right' ? 'right-0 order-3' : 'left-0 order-1',
         open ? 'md:w-80' : 'md:w-0',
@@ -313,12 +326,65 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
            width transition above so the slide and the space reclamation
            stay in sync. All visual chrome (border, shadow, background)
            lives here rather than on the clip box, since this is the box
-           that's actually visible. -->
+           that's actually visible.
+
+           `md:absolute md:inset-y-0 md:right-0`/`md:left-0` (was: no
+           position classes at all, a plain in-flow child of the wrapper
+           above) — DESYNC FIX (reported: "the side menu and scroll of the
+           main block are not synced... the scroll panel moves first and
+           the side menu only catches up"). Diagnosed by sampling both
+           elements' geometry mid-transition (see the task report / the
+           `sidebar-transition.spec.ts` measurements this change adds): the
+           panel's LEADING edge was moving at roughly *twice* the pane
+           boundary's speed, not the same speed on a different curve.
+
+           Root cause: with no position of its own, the panel is a normal
+           in-flow child, so its resting (pre-transform) position already
+           tracks the wrapper's own animating edge for free — the wrapper's
+           `right-0`-anchored width shrinking from 320px to 0 already moves
+           the wrapper's (and therefore the panel's in-flow) LEFT edge by up
+           to 320px on its own. The `translate-x-full`/`translate-x-0` pair
+           then adds a SECOND, independent 320px of motion on top of that
+           (translateX resolves against the panel's own constant 320px
+           width, with no notion that the wrapper it sits in is also
+           moving) — for `side: 'right'`, both motions point the same
+           direction, so they add: at the shared transition's halfway point
+           the wrapper has already reclaimed half its width (the pane
+           boundary is 160px in), while the panel's leading edge has moved
+           a full 320px (in-flow's 160px plus the transform's own 160px) —
+           twice as far, which is exactly "the panel is still catching up"
+           read backwards (for closing) or "the boundary raced ahead first"
+           (for opening, as reported).
+
+           `md:absolute`, pinned to the SAME edge the wrapper itself is
+           pinned to (`right-0` matching the wrapper's own `right-0` for
+           `side: 'right'`, `left-0` matching `left-0` otherwise — see the
+           `aside` element's own `md:relative` comment for the containing
+           block this resolves against), removes the panel from flow
+           entirely: its pre-transform position is now CONSTANT (pinned to
+           the outer, non-animating edge — the wrapper's OWN right/left
+           edge never moves, only its opposite edge does, since the width
+           shrink is anchored at that same side), so the transform is once
+           again the ONLY thing moving it, exactly as the comment above
+           already claimed. With the double-motion removed, the existing
+           `translate-x-full`/`translate-x-0` pair (unchanged, still 320px
+           over the same 500ms `ease-out`) lines up with the wrapper's own
+           0-to-320px width curve exactly — both are the same `320px` range
+           over the same duration/easing, so the panel's leading edge and
+           the pane boundary now describe the same curve, not two curves
+           that happen to share endpoints. Verified with mid-flight
+           sampling, not just the two endpoints — see the task report.
+
+           Mobile is untouched: no `md:` prefix on any of the position
+           classes below means the panel stays a plain in-flow child there,
+           exactly as before (mobile's `aside` never animates `width` at
+           all — see that element's own comment — so this bug never existed
+           on mobile to begin with). -->
       <div
-        class="flex h-full w-80 max-w-[85vw] flex-col border-base-300 shadow-xl transition-transform duration-500 ease-out motion-reduce:transition-none md:max-w-none md:shadow-none"
+        class="flex h-full w-80 max-w-[85vw] flex-col border-base-300 shadow-xl transition-transform duration-500 ease-out motion-reduce:transition-none md:absolute md:inset-y-0 md:max-w-none md:shadow-none"
         style="background: var(--md-rail, var(--color-base-200))"
         :class="[
-          side === 'right' ? 'border-l' : 'border-r',
+          side === 'right' ? 'border-l md:right-0' : 'border-r md:left-0',
           open ? 'translate-x-0' : side === 'right' ? 'translate-x-full' : '-translate-x-full',
         ]"
       >

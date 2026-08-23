@@ -16,8 +16,9 @@ export const $resetConfirmOpen = createStore(false)
  * Fired once the user confirms "Reset to defaults". Every persisted
  * preference store in this feature — `theme.ts`'s `$theme`,
  * `softContrast.ts`'s `$softContrast`, `editorPreferences.ts`'s font
- * size/family/line wrap/focus mode/word completion (both the on/off toggle
- * and its per-folder exclusion list)/spell check/autosave/reading width,
+ * size/family/line wrap/focus mode (both the on/off toggle and its dim
+ * level)/word completion (both the on/off toggle and its per-folder
+ * exclusion list)/spell check/autosave/reading width,
  * `uiPreferences.ts`'s tooltips/drawer side/formatting toolbar/scroll
  * sync/auto-sync interval — adds its own
  * `.on(defaultsRestored, () => DEFAULT)` reducer
