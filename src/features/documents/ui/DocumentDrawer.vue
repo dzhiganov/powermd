@@ -402,6 +402,20 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
              later restructuring: just another child before this `div`,
              sharing the same padding/gap rhythm. -->
         <div class="flex shrink-0 flex-col gap-2.5 border-b border-base-300 p-3 pb-2.5">
+          <!-- App-level tools, moved out of the header: theme, import,
+               export and the More menu. They act on the app rather than on
+               the document being edited, so they belong beside the document
+               list rather than above the text. Given the same 46px height as
+               the header opposite them, so the two line up across the top of
+               the window instead of sitting at slightly different heights.
+
+               The drawer toggle stayed in the header on purpose — see
+               `Toolbar.vue`: inside the drawer it would be the one control
+               you cannot reach once the drawer is closed. -->
+          <div class="flex h-[46px] shrink-0 items-center justify-end gap-0.5 -mt-3">
+            <slot name="tools" />
+          </div>
+
           <!-- Search (Phase 3 visual redesign) — filters the list below by
                title and content, see `model/search.ts`. Styled as a
                text-like affordance (not a real `.input`) matching the
@@ -539,7 +553,10 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
         <!-- `w-full` overrides daisyUI's `.menu { width: fit-content }`, which
              otherwise shrinks the list to its longest title instead of filling
              the drawer. -->
-        <ul class="menu min-h-0 w-full flex-1 flex-nowrap gap-1 overflow-y-auto p-2">
+        <!-- `pb-6`, not the symmetric `p-2`: the last row used to end flush
+             against the dock control at the bottom of the column. Inside
+             the scroll container, so it scrolls with the list. -->
+        <ul class="menu min-h-0 w-full flex-1 flex-nowrap gap-1 overflow-y-auto p-2 pb-6">
           <!-- Search results: a flat list (not the folder tree below) —
                each match shows its folder context inline, since search
                deliberately crosses folder boundaries rather than staying

@@ -47,7 +47,7 @@ withDefaults(defineProps<{ showTooltips?: boolean; side?: 'left' | 'right' }>(),
        banding a second colour across it. The top border still divides it
        from the text above. -->
   <footer
-    class="flex h-8 shrink-0 items-center gap-3 overflow-hidden border-t border-base-300 px-3 text-xs print:hidden"
+    class="flex h-8 shrink-0 items-center gap-3 overflow-hidden px-3 text-xs print:hidden"
     :class="side === 'right' ? 'justify-start' : 'justify-end'"
     aria-label="Status bar"
   >

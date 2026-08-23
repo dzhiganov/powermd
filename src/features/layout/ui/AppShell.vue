@@ -7,12 +7,15 @@ import { DocumentDrawer, SaveIndicator } from '@/features/documents'
 import {
   SettingsModal,
   ShortcutsModal,
+  ThemeToggle,
   $showTooltips,
   $drawerSide,
   drawerSideChanged,
 } from '@/features/settings'
+import { ExportMenu, ImportButton } from '@/features/transfer'
 
 import Toolbar from './Toolbar.vue'
+import MoreMenu from './MoreMenu.vue'
 import MobileTabs from './MobileTabs.vue'
 import EditorPane from './EditorPane.vue'
 import PreviewPane from './PreviewPane.vue'
@@ -88,11 +91,23 @@ const centered = true
          drawer's own controls, on either side. -->
     <SaveIndicator :side="drawerSide" />
 
+    <!-- The app-level tools render through the drawer's `tools` slot rather
+         than being imported by `documents` itself — `documents` must not
+         reach into `settings`/`transfer`/`layout` (ARCHITECTURE.md), and
+         this shell is already the one place that knows about all of them.
+         Same reason `showTooltips` is threaded in as a prop. -->
     <DocumentDrawer
       :show-tooltips="showTooltips"
       :side="drawerSide"
       @dock-changed="drawerSideChanged"
-    />
+    >
+      <template #tools>
+        <ThemeToggle />
+        <ImportButton />
+        <ExportMenu />
+        <MoreMenu :show-tooltips="showTooltips" />
+      </template>
+    </DocumentDrawer>
 
     <!-- `order-2` moves this after the drawer when it docks left and before
          it when it docks right — the same ordering the panes used to carry

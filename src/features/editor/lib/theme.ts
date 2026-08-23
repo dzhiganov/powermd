@@ -49,7 +49,13 @@ export const daisyEditorTheme = EditorView.theme({
     // sits on top of — see "PRIMARY SURFACE/ACCENT SPLIT — Phase 4" in
     // `app/styles/main.css`.
     caretColor: 'var(--md-accent)',
-    padding: '1rem 0',
+    // Generous bottom padding, not symmetric with the top. Scrolled to the
+    // end of a document the last line used to sit flush against the status
+    // bar, which reads as text about to fall off the pane and leaves the
+    // line you are actually typing pinned to the very bottom edge. This is
+    // padding INSIDE the scrollable content, so it scrolls with the text
+    // and gives the last line somewhere to sit.
+    padding: '1rem 0 6rem',
   },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
     backgroundColor:

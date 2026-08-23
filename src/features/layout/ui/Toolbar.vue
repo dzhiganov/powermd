@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { useUnit } from 'effector-vue/composition'
 
-import { ThemeToggle, $showTooltips } from '@/features/settings'
+// Theme, import, export and the More menu are no longer imported here —
+// they moved into the documents panel's own top row and are passed to it
+// through `AppShell.vue`'s `tools` slot. What is left in this header is
+// what actually concerns the open document: its breadcrumb, the view-mode
+// switcher, and the drawer toggle.
+import { $showTooltips } from '@/features/settings'
 import { DrawerToggleButton, DocumentTitle } from '@/features/documents'
-import { ExportMenu, ImportButton } from '@/features/transfer'
 
 import { $viewMode, viewModeChanged } from '../model/layout'
 import type { ViewMode } from '../model/layout'
-import MoreMenu from './MoreMenu.vue'
 
 // The drawer side ('left' | 'right') drives which end of the header the
 // drawer toggle button renders at (see the template below) — `layout`
@@ -59,18 +62,13 @@ const viewModeOptions: ViewModeOption[] = [
        It kept a `--md-head` fill while the sidebar was a separate band, and
        with the sidebar now a full-height column the header only ever spans
        the panes — a second surface colour there just drew a line across
-       them for no reason. The bottom border still separates it. -->
-  <header
-    class="flex h-[46px] shrink-0 items-center gap-4 border-b border-base-300 px-3.5 print:hidden"
-  >
+       them for no reason. No bottom border either: with no fill behind it,
+       a rule under the header was the only thing still drawing a band
+       across the top of the document. -->
+  <header class="flex h-[46px] shrink-0 items-center gap-4 px-3.5 print:hidden">
     <div class="flex min-w-0 flex-1 items-center gap-3">
       <template v-if="side === 'left'">
         <DrawerToggleButton :show-tooltips="showTooltips" />
-        <div
-          class="h-4.5 w-px shrink-0"
-          style="background: var(--color-base-300)"
-          aria-hidden="true"
-        />
       </template>
       <!-- Breadcrumb (folder / title) + the unsaved dot — both owned by
            `DocumentTitle.vue`, see its doc comment. Always left-pinned,
@@ -99,34 +97,17 @@ const viewModeOptions: ViewModeOption[] = [
       </button>
     </div>
 
-    <!-- Instrument cluster — always right-pinned, regardless of `side`. -->
-    <div class="flex flex-1 items-center justify-end gap-0.5">
-      <!-- The GitHub sync status readout used to live here
-           (`SyncStatusIndicator.vue`) — it now lives in the bottom
-           `StatusBar.vue` instead, alongside the word count, so it isn't
-           duplicated in both places. -->
-      <ThemeToggle />
-      <!-- Own toolbar icon (user request: no longer duplicated inside the
-           More menu below — its `menuItem` prop variant is unused now, see
-           `MoreMenu.vue`'s own comment). Sits beside `ExportMenu` as the
-           import/export pair. -->
-      <ImportButton />
-      <ExportMenu />
-      <!-- GitHub sync's connection UI now lives inside Settings' own
-           "GitHub sync" category (see `features/github/ui/
-           GitHubSyncPanel.vue`) rather than a dedicated modal, so the More
-           menu below no longer carries its own separate entry for it —
-           `SyncStatusIndicator` (now down in `StatusBar.vue`, see the
-           comment above `ThemeToggle`) and the menu's "Settings" item are
-           both already sufficient ways in. -->
-      <MoreMenu :show-tooltips="showTooltips" />
+    <!-- Theme, import, export and the More menu moved OUT of here and into
+         the documents panel's own top row (`DocumentDrawer.vue`) — they are
+         app-level tools rather than anything to do with the document being
+         edited, and the header is now only as wide as the panes.
 
+         The drawer toggle deliberately did NOT move with them. It is the
+         one control that must stay reachable while the drawer is closed;
+         inside the drawer it would hide the only affordance for bringing
+         the drawer back. -->
+    <div class="flex flex-1 items-center justify-end gap-0.5">
       <template v-if="side === 'right'">
-        <div
-          class="h-4.5 w-px shrink-0"
-          style="background: var(--color-base-300)"
-          aria-hidden="true"
-        />
         <DrawerToggleButton :show-tooltips="showTooltips" />
       </template>
     </div>
