@@ -16,6 +16,7 @@ import {
   $spellCheckLanguage,
   $wordCompletionEnabled,
   $wordCompletionExcludedFolderIds,
+  $focusModeEnabled,
   editorFontSizeChanged,
   editorFontFamilyChanged,
   lineWrapToggled,
@@ -25,6 +26,7 @@ import {
   spellCheckLanguageChanged,
   wordCompletionToggled,
   wordCompletionFolderExclusionToggled,
+  focusModeToggled,
   SPELLCHECK_LANGUAGES,
   FONT_SIZE_MIN,
   FONT_SIZE_MAX,
@@ -73,6 +75,7 @@ const spellCheckEnabled = useUnit($spellCheckEnabled)
 const spellCheckLanguage = useUnit($spellCheckLanguage)
 const wordCompletionEnabled = useUnit($wordCompletionEnabled)
 const wordCompletionExcludedFolderIds = useUnit($wordCompletionExcludedFolderIds)
+const focusModeEnabled = useUnit($focusModeEnabled)
 const documentFolders = useUnit($documentFolders)
 const showTooltips = useUnit($showTooltips)
 const drawerSide = useUnit($drawerSide)
@@ -334,6 +337,23 @@ watch(open, (isOpen) => {
                 @change="lineWrapToggled()"
               />
             </label>
+
+            <div class="flex flex-col gap-1">
+              <label class="flex items-center justify-between">
+                <span class="text-sm text-base-content">Focus mode</span>
+                <input
+                  type="checkbox"
+                  class="toggle toggle-sm"
+                  :checked="focusModeEnabled"
+                  aria-label="Focus mode"
+                  @change="focusModeToggled()"
+                />
+              </label>
+              <p class="text-xs text-base-content/70">
+                Dims everything in the editor except the paragraph you're currently editing. Never
+                affects the preview.
+              </p>
+            </div>
 
             <div class="flex flex-col gap-1">
               <label class="flex items-center justify-between">
@@ -660,10 +680,10 @@ watch(open, (isOpen) => {
         Reset settings to defaults?
       </h2>
       <p class="mt-2 text-sm text-base-content/70">
-        Restores font size, font family, line wrapping, word completion (including which folders
-        it's turned off in), spell check, autosave delay, reading width, tooltips, formatting
-        toolbar, documents panel side, scroll sync, auto-sync interval, theme, and soft contrast to
-        their defaults. Your documents, folders, and GitHub connection are not affected.
+        Restores font size, font family, line wrapping, focus mode, word completion (including which
+        folders it's turned off in), spell check, autosave delay, reading width, tooltips,
+        formatting toolbar, documents panel side, scroll sync, auto-sync interval, theme, and soft
+        contrast to their defaults. Your documents, folders, and GitHub connection are not affected.
       </p>
       <div class="mt-5 flex justify-end gap-2">
         <button

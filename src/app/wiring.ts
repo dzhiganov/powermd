@@ -20,6 +20,7 @@ import {
   wikiLinkDocumentsChanged,
   activeWikiLinkDocumentIdChanged,
   wordCompletionChanged,
+  focusModeChanged,
 } from '@/features/editor'
 import {
   sourceReceived,
@@ -72,6 +73,7 @@ import {
   $spellCheckLanguage,
   $wordCompletionEnabled as $wordCompletionPreference,
   $wordCompletionExcludedFolderIds,
+  $focusModeEnabled as $focusModePreference,
   documentFoldersChanged,
   $autoSyncIntervalMinutes,
   helpOpened,
@@ -341,6 +343,16 @@ const $wordCompletionActive = combine(
 )
 wordCompletionChanged($wordCompletionActive.getState())
 sample({ clock: $wordCompletionActive, target: wordCompletionChanged })
+
+// Focus mode: a real CodeMirror Compartment reconfigure too (see
+// `features/editor/lib/useCodeMirror.ts`'s `setFocusMode`), so the editor
+// feature keeps its own live mirror (`$focusModeEnabled` in
+// `model/editorEvents.ts`) rather than reading `settings` directly — same
+// one-kick-then-sample shape as `lineWrapChanged` above, just a straight 1:1
+// mirror (unlike `$wordCompletionActive` above, focus mode has no per-folder
+// exception to resolve).
+focusModeChanged($focusModePreference.getState())
+sample({ clock: $focusModePreference, target: focusModeChanged })
 
 // `settings`' Editor category renders the per-folder exclusion list above
 // against real folder names/ids — same one-kick-then-sample mirror shape as

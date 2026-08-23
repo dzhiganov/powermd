@@ -10,6 +10,7 @@ const FONT_FAMILY_KEY = 'markdown-editor:editor-font-family'
 const LINE_WRAP_KEY = 'markdown-editor:line-wrap'
 const WORD_COMPLETION_ENABLED_KEY = 'markdown-editor:word-completion-enabled'
 const WORD_COMPLETION_EXCLUDED_FOLDERS_KEY = 'markdown-editor:word-completion-excluded-folders'
+const FOCUS_MODE_ENABLED_KEY = 'markdown-editor:focus-mode-enabled'
 const AUTOSAVE_MS_KEY = 'markdown-editor:autosave-ms'
 const READING_WIDTH_KEY = 'markdown-editor:reading-width'
 const SPELLCHECK_ENABLED_KEY = 'markdown-editor:spellcheck-enabled'
@@ -43,6 +44,16 @@ const DEFAULT_LINE_WRAP = true
  * Enter doing the wrong thing.
  */
 const DEFAULT_WORD_COMPLETION_ENABLED = false
+
+/**
+ * Off by default, same rationale as `DEFAULT_WORD_COMPLETION_ENABLED` just
+ * above but for a different reason: focus mode changes how the whole editor
+ * *looks* the instant it's on (see `features/editor/lib/focusMode.ts`), not
+ * just how one keystroke behaves — that kind of visual change should be
+ * something a user opts into deliberately, not something that's already on
+ * the first time they open the app.
+ */
+const DEFAULT_FOCUS_MODE_ENABLED = false
 
 export const AUTOSAVE_MS_MIN = 200
 export const AUTOSAVE_MS_MAX = 3000
@@ -249,6 +260,26 @@ export const $wordCompletionExcludedFolderIds = createStore<string[]>(
 sample({
   clock: $wordCompletionExcludedFolderIds,
   fn: (ids) => ({ key: WORD_COMPLETION_EXCLUDED_FOLDERS_KEY, value: JSON.stringify(ids) }),
+  target: persistFx,
+})
+
+// --- Focus mode ------------------------------------------------------------
+//
+// Dims every line in the editor except the paragraph the cursor is in
+// (`features/editor/lib/focusMode.ts`). Editor-only — never touches the
+// preview — and a straight on/off toggle with no per-folder exception,
+// unlike word completion above.
+
+export const focusModeToggled = createEvent()
+export const $focusModeEnabled = createStore<boolean>(
+  readBoolean(FOCUS_MODE_ENABLED_KEY, DEFAULT_FOCUS_MODE_ENABLED),
+)
+  .on(focusModeToggled, (enabled) => !enabled)
+  .on(defaultsRestored, () => DEFAULT_FOCUS_MODE_ENABLED)
+
+sample({
+  clock: $focusModeEnabled,
+  fn: (enabled) => ({ key: FOCUS_MODE_ENABLED_KEY, value: String(enabled) }),
   target: persistFx,
 })
 

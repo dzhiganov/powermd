@@ -15,6 +15,7 @@ import { buildWikiLinkCompletionSource } from './wikiLinkCompletion'
 import { buildWordCompletionSource } from './wordCompletion'
 import { inlineCompletionTheme } from './completionTheme'
 import { indentListItem, outdentListItem } from './listIndent'
+import { focusModeExtension } from './focusMode'
 import { $wikiLinkDocuments, $activeWikiLinkDocumentId } from '../model/editorEvents'
 
 /**
@@ -186,6 +187,12 @@ interface UseCodeMirrorOptions {
    * through `setWordCompletion` instead, which reconfigures the
    * `Compartment` in place. */
   initialWordCompletionEnabled: boolean
+  /** Initial focus-mode enabled state, read once when the view is created
+   * (and again on every `loadDocument` rebuild — see the
+   * `currentFocusModeEnabled` closure variable below). Later changes go
+   * through `setFocusMode` instead, which reconfigures the `Compartment` in
+   * place — see `lib/focusMode.ts` for the feature itself. */
+  initialFocusModeEnabled: boolean
   /** Called with the full document string whenever the user edits it. */
   onChange: (value: string) => void
   /** Called once, synchronously, right after the `EditorView` is created.
@@ -236,6 +243,16 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
   const completionCompartment = new Compartment()
   let currentWordCompletionEnabled = options.initialWordCompletionEnabled
 
+  // Same reasoning again: focus mode (`lib/focusMode.ts`) is a real
+  // `ViewPlugin`/`Decoration` extension — toggling it has to reconfigure the
+  // Compartment in place, never a `view.setState` rebuild, so undo history
+  // and cursor position survive a toggle exactly like every preference
+  // above. `currentFocusModeEnabled` carries the live value across every
+  // `createState` call the same way `currentLineWrap`/`currentSpellcheck`/
+  // `currentWordCompletionEnabled` do.
+  const focusModeCompartment = new Compartment()
+  let currentFocusModeEnabled = options.initialFocusModeEnabled
+
   // Builds a fresh state for `doc`. Reused for the initial mount and for
   // every document load, so both go through exactly the same extension set.
   function createState(doc: string): EditorState {
@@ -259,6 +276,7 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         imagePasteHandler,
         jumpFlashField,
         completionCompartment.of(buildCompletionExtension(currentWordCompletionEnabled)),
+        focusModeCompartment.of(currentFocusModeEnabled ? focusModeExtension : []),
         // Outside the compartment above (which only carries the
         // TOGGLABLE word-completion source) — Tab must accept a wiki-link
         // completion too, and wiki-link completion is unconditionally
@@ -450,6 +468,26 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
   }
 
   /**
+   * Toggles focus mode on the *live* view via
+   * `focusModeCompartment.reconfigure` — same shape as `setLineWrap`/
+   * `setWordCompletion` above: a plain `dispatch` with only an `effects`
+   * entry, no document change and no `setState`, so undo history, cursor,
+   * and scroll are all untouched by a toggle. Swaps the WHOLE extension in
+   * or out (`focusModeExtension` or `[]`) rather than something narrower —
+   * there's nothing partial to reconfigure, the feature is either fully
+   * wired in (its `ViewPlugin` starts computing decorations against the
+   * view it's handed) or fully absent.
+   */
+  function setFocusMode(enabled: boolean) {
+    currentFocusModeEnabled = enabled
+    const current = view.value
+    if (!current) return
+    current.dispatch({
+      effects: focusModeCompartment.reconfigure(enabled ? focusModeExtension : []),
+    })
+  }
+
+  /**
    * Forces the browser to re-run its spellchecker over text already on
    * screen, by toggling `contentEditable` off and back on — a widely-used
    * nudge that makes the browser treat the element as freshly initialised
@@ -505,5 +543,12 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
     view.value?.requestMeasure()
   }
 
-  return { loadDocument, setLineWrap, setSpellcheck, setWordCompletion, requestMeasure }
+  return {
+    loadDocument,
+    setLineWrap,
+    setSpellcheck,
+    setWordCompletion,
+    setFocusMode,
+    requestMeasure,
+  }
 }

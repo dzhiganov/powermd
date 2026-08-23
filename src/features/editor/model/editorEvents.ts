@@ -67,6 +67,30 @@ export const $wordCompletionEnabled = createStore<boolean>(false).on(
 )
 
 /**
+ * The editor feature's own mirror of `features/settings`' persisted
+ * focus-mode preference (`lib/focusMode.ts` — dims every line in the editor
+ * except the paragraph the cursor is in) — same "settings owns the
+ * preference, the acting feature keeps its own mirror" shape as
+ * `$lineWrapEnabled` above; a straight 1:1 mirror (unlike
+ * `$wordCompletionEnabled`, which resolves three settings/documents sources
+ * together) since focus mode has no per-folder or per-document exception.
+ * `Editor.vue` reads this both for `useCodeMirror`'s *initial* Compartment
+ * value and to react to later toggles by reconfiguring that Compartment live
+ * (see `lib/useCodeMirror.ts`'s `setFocusMode`) — never a state rebuild, so
+ * undo history and cursor position survive a toggle.
+ *
+ * Defaults to `false`, matching `features/settings/model/editorPreferences
+ * .ts`'s own default (off), so this renders correctly before `wiring.ts` has
+ * applied the real persisted value, which it does synchronously before this
+ * module's default could ever paint.
+ */
+export const focusModeChanged = createEvent<boolean>()
+export const $focusModeEnabled = createStore<boolean>(false).on(
+  focusModeChanged,
+  (_, enabled) => enabled,
+)
+
+/**
  * Fired whenever `features/settings`' persisted editor font size or font
  * family preference changes (`wiring.ts` mirrors it in — same
  * "settings owns the preference, the acting feature keeps its own mirror"

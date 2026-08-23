@@ -16,6 +16,7 @@ export {
   $spellCheckLanguage,
   $wordCompletionEnabled,
   $wordCompletionExcludedFolderIds,
+  $focusModeEnabled,
   editorFontSizeChanged,
   editorFontFamilyChanged,
   lineWrapToggled,
@@ -25,6 +26,7 @@ export {
   spellCheckLanguageChanged,
   wordCompletionToggled,
   wordCompletionFolderExclusionToggled,
+  focusModeToggled,
   SPELLCHECK_LANGUAGES,
 } from './model/editorPreferences'
 export type { EditorFontFamily, SpellCheckLanguage } from './model/editorPreferences'

@@ -14,6 +14,7 @@ export {
   wikiLinkDocumentsChanged,
   activeWikiLinkDocumentIdChanged,
   wordCompletionChanged,
+  focusModeChanged,
 } from './model/editorEvents'
 export { taskListItemToggleRequested } from './model/taskList'
 export { EDITOR_SHORTCUTS } from './lib/shortcuts'
