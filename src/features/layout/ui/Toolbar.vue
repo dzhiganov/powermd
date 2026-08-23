@@ -1,25 +1,56 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useUnit } from 'effector-vue/composition'
 
 // Theme, import, export and the More menu are no longer imported here —
 // they moved into the documents panel's own top row and are passed to it
 // through `AppShell.vue`'s `tools` slot. What is left in this header is
-// what actually concerns the open document: its breadcrumb, the view-mode
-// switcher, and the drawer toggle.
+// what actually concerns the open document: its breadcrumb and the
+// view-mode switcher. The drawer toggle used to live here too — it's now
+// mounted once in `AppShell.vue` (see `DrawerToggleButton.vue`'s own
+// comment for why it had to stop being an in-flow header child), so this
+// header no longer renders it at all, only reserves room for it.
+import { useMediaQuery } from '@/shared/lib/useMediaQuery'
 import { $showTooltips } from '@/features/settings'
-import { DrawerToggleButton, DocumentTitle } from '@/features/documents'
+import { $drawerOpen, DocumentTitle } from '@/features/documents'
 
 import { $viewMode, viewModeChanged } from '../model/layout'
 import type { ViewMode } from '../model/layout'
 
-// The drawer side ('left' | 'right') drives which end of the header the
-// drawer toggle button renders at (see the template below) — `layout`
-// already reads `$drawerSide` in `AppShell.vue` (the single mounting site)
-// to thread it to `DocumentDrawer.vue`, so it's threaded here the same way.
-withDefaults(defineProps<{ side?: 'left' | 'right' }>(), { side: 'right' })
+// The drawer side ('left' | 'right') drives which end of the header
+// reserves space for the floating toggle (see `headerStyle` below) —
+// `layout` already reads `$drawerSide` in `AppShell.vue` (the single
+// mounting site) to thread it to `DocumentDrawer.vue`, so it's threaded
+// here the same way.
+const props = withDefaults(defineProps<{ side?: 'left' | 'right' }>(), { side: 'right' })
 
 const viewMode = useUnit($viewMode)
 const showTooltips = useUnit($showTooltips)
+const drawerOpen = useUnit($drawerOpen)
+
+// Tailwind's `md` breakpoint (768px) — below it the floating toggle never
+// travels into the sidebar (see `DrawerToggleButton.vue`'s own `@media`
+// comment): it sits at its closed-state corner in BOTH open and closed
+// states there, so the header must reserve room for it unconditionally on
+// mobile, not just while the drawer happens to be closed.
+const isDesktop = useMediaQuery('(min-width: 768px)')
+
+const reserveToggleSpace = computed(() => !isDesktop.value || !drawerOpen.value)
+
+// Only the dock side's padding is ever overridden — the other side keeps
+// whatever the `px-3.5` utility class already gives it (`undefined` here
+// means "don't set an inline value, fall through to the class"). Animated
+// on the same shared duration/easing as the toggle's own travel, the
+// sidebar panel's transform, and the shell's own padding (`main.css`'s
+// `--md-motion-duration`/`--md-motion-ease`) via the scoped `<style>`
+// below, so the header's edge, the button, and the panel all arrive
+// together instead of the header visibly "catching up" a beat later.
+const headerStyle = computed(() => ({
+  paddingLeft:
+    props.side === 'left' && reserveToggleSpace.value ? 'var(--md-header-reserve)' : undefined,
+  paddingRight:
+    props.side === 'right' && reserveToggleSpace.value ? 'var(--md-header-reserve)' : undefined,
+}))
 
 interface ViewModeOption {
   value: ViewMode
@@ -38,16 +69,15 @@ const viewModeOptions: ViewModeOption[] = [
 </script>
 
 <template>
-  <!-- The drawer toggle is the one control that follows `side`: it renders
-       at the left end of the header when the drawer docks left, and at the
-       right end (alongside its own divider) when it docks right — the
-       default. Everything else in this header is genuinely static
-       regardless of `side`: the breadcrumb always sits at the left end, the
-       view-mode switcher stays centred, and the instrument cluster (commit,
-       theme, export, more) always sits at the right end. This used to mirror
-       the whole header layout with `side` — the user asked for that
-       removed, since a header that rearranges itself based on a setting
-       read poorly; only the toggle button itself was asked to move.
+  <!-- Every child here is static regardless of `side`: the breadcrumb
+       always sits at the left end, the view-mode switcher stays centred,
+       and the (now empty — see the right-hand spacer's own comment below)
+       instrument cluster sits at the right end. This used to mirror the
+       whole header layout with `side` — the user asked for that removed,
+       since a header that rearranges itself based on a setting read
+       poorly; only the toggle button itself was ever asked to move, and it
+       has since moved OUT of this header entirely (see `headerStyle`'s
+       comment above and `DrawerToggleButton.vue`).
        46px height (user request: "slightly shorter" than the reference
        design's original 52px, was 48px/`h-12` pre-redesign) — a modest
        6px trim, not a redesign. `items-center` keeps every child
@@ -65,11 +95,11 @@ const viewModeOptions: ViewModeOption[] = [
        them for no reason. No bottom border either: with no fill behind it,
        a rule under the header was the only thing still drawing a band
        across the top of the document. -->
-  <header class="flex h-[46px] shrink-0 items-center gap-4 px-3.5 print:hidden">
+  <header
+    class="header flex h-[46px] shrink-0 items-center gap-4 px-3.5 print:hidden"
+    :style="headerStyle"
+  >
     <div class="flex min-w-0 flex-1 items-center gap-3">
-      <template v-if="side === 'left'">
-        <DrawerToggleButton :show-tooltips="showTooltips" />
-      </template>
       <!-- Breadcrumb (folder / title) + the unsaved dot — both owned by
            `DocumentTitle.vue`, see its doc comment. Always left-pinned,
            regardless of `side`. -->
@@ -102,19 +132,31 @@ const viewModeOptions: ViewModeOption[] = [
          app-level tools rather than anything to do with the document being
          edited, and the header is now only as wide as the panes.
 
-         The drawer toggle deliberately did NOT move with them. It is the
-         one control that must stay reachable while the drawer is closed;
-         inside the drawer it would hide the only affordance for bringing
-         the drawer back. -->
-    <div class="flex flex-1 items-center justify-end gap-0.5">
-      <template v-if="side === 'right'">
-        <DrawerToggleButton :show-tooltips="showTooltips" />
-      </template>
-    </div>
+         The drawer toggle used to render here too, at the header's right
+         end (or left, mirrored by `side`) — it has since moved out of flow
+         entirely into `AppShell.vue` (see `DrawerToggleButton.vue`'s own
+         comment). This div is now just an empty `flex-1` spacer: without
+         it, the left group's own `flex-1` would have nothing to balance
+         against and the view-mode switcher in the middle would drift left
+         instead of staying centred. -->
+    <div class="flex-1" />
   </header>
 </template>
 
 <style scoped>
+/* Header dock-side padding (`headerStyle`, script above) animates on the
+ * same shared duration/easing as every other piece of the
+ * toggle-travels-with-the-panel system (`main.css`'s
+ * `--md-motion-duration`/`--md-motion-ease`) — `headerStyle` only ever
+ * sets the padding VALUES (branching per render), the `transition` itself
+ * is declared once here rather than folded into that same inline object,
+ * so it's never at risk of being dropped from one branch and not another. */
+.header {
+  transition:
+    padding-left var(--md-motion-duration) var(--md-motion-ease),
+    padding-right var(--md-motion-duration) var(--md-motion-ease);
+}
+
 /*
  * Segmented Write/Split/Read control — raw `var(--color-*)`/`--md-*`
  * rather than daisyUI's `join`/`btn-primary` utilities. This is a

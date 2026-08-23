@@ -51,6 +51,65 @@ body {
 }
 
 /*
+ * Sidebar-toggle geometry + shared motion — single source of truth for the
+ * "the toggle travels with the panel" system spanning four different
+ * components (`AppShell.vue`'s shell padding, `DocumentDrawer.vue`'s panel
+ * width/translate, `DrawerToggleButton.vue`'s own translate, and
+ * `Toolbar.vue`'s header padding). Theme-independent (unlike the `--md-*`
+ * tokens below, which are declared per `[data-theme]`), so this lives at
+ * `:root` rather than inside either theme block.
+ *
+ * `--md-toggle-open-x` is a `calc()`, not a literal, specifically so nothing
+ * ever hand-copies the arithmetic: rail width, minus the closed-state
+ * corner offset (undoing the button's own resting inset), minus the
+ * button's own footprint, minus the panel's inner content inset (`p-3` =
+ * 12px) — the remainder is exactly how far the button must travel to land
+ * flush with the panel's own start-of-content line, `--md-panel-inset`
+ * clear of the divider between the panel and the pane behind it. If
+ * `--md-sidebar-width` ever changes, every consumer below recomputes from
+ * the same formula instead of drifting apart.
+ *
+ * `--md-motion-duration`/`--md-motion-ease` are the ONE shared curve for
+ * every piece that moves when the sidebar opens or closes (panel
+ * transform, shell padding, toggle transform, header padding) — identical
+ * duration+curve across all four is what makes the button read as carried
+ * BY the panel instead of animating separately alongside it. Flipped to
+ * `0ms` under `prefers-reduced-motion: reduce` below, which is enough to
+ * disable the movement everywhere at once (a 0ms transition still resolves
+ * instantly to its end state, it just never animates through the frames in
+ * between) — simpler than repeating a `motion-reduce:` variant on every
+ * consumer. `--md-icon-fade-duration`/`--md-icon-rotate-duration` are the
+ * toggle's own icon-morph sub-animations (`DrawerToggleButton.vue`):
+ * shorter, fixed durations that don't scale with `--md-sidebar-width`, but
+ * they share the same easing and the same reduced-motion override.
+ */
+:root {
+  --md-sidebar-width: 320px;
+  --md-toggle-size: 28px;
+  --md-toggle-top: 12px;
+  --md-toggle-corner: 14px;
+  --md-panel-inset: 12px;
+  --md-header-reserve: 52px;
+  --md-toggle-open-x: calc(
+    var(--md-sidebar-width) - var(--md-toggle-corner) - var(--md-toggle-size) -
+      var(--md-panel-inset)
+  );
+
+  --md-motion-duration: 340ms;
+  --md-motion-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --md-icon-fade-duration: 200ms;
+  --md-icon-rotate-duration: 320ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --md-motion-duration: 0ms;
+    --md-icon-fade-duration: 0ms;
+    --md-icon-rotate-duration: 0ms;
+  }
+}
+
+/*
  * Custom daisyUI themes (Phase 1 visual redesign) — replaces daisyUI's
  * built-in "light"/"dark" palettes with the reference design's tokens
  * (`design-template.html`'s `DARK`/`LIGHT` objects) while keeping the same

@@ -17,6 +17,7 @@ export {
   documentMoveRequested,
   drawerOpened,
   drawerClosed,
+  $drawerOpen,
   saveRequested,
   autosaveIntervalChanged,
   folderCreated,
