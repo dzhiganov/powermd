@@ -13,6 +13,7 @@ import {
 import { useDialogFocusTrap } from '@/shared/lib/useDialog'
 import { ink } from '@/shared/lib/ink'
 import { isMac } from '@/shared/lib/platform'
+import PopoverMenu from '@/shared/ui/PopoverMenu.vue'
 
 import {
   $documentList,
@@ -144,53 +145,17 @@ const newFolderInputRef = ref<HTMLInputElement | null>(null)
 // One button instead of two. A full-width primary button next to a small
 // square icon button read as one important action and one afterthought,
 // when creating a file and creating a folder are the same kind of thing.
-// Same popover shape as `layout/ui/MoreMenu.vue` — local open state, close
-// on outside click, Escape returns focus to the trigger, and
-// `useDialogFocusTrap` for Tab-within-the-menu — rather than a second
-// hand-rolled variant of that behaviour.
-const newMenuOpen = ref(false)
-const newMenuRef = ref<HTMLElement | null>(null)
-const newTriggerRef = ref<HTMLButtonElement | null>(null)
-const newFirstItemRef = ref<HTMLButtonElement | null>(null)
-const { trapFocus: trapNewMenuFocus } = useDialogFocusTrap(newMenuRef, newMenuOpen, newFirstItemRef)
-
-function toggleNewMenu() {
-  newMenuOpen.value = !newMenuOpen.value
-}
-
-function closeNewMenu() {
-  newMenuOpen.value = false
-}
-
-function handleNewMenuOutsideClick(event: MouseEvent) {
-  const target = event.target as Node | null
-  if (target === null) return
-  if (newMenuRef.value?.contains(target) === true) return
-  if (newTriggerRef.value?.contains(target) === true) return
-  closeNewMenu()
-}
-
-watch(newMenuOpen, (isOpen) => {
-  if (isOpen) {
-    document.addEventListener('click', handleNewMenuOutsideClick, true)
-  } else {
-    document.removeEventListener('click', handleNewMenuOutsideClick, true)
-  }
-})
-onUnmounted(() => document.removeEventListener('click', handleNewMenuOutsideClick, true))
-
-function handleNewMenuEscape() {
-  closeNewMenu()
-  newTriggerRef.value?.focus()
-}
-
-function handleCreateDocument() {
-  closeNewMenu()
+// Open state, outside-click dismissal, Escape-returns-focus, and the
+// Tab-trap all live in `PopoverMenu` (`@/shared/ui/PopoverMenu.vue`) now —
+// the same shared implementation `layout/ui/MoreMenu.vue` uses, rather than
+// a second hand-rolled variant of that behaviour.
+function handleCreateDocument(close: () => void) {
+  close()
   documentCreated()
 }
 
-function handleCreateFolder() {
-  closeNewMenu()
+function handleCreateFolder(close: () => void) {
+  close()
   startCreateFolder()
 }
 
@@ -442,40 +407,36 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
             </span>
           </div>
 
-          <div class="relative">
-            <button
-              ref="newTriggerRef"
-              type="button"
-              class="btn btn-primary btn-xs h-[30px] w-full gap-1.5"
-              aria-label="New"
-              aria-haspopup="menu"
-              :aria-expanded="newMenuOpen"
-              @click="toggleNewMenu"
-            >
-              <PlusIcon class="h-3.5 w-3.5" />
-              New
-              <ChevronDownIcon class="h-3 w-3 opacity-70" aria-hidden="true" />
-            </button>
-
-            <div
-              v-if="newMenuOpen"
-              ref="newMenuRef"
-              role="menu"
-              aria-label="New"
-              class="new-menu"
-              style="
-                background: var(--md-pop, var(--color-base-100));
-                border-color: var(--color-base-300);
-              "
-              @keydown.esc="handleNewMenuEscape"
-              @keydown.tab="trapNewMenuFocus"
-            >
+          <PopoverMenu label="New" align="stretch" :z-index="30">
+            <template #trigger="{ open: newMenuOpen, toggle, setTriggerRef }">
               <button
-                ref="newFirstItemRef"
+                :ref="setTriggerRef"
+                type="button"
+                class="btn btn-primary btn-xs h-[30px] w-full justify-start gap-1.5"
+                aria-label="New"
+                aria-haspopup="menu"
+                :aria-expanded="newMenuOpen"
+                @click="toggle"
+              >
+                <PlusIcon class="h-3.5 w-3.5" />
+                New
+                <!-- `ml-auto` pins the chevron to the button's right edge
+                     rather than letting it sit against the label. Paired
+                     with `justify-start` above: without it the whole group
+                     centres and the chevron drifts inward as the button
+                     widens, which reads as part of the label rather than as
+                     the control that opens the menu. -->
+                <ChevronDownIcon class="ml-auto h-3 w-3 opacity-70" aria-hidden="true" />
+              </button>
+            </template>
+
+            <template #default="{ close, setFirstItemRef }">
+              <button
+                :ref="setFirstItemRef"
                 type="button"
                 role="menuitem"
-                class="new-menu-item"
-                @click="handleCreateDocument"
+                class="popover-menu-item"
+                @click="handleCreateDocument(close)"
               >
                 <DocumentPlusIcon class="h-3.5 w-3.5 shrink-0" />
                 New file
@@ -483,14 +444,14 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
               <button
                 type="button"
                 role="menuitem"
-                class="new-menu-item"
-                @click="handleCreateFolder"
+                class="popover-menu-item"
+                @click="handleCreateFolder(close)"
               >
                 <FolderPlusIcon class="h-3.5 w-3.5 shrink-0" />
                 New folder
               </button>
-            </div>
-          </div>
+            </template>
+          </PopoverMenu>
         </div>
 
         <!-- Blocked-upgrade notice: see `db.subscribeToDatabaseBlocked` /
@@ -799,45 +760,8 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
   outline-offset: -2px;
 }
 
-/* "New" popover — same flat, square treatment as the header's own menu
-   (`layout/ui/MoreMenu.vue`) and the completion menus, so every popover in
-   this app looks like the same object. Full width of the trigger rather
-   than a fixed width: it sits under a full-width button, and a narrower
-   menu under a wider button reads as a mistake. */
-.new-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  z-index: 30;
-  padding: 4px;
-  border: 1px solid;
-  box-shadow: var(--md-shadow-pop);
-}
-
-.new-menu-item {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  border: none;
-  background: transparent;
-  color: var(--color-base-content);
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.new-menu-item:hover,
-.new-menu-item:focus-visible {
-  background: var(--md-hov, var(--color-base-200));
-}
-
-.new-menu-item:focus-visible {
-  outline: 2px solid var(--md-accent);
-  outline-offset: -2px;
-}
+/* The "New" popover's own panel/item styling used to live here
+   (`.new-menu`/`.new-menu-item`) — it's now `PopoverMenu`'s shared
+   `.popover-menu-panel`/`.popover-menu-item` (`@/shared/ui/PopoverMenu.vue`),
+   the same styling every other popover in the app uses. */
 </style>

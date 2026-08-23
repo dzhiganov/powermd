@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { EllipsisHorizontalIcon } from '@heroicons/vue/24/outline'
+
+import PopoverMenu from '@/shared/ui/PopoverMenu.vue'
 
 import {
   documentSelected,
@@ -76,68 +78,33 @@ watch(renaming, async (isRenaming) => {
 // this same menu as a labelled sub-list, so there's still exactly one
 // popover open at a time per row.
 //
-// Dismissible via Escape or an outside click, same as the menu it
-// replaces — not the heavier modal focus-trap treatment reserved for
-// blocking dialogs (delete confirmations, settings), since it never blocks
-// interacting with the rest of the page.
-const menuOpen = ref(false)
-const menuRef = ref<HTMLElement | null>(null)
-const triggerRef = ref<HTMLButtonElement | null>(null)
-
+// Open/close state, outside-click dismissal, Escape-returns-focus, the
+// Tab-trap, and the panel/item styling all live in `PopoverMenu`
+// (`@/shared/ui/PopoverMenu.vue`) now — this row used to hand-roll a
+// lighter version of that (no Tab-trap, no auto-focused first item) as its
+// own daisyUI `.menu`/`rounded-box` dropdown; it now shares the exact same
+// behaviour and surface as every other popover in the app.
 const rowLabel = computed(() => props.doc.title || 'Untitled')
+const menuLabel = computed(() => `Actions for ${rowLabel.value}`)
 
-function toggleMenu() {
-  menuOpen.value = !menuOpen.value
-}
-
-function closeMenu() {
-  menuOpen.value = false
-}
-
-function handleRename() {
-  closeMenu()
+function handleRename(close: () => void) {
+  close()
   startRename()
 }
 
-function handleDuplicate() {
-  closeMenu()
+function handleDuplicate(close: () => void) {
+  close()
   documentDuplicated(props.doc.id)
 }
 
-function moveTo(folderId: string | null) {
+function moveTo(folderId: string | null, close: () => void) {
   documentMoveRequested({ id: props.doc.id, folderId })
-  closeMenu()
-  triggerRef.value?.focus()
+  close()
 }
 
-function handleDelete(event: MouseEvent) {
-  closeMenu()
+function handleDelete(event: MouseEvent, close: () => void) {
+  close()
   emit('delete-requested', event)
-}
-
-function handleOutsideClick(event: MouseEvent) {
-  const target = event.target as Node | null
-  if (target === null) return
-  if (menuRef.value?.contains(target) === true) return
-  if (triggerRef.value?.contains(target) === true) return
-  closeMenu()
-}
-
-watch(menuOpen, (open) => {
-  if (open) {
-    document.addEventListener('click', handleOutsideClick, true)
-  } else {
-    document.removeEventListener('click', handleOutsideClick, true)
-  }
-})
-onBeforeUnmount(() => document.removeEventListener('click', handleOutsideClick, true))
-
-function handleMenuKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    closeMenu()
-    triggerRef.value?.focus()
-  }
 }
 </script>
 
@@ -186,91 +153,79 @@ function handleMenuKeydown(event: KeyboardEvent) {
           <template v-else>{{ doc.title || 'Untitled' }}</template>
         </span>
       </button>
-      <span
-        class="relative flex shrink-0 items-center pr-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 [@media(hover:none)]:opacity-100"
-      >
-        <button
-          ref="triggerRef"
-          type="button"
-          class="btn btn-ghost btn-xs btn-square"
-          :aria-label="`Actions for ${rowLabel}`"
-          :title="showTooltips ? 'Actions' : undefined"
-          aria-haspopup="menu"
-          :aria-expanded="menuOpen"
-          @click.stop="toggleMenu"
-          @keydown="handleMenuKeydown"
-        >
-          <EllipsisHorizontalIcon class="h-3.5 w-3.5" />
-        </button>
 
-        <ul
-          v-if="menuOpen"
-          ref="menuRef"
-          class="menu absolute right-0 top-full z-10 mt-1 w-44 rounded-box p-1 shadow-lg"
-          style="
-            background: var(--md-pop, var(--color-base-100));
-            border: 1px solid var(--color-base-300);
-          "
-          role="menu"
-          :aria-label="`Actions for ${rowLabel}`"
-          @keydown="handleMenuKeydown"
-        >
-          <li role="none">
-            <button
-              type="button"
-              role="menuitem"
-              class="move-menu-item text-sm"
-              @click.stop="handleRename"
-            >
-              Rename
-            </button>
-          </li>
-          <li role="none">
-            <button
-              type="button"
-              role="menuitem"
-              class="move-menu-item text-sm"
-              @click.stop="handleDuplicate"
-            >
-              Duplicate
-            </button>
-          </li>
-          <li class="menu-title px-2 pt-2 text-xs">Move to</li>
-          <li role="none">
-            <button
-              type="button"
-              role="menuitem"
-              class="move-menu-item text-sm"
-              :disabled="doc.folderId === null"
-              @click.stop="moveTo(null)"
-            >
-              (Root)
-            </button>
-          </li>
-          <li v-for="folder in folders" :key="folder.id" role="none">
-            <button
-              type="button"
-              role="menuitem"
-              class="move-menu-item truncate text-sm"
-              :disabled="doc.folderId === folder.id"
-              @click.stop="moveTo(folder.id)"
-            >
-              {{ folder.name }}
-            </button>
-          </li>
-          <li class="my-1 h-px" style="background: var(--color-base-300)" role="none" />
-          <li role="none">
-            <button
-              type="button"
-              role="menuitem"
-              class="move-menu-item text-sm text-error"
-              @click.stop="handleDelete"
-            >
-              Delete
-            </button>
-          </li>
-        </ul>
-      </span>
+      <PopoverMenu
+        class="flex shrink-0 items-center pr-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 [@media(hover:none)]:opacity-100"
+        :label="menuLabel"
+        align="end"
+        width="176px"
+        :z-index="10"
+      >
+        <template #trigger="{ open, toggle, setTriggerRef }">
+          <button
+            :ref="setTriggerRef"
+            type="button"
+            class="btn btn-ghost btn-xs btn-square"
+            :aria-label="menuLabel"
+            :title="showTooltips ? 'Actions' : undefined"
+            aria-haspopup="menu"
+            :aria-expanded="open"
+            @click.stop="toggle"
+          >
+            <EllipsisHorizontalIcon class="h-3.5 w-3.5" />
+          </button>
+        </template>
+
+        <template #default="{ close, setFirstItemRef }">
+          <button
+            :ref="setFirstItemRef"
+            type="button"
+            role="menuitem"
+            class="popover-menu-item text-sm"
+            @click.stop="handleRename(close)"
+          >
+            Rename
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            class="popover-menu-item text-sm"
+            @click.stop="handleDuplicate(close)"
+          >
+            Duplicate
+          </button>
+          <div class="popover-menu-heading">Move to</div>
+          <button
+            type="button"
+            role="menuitem"
+            class="popover-menu-item text-sm"
+            :disabled="doc.folderId === null"
+            @click.stop="moveTo(null, close)"
+          >
+            (Root)
+          </button>
+          <button
+            v-for="folder in folders"
+            :key="folder.id"
+            type="button"
+            role="menuitem"
+            class="popover-menu-item truncate text-sm"
+            :disabled="doc.folderId === folder.id"
+            @click.stop="moveTo(folder.id, close)"
+          >
+            {{ folder.name }}
+          </button>
+          <div class="popover-menu-divider" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            class="popover-menu-item popover-menu-item--danger text-sm"
+            @click.stop="handleDelete($event, close)"
+          >
+            Delete
+          </button>
+        </template>
+      </PopoverMenu>
     </template>
   </div>
 </template>
@@ -278,7 +233,7 @@ function handleMenuKeydown(event: KeyboardEvent) {
 <style scoped>
 /*
  * BUG (5th occurrence of this class in the project): both `.doc-row` and
- * `.move-menu-item` are direct children of a daisyUI `<li>` inside a
+ * `.popover-menu-item` are direct children of a daisyUI `<li>` inside a
  * `<ul class="menu">`, and neither carries a `.btn` class. daisyUI's menu
  * component styles that shape on `:active` with `--menu-active-bg:
  * var(--color-neutral)` / `--menu-active-fg: var(--color-neutral-content)`
@@ -297,9 +252,17 @@ function handleMenuKeydown(event: KeyboardEvent) {
  * resting *selected* row) at double the strength, so pressed reads as a
  * stronger, clearly distinct step up from both resting-selected (15%) and
  * daisyUI's hover tint (10% base-content, untouched here) in both themes.
+ *
+ * This row no longer renders inside a daisyUI `<ul class="menu">` at all
+ * (its "…" menu is `PopoverMenu` now, a plain `role="menu"` div, not a
+ * daisyUI menu component) — the rule stays regardless, since nothing about
+ * *this* row's own `.doc-row:active` press state depended on that
+ * daisyUI-menu context, and `.popover-menu-item` is still this component's
+ * own scoped class on its own template elements (just passed to
+ * `PopoverMenu` via a slot), so this selector still resolves correctly.
  */
 .doc-row:active,
-.move-menu-item:active {
+.popover-menu-item:active {
   background-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
   color: var(--color-base-content);
 }

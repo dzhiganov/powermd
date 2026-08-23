@@ -10,6 +10,7 @@ import {
 import { useUnit } from 'effector-vue/composition'
 
 import { $showTooltips } from '@/features/settings'
+import PopoverMenu from '@/shared/ui/PopoverMenu.vue'
 
 import {
   exportMarkdownRequested,
@@ -21,77 +22,94 @@ import {
 
 const showTooltips = useUnit($showTooltips)
 
-// daisyUI's dropdown is CSS-only (`:focus-within`), so the only JS needed
-// is closing it after a choice is made — blurring the currently-focused
-// menu item is what actually closes a `:focus-within` dropdown, and needs
-// no open/closed store of its own.
-function closeMenu(): void {
-  ;(document.activeElement as HTMLElement | null)?.blur()
-}
-
-function handleExportMarkdown(): void {
+// Used to be daisyUI's CSS-only `:focus-within` dropdown — no Escape
+// handling, no focus trap, and it closed by blurring the focused item
+// rather than by an actual open/closed state. It's `PopoverMenu`
+// (`@/shared/ui/PopoverMenu.vue`) now, the same shared implementation
+// every other popover in the app uses: outside-click dismissal, Escape
+// closes and returns focus to the trigger, and a real Tab-trap while open.
+function handleExportMarkdown(close: () => void): void {
   exportMarkdownRequested()
-  closeMenu()
+  close()
 }
-function handleExportHtml(): void {
+function handleExportHtml(close: () => void): void {
   exportHtmlRequested()
-  closeMenu()
+  close()
 }
-function handleExportPdf(): void {
+function handleExportPdf(close: () => void): void {
   exportPdfRequested()
-  closeMenu()
+  close()
 }
-function handleCopyMarkdown(): void {
+function handleCopyMarkdown(close: () => void): void {
   copyMarkdownRequested()
-  closeMenu()
+  close()
 }
-function handleCopyHtml(): void {
+function handleCopyHtml(close: () => void): void {
   copyHtmlRequested()
-  closeMenu()
+  close()
 }
 </script>
 
 <template>
-  <div class="dropdown dropdown-end print:hidden">
-    <button
-      type="button"
-      tabindex="0"
-      class="btn btn-ghost btn-xs btn-square"
-      aria-label="Export document"
-      :title="showTooltips ? 'Export' : undefined"
-    >
-      <ArrowDownTrayIcon class="h-3.5 w-3.5" />
-    </button>
-    <ul
-      tabindex="0"
-      class="menu dropdown-content z-[70] w-64 gap-0.5 rounded-box bg-base-200 p-2 shadow-xl"
-    >
-      <li>
-        <button type="button" @click="handleExportMarkdown">
-          <DocumentIcon class="h-4 w-4" /> Markdown (.md)
-        </button>
-      </li>
-      <li>
-        <button type="button" @click="handleExportHtml">
-          <CodeBracketIcon class="h-4 w-4" /> Styled HTML (.html)
-        </button>
-      </li>
-      <li>
-        <button type="button" @click="handleExportPdf">
-          <PrinterIcon class="h-4 w-4" /> Print / PDF
-        </button>
-      </li>
-      <li class="menu-title mt-1 px-2 text-xs">Copy</li>
-      <li>
-        <button type="button" @click="handleCopyMarkdown">
-          <ClipboardDocumentIcon class="h-4 w-4" /> Copy Markdown
-        </button>
-      </li>
-      <li>
-        <button type="button" @click="handleCopyHtml">
-          <ClipboardDocumentCheckIcon class="h-4 w-4" /> Copy rendered HTML
-        </button>
-      </li>
-    </ul>
-  </div>
+  <PopoverMenu class="print:hidden" label="Export document" align="end" width="256px" :z-index="70">
+    <template #trigger="{ open, toggle, setTriggerRef }">
+      <button
+        :ref="setTriggerRef"
+        type="button"
+        class="btn btn-ghost btn-xs btn-square"
+        aria-label="Export document"
+        aria-haspopup="menu"
+        :aria-expanded="open"
+        :title="showTooltips ? 'Export' : undefined"
+        @click="toggle"
+      >
+        <ArrowDownTrayIcon class="h-3.5 w-3.5" />
+      </button>
+    </template>
+
+    <template #default="{ close, setFirstItemRef }">
+      <button
+        :ref="setFirstItemRef"
+        type="button"
+        role="menuitem"
+        class="popover-menu-item"
+        @click="handleExportMarkdown(close)"
+      >
+        <DocumentIcon class="h-3.5 w-3.5 shrink-0" /> Markdown (.md)
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        class="popover-menu-item"
+        @click="handleExportHtml(close)"
+      >
+        <CodeBracketIcon class="h-3.5 w-3.5 shrink-0" /> Styled HTML (.html)
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        class="popover-menu-item"
+        @click="handleExportPdf(close)"
+      >
+        <PrinterIcon class="h-3.5 w-3.5 shrink-0" /> Print / PDF
+      </button>
+      <div class="popover-menu-heading">Copy</div>
+      <button
+        type="button"
+        role="menuitem"
+        class="popover-menu-item"
+        @click="handleCopyMarkdown(close)"
+      >
+        <ClipboardDocumentIcon class="h-3.5 w-3.5 shrink-0" /> Copy Markdown
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        class="popover-menu-item"
+        @click="handleCopyHtml(close)"
+      >
+        <ClipboardDocumentCheckIcon class="h-3.5 w-3.5 shrink-0" /> Copy rendered HTML
+      </button>
+    </template>
+  </PopoverMenu>
 </template>
