@@ -298,11 +298,15 @@ test.describe('focus mode', () => {
       await slider.waitFor()
 
       // `Home` jumps a focused native range input to its `min` attribute —
-      // `FOCUS_DIM_LEVEL_MIN` (63), the derived floor (see
-      // `model/editorPreferences.ts`'s own comment for the arithmetic).
+      // `FOCUS_DIM_LEVEL_MIN` (10). Deliberately far below the WCAG AA floor
+      // the rest of this app holds to: focus mode's purpose is to push the
+      // surrounding text out of attention, and it is a reversible personal
+      // preference rather than published content. 10 and not 0 because 0 is
+      // the background colour exactly — invisible, not dim. See that
+      // constant's own comment.
       await slider.focus()
       await slider.press('Home')
-      await expect(page.getByText('Focus dim level — 63%')).toBeVisible()
+      await expect(page.getByText('Focus dim level — 10%')).toBeVisible()
       await page.getByRole('button', { name: 'Close settings' }).click()
       const dimColorAtMin = await lines.nth(0).evaluate((el) => getComputedStyle(el).color)
       expect(dimColorAtMin).not.toBe(dimColorAtDefault)
@@ -334,13 +338,13 @@ test.describe('focus mode', () => {
       await slider.waitFor()
       await slider.focus()
       await slider.press('Home')
-      await expect(page.getByText('Focus dim level — 63%')).toBeVisible()
+      await expect(page.getByText('Focus dim level — 10%')).toBeVisible()
       await page.getByRole('button', { name: 'Close settings' }).click()
 
       await page.reload()
       await openApp(page)
       await openSettings(page)
-      await expect(page.getByText('Focus dim level — 63%')).toBeVisible()
+      await expect(page.getByText('Focus dim level — 10%')).toBeVisible()
 
       await page.getByRole('button', { name: 'Reset to defaults' }).click()
       await page.getByRole('button', { name: 'Reset', exact: true }).click()

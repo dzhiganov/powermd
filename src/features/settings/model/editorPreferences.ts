@@ -67,11 +67,35 @@ const DEFAULT_FOCUS_MODE_ENABLED = false
  * means LESS dimming (closer to full-strength text) and a lower number means
  * MORE dimming.
  *
- * FOCUS_DIM_LEVEL_MIN — the floor a user is allowed to drag down to, derived
- * (not picked as a round number) from the same 4.5:1 WCAG AA text-contrast
- * requirement `focusMode.ts` always documented, computed against all FOUR
- * theme x soft-contrast combinations (their exact `--color-base-content`/
- * `--color-base-100` hex pairs live in `app/styles/main.css`):
+ * FOCUS_DIM_LEVEL_MIN = 10 — deliberately BELOW the 4.5:1 WCAG AA text floor
+ * this app holds everything else to, which is worth explaining rather than
+ * leaving to look like an oversight.
+ *
+ * That floor protects text a reader has to read and cannot restyle. Focus
+ * mode's entire purpose is the opposite: to push the surrounding paragraphs
+ * out of attention. It is a preference dial, on the user's own machine,
+ * reversible with the same drag that set it — so holding it to a standard
+ * written for published content applies a promise made to readers to a
+ * setting whose only reader is the person who chose it. The floor was 63
+ * (the AA-clearing value derived below) and that turned out to forbid the
+ * entire range this feature exists to offer: at 40-55% the text measures
+ * 2.4-3.3:1, plainly present but receded, which is what focus mode looks
+ * like in the editors that popularised it.
+ *
+ * 10, not 0. The dim colour is a mix of the text colour INTO the background,
+ * so level 0 is exactly the background: 1.00:1, text that is not dim but
+ * absent. 10 measures ~1.22:1 — a ghost, still rendered, still selectable,
+ * still there when you drag the slider back. The distinction matters because
+ * one of those is a dimming setting and the other is an invisible-text trap.
+ *
+ * The AA derivation below is kept, unchanged, because it is still true and
+ * still useful: it is what the DEFAULT (65) clears, and it names the exact
+ * level (63) below which AA no longer holds, for anyone who wants to stay
+ * above it.
+ *
+ * Derived against all FOUR theme x soft-contrast combinations (their exact
+ * `--color-base-content`/`--color-base-100` hex pairs live in
+ * `app/styles/main.css`):
  *
  *   light        #1c1b19 on #fbfaf8
  *   light+soft   #1c1b19 on #e9e7e2
@@ -107,11 +131,13 @@ const DEFAULT_FOCUS_MODE_ENABLED = false
  *   L=63  light+soft -> 4.6312:1  (clears, with real margin)
  *
  * 63 is therefore the lowest whole-number level that clears 4.5:1 in every
- * one of the four combinations even after 8-bit rounding — the actual
- * `FOCUS_DIM_LEVEL_MIN` below. Re-verified against ACTUAL rendered pixels in
- * a real Chromium tab, not just this formula — `e2e/focus-dim-contrast.spec
- * .ts` sets focus mode on, dim level to 63, and each theme/soft combination
- * in turn (via `localStorage` + a full reload), then reads
+ * one of the four combinations even after 8-bit rounding. It is no longer
+ * the slider's floor (see the note at the top of this comment), but it is
+ * the level the default sits just above, and the one to return to if AA
+ * matters for a given document. Re-verified against ACTUAL rendered pixels
+ * in a real Chromium tab, not just this formula — `e2e/focus-dim-contrast
+ * .spec.ts` sets focus mode on, dim level to 63, and each theme/soft
+ * combination in turn (via `localStorage` + a full reload), then reads
  * `getComputedStyle(...).color` off a real dimmed `.cm-line` and the
  * editor's own rendered background and computes the ratio from those actual
  * pixels. Measured that way:
@@ -136,7 +162,7 @@ const DEFAULT_FOCUS_MODE_ENABLED = false
  * used — so a user who never touches this new slider keeps seeing exactly
  * the same dim they always did; only the ability to move it is new.
  */
-export const FOCUS_DIM_LEVEL_MIN = 63
+export const FOCUS_DIM_LEVEL_MIN = 10
 export const FOCUS_DIM_LEVEL_MAX = 100
 const DEFAULT_FOCUS_DIM_LEVEL = 65
 

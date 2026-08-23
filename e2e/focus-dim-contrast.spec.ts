@@ -1,16 +1,22 @@
 import { test, expect, type Page } from '@playwright/test'
 
 /**
- * Real-browser proof that `FOCUS_DIM_LEVEL_MIN` (`src/features/settings/
- * model/editorPreferences.ts`) — the derived floor of the "Focus dim level"
- * slider — clears the 4.5:1 WCAG AA text-contrast floor in every one of the
- * four theme x soft-contrast combinations, measured against ACTUAL rendered
+ * Real-browser proof that level 63 — the derived point at which dimmed text
+ * stops meeting WCAG AA — clears 4.5:1 in every one of the four theme x
+ * soft-contrast combinations, measured against ACTUAL rendered
  * pixels in a real Chromium tab rather than the formula the constant's own
  * doc comment (and `shared/lib/focusDimColor.test.ts`'s unit tests) already
- * derive it from. This is the "verify by measuring the extreme end in a real
- * browser in all four combinations" step the task calls for — a genuine
- * computed-style read of `getComputedStyle(...).color` against the editor's
- * own rendered background, not a re-statement of the arithmetic.
+ * derive it from — a genuine computed-style read of
+ * `getComputedStyle(...).color` against the editor's own rendered
+ * background, not a re-statement of the arithmetic.
+ *
+ * 63 is deliberately NOT the slider's minimum. That is 10: focus mode exists
+ * to push surrounding text out of attention, and it is a reversible personal
+ * preference rather than published content, so it is not held to a floor
+ * written for readers who cannot restyle what they are given (see
+ * `FOCUS_DIM_LEVEL_MIN`'s own comment). What this spec pins is the level a
+ * user can return to when they do want the dimmed text to stay AA-legible —
+ * a fact worth keeping true, just no longer a limit.
  *
  * Theme/`data-soft` are set via `localStorage` (matching the keys
  * `features/settings/model/theme.ts`/`softContrast.ts` themselves write)
@@ -26,7 +32,7 @@ const SOFT_CONTRAST_KEY = 'markdown-editor:soft-contrast'
 const FOCUS_MODE_ENABLED_KEY = 'markdown-editor:focus-mode-enabled'
 const FOCUS_DIM_LEVEL_KEY = 'markdown-editor:focus-dim-level'
 
-const FOCUS_DIM_LEVEL_MIN = 63
+const AA_THRESHOLD_DIM_LEVEL = 63
 
 const COMBINATIONS: ReadonlyArray<{
   label: string
@@ -99,12 +105,12 @@ function contrastRatio(a: [number, number, number], b: [number, number, number])
   return (l1 + 0.05) / (l2 + 0.05)
 }
 
-test.describe('focus dim level — real-browser contrast at the derived floor', () => {
+test.describe('focus dim level — real-browser contrast at the AA threshold', () => {
   for (const { label, theme, soft } of COMBINATIONS) {
-    test(`clears 4.5:1 at the minimum dim level (${FOCUS_DIM_LEVEL_MIN}%) — ${label}`, async ({
+    test(`clears 4.5:1 at the AA threshold level (${AA_THRESHOLD_DIM_LEVEL}%) — ${label}`, async ({
       page,
     }) => {
-      await primeAndReload(page, theme, soft, FOCUS_DIM_LEVEL_MIN)
+      await primeAndReload(page, theme, soft, AA_THRESHOLD_DIM_LEVEL)
 
       await page.locator('.cm-content').click()
       await page.keyboard.press('Control+a')

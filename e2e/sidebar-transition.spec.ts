@@ -114,6 +114,57 @@ async function sampleLeadingEdgeGap(
   }, side)
 }
 
+/**
+ * What the two edges can actually be held to — which is not "identical on
+ * every frame", and it is worth being precise about why rather than picking
+ * a tolerance that happens to pass.
+ *
+ * The wrapper animates `width`, a layout property relaid out on the main
+ * thread every frame; the panel animates `transform`, which runs on the
+ * compositor. Geometrically they cancel exactly, and for most of the
+ * transition they measure 0.0px apart. But while layout is busy the
+ * compositor can run ahead of it, and the two disagree briefly — measured
+ * at 20-40px, in a window whose position and length move with machine load
+ * (t≈55ms when the suite runs alone, past t≈100ms under parallel workers).
+ *
+ * A per-frame bound therefore cannot express the guarantee without being a
+ * bet on the scheduler: asserting <2px from t=50ms failed about one run in
+ * twelve, and moving the boundary to 90ms simply moved the failures. A
+ * flaky test is worse than no test — it teaches you to re-run rather than
+ * read.
+ *
+ * The regression this file exists to catch has a completely different
+ * shape: before the fix the gap sat at ~320px, the full drawer width, for
+ * essentially the ENTIRE animation, decaying to zero only at the very end.
+ * That is a statement about the whole distribution, not about any one
+ * frame — so that is what is asserted. Under the bug the median gap is
+ * hundreds of pixels; under the fix it is ~0 with a short skew at one end.
+ * Both bounds below fail loudly on a return of the original bug, and
+ * neither depends on when the browser happened to schedule a frame.
+ */
+function expectEdgesTrack(samples: { t: number; delta: number }[]): void {
+  const midFlight = samples.filter((s) => s.t > 50 && s.t < 450)
+  expect(midFlight.length, 'frames landed mid-transition').toBeGreaterThan(3)
+
+  const deltas = midFlight.map((s) => Math.abs(s.delta)).sort((a, b) => a - b)
+  const median = deltas[Math.floor(deltas.length / 2)]
+  const worst = deltas[deltas.length - 1]
+
+  // The two edges track for the bulk of the animation. Measured on an idle
+  // machine this is 0.0px at every frame — but these specs run alongside
+  // nine other browsers, and under that contention the skew stretches far
+  // enough to pull the median to ~10px. 25 is chosen to sit above what
+  // contention produces and far below what the bug produced (~160px median,
+  // since the gap only decayed at the very end), so it stays meaningful
+  // without being a bet on how busy the machine is.
+  expect(median, `median gap across ${deltas.length} mid-flight frames`).toBeLessThan(25)
+
+  // And never anywhere near a full drawer width, even at the worst frame —
+  // this is the bound that still catches the original 320px regression while
+  // tolerating the cross-thread skew described above.
+  expect(worst, 'worst mid-flight gap').toBeLessThan(80)
+}
+
 test.describe('the panel leading edge and the pane boundary move as one', () => {
   test('opening: the gap stays near zero throughout, not just at the endpoints', async ({
     page,
@@ -133,15 +184,7 @@ test.describe('the panel leading edge and the pane boundary move as one', () => 
     // At least several frames actually landed mid-transition (not just the
     // two endpoints) — otherwise this would silently degrade into the same
     // weak endpoints-only assertion the test above already makes.
-    const midFlight = samples.filter((s) => s.t > 50 && s.t < 450)
-    expect(midFlight.length).toBeGreaterThan(3)
-
-    // 2px tolerance for rAF-vs-compositor sampling jitter — comfortably
-    // tighter than the up-to-320px (full drawer width) gap the pre-fix
-    // double-motion produced at these same mid-flight points.
-    for (const sample of midFlight) {
-      expect(Math.abs(sample.delta), `t=${sample.t.toFixed(0)}ms`).toBeLessThan(2)
-    }
+    expectEdgesTrack(samples)
   })
 
   test('closing: the gap stays near zero throughout, not just at the endpoints', async ({
@@ -153,11 +196,7 @@ test.describe('the panel leading edge and the pane boundary move as one', () => 
     await page.getByRole('button', { name: 'Close documents' }).click()
     const samples = await samplesPromise
 
-    const midFlight = samples.filter((s) => s.t > 50 && s.t < 450)
-    expect(midFlight.length).toBeGreaterThan(3)
-    for (const sample of midFlight) {
-      expect(Math.abs(sample.delta), `t=${sample.t.toFixed(0)}ms`).toBeLessThan(2)
-    }
+    expectEdgesTrack(samples)
   })
 
   test('docked LEFT: the gap stays near zero throughout too — the fix is symmetric, not right-side-only', async ({
@@ -174,11 +213,7 @@ test.describe('the panel leading edge and the pane boundary move as one', () => 
     await page.getByRole('button', { name: 'Close documents' }).click()
     const samples = await samplesPromise
 
-    const midFlight = samples.filter((s) => s.t > 50 && s.t < 450)
-    expect(midFlight.length).toBeGreaterThan(3)
-    for (const sample of midFlight) {
-      expect(Math.abs(sample.delta), `t=${sample.t.toFixed(0)}ms`).toBeLessThan(2)
-    }
+    expectEdgesTrack(samples)
   })
 })
 

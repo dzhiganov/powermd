@@ -64,7 +64,13 @@ describe('focusDimColor', () => {
     )
   })
 
-  it('clears the 4.5:1 AA text floor in every theme x soft-contrast combination at level 63 (FOCUS_DIM_LEVEL_MIN)', () => {
+  // 63 is no longer the slider's floor (that is 10 — see
+  // `FOCUS_DIM_LEVEL_MIN`'s comment for why a preference dial is not held to
+  // a standard written for published text). It is still the level at which
+  // AA stops holding, which is worth keeping pinned: it is just above the
+  // default, and it is the number to return to for anyone who wants the
+  // dimmed text to stay AA-legible.
+  it('clears the 4.5:1 AA text floor in every theme x soft-contrast combination at level 63', () => {
     for (const [name, { content, base100 }] of Object.entries(COMBINATIONS)) {
       const mixed = mixedColor(hexToRgb(content), hexToRgb(base100), 63)
       const ratio = contrastRatio(mixed, hexToRgb(base100))
@@ -74,7 +80,7 @@ describe('focusDimColor', () => {
 
   it('the tightest combination (light+soft) is the binding constraint, and level 63 is not more headroom than necessary', () => {
     // One level lower (62) already drops light+soft below the floor — this
-    // is what makes 63 the derived minimum rather than an arbitrary
+    // is what makes 63 the exact AA threshold rather than an arbitrary
     // round-looking number with slack to spare.
     const { content, base100 } = COMBINATIONS['light+soft']
     const at62 = contrastRatio(
@@ -87,6 +93,29 @@ describe('focusDimColor', () => {
     )
     expect(at62).toBeLessThan(AA_TEXT_FLOOR)
     expect(at63).toBeGreaterThanOrEqual(AA_TEXT_FLOOR)
+  })
+
+  // The reason the slider stops at 10 rather than 0. This is the whole
+  // justification for that particular number, so it is pinned rather than
+  // left to a comment: 0 is not "very dim", it is the background colour
+  // exactly, and text the same colour as what it sits on is gone, not faint.
+  it('level 0 would be invisible, level 10 is merely faint — which is why the floor is 10', () => {
+    for (const [name, { content, base100 }] of Object.entries(COMBINATIONS)) {
+      const background = hexToRgb(base100)
+
+      const atZero = mixedColor(hexToRgb(content), background, 0)
+      expect(atZero, `${name}: level 0 is exactly the background`).toEqual(background)
+      expect(contrastRatio(atZero, background), `${name} at level 0`).toBeCloseTo(1, 5)
+
+      const atFloor = contrastRatio(mixedColor(hexToRgb(content), background, 10), background)
+      expect(atFloor, `${name} at level 10 is distinguishable from its background`).toBeGreaterThan(
+        1.1,
+      )
+      // Deliberately far below AA — see `FOCUS_DIM_LEVEL_MIN`'s comment.
+      expect(atFloor, `${name} at level 10 is well below AA, as intended`).toBeLessThan(
+        AA_TEXT_FLOOR,
+      )
+    }
   })
 
   it('level 100 is full-strength text — no dimming at all', () => {
