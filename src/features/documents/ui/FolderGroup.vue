@@ -221,12 +221,12 @@ const documentCount = computed(() => String(props.documents.length))
       </span>
     </div>
 
-    <!-- `ml-4`, not `ml-5`: this border is the guide line running down from
-         the folder's collapse chevron, so it should sit under the chevron's
-         centre. At `ml-5` it landed 4px to its right (measured: chevron
-         centre 985, line 989), which reads as a misalignment rather than as
-         a connection. -->
-    <ul v-show="!collapsed" class="ml-4 flex flex-col gap-1 border-l border-base-300 pl-3">
+    <!-- No guide line. There was a `border-l` running down from the folder's
+         chevron; indentation alone already says these rows belong to the
+         folder above, and the rule was one more piece of furniture in a
+         panel that is mostly text. Kept at the same total inset so nothing
+         shifts sideways when a folder is expanded. -->
+    <ul v-show="!collapsed" class="ml-4 flex flex-col gap-1 pl-3">
       <li v-if="documents.length === 0" class="px-3 py-1 text-xs text-base-content/50">Empty</li>
       <li v-for="doc in documents" :key="doc.id">
         <DocumentRow

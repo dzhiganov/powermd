@@ -7,8 +7,9 @@ import { test, expect, type Page } from '@playwright/test'
  * genuine `keydown`/`keypress`/`input`/`keyup` sequences reach its own
  * extensions (the completion source under test here included).
  *
- * Documents are seeded through the app's own UI (the "New file" button and
- * the title-rename affordances in `DocumentTitle.vue`/`DocumentRow.vue`),
+ * Documents are seeded through the app's own UI (the "New" menu's "New
+ * file" item and the title-rename affordances in
+ * `DocumentTitle.vue`/`DocumentRow.vue`),
  * not by writing to IndexedDB/localStorage directly — the completion
  * source reads the live `$documentList`/`$activeId` mirrors fed by
  * `src/app/wiring.ts`, which only ever change in response to the real
@@ -32,7 +33,10 @@ async function renameActiveDocument(page: Page, title: string): Promise<void> {
 }
 
 async function createDocument(page: Page, title: string): Promise<void> {
-  await page.getByRole('button', { name: 'New file' }).click()
+  // "New file" is a menu item under the "New" button now, not a button of
+  // its own — the two create actions were merged into one popover.
+  await page.getByRole('button', { name: 'New', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'New file' }).click()
   await renameActiveDocument(page, title)
 }
 

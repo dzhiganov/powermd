@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useUnit } from 'effector-vue/composition'
-import { PlusIcon, FolderPlusIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/vue/24/outline'
+import {
+  PlusIcon,
+  FolderPlusIcon,
+  DocumentPlusIcon,
+  ChevronDownIcon,
+  MagnifyingGlassIcon,
+  XMarkIcon,
+} from '@heroicons/vue/24/outline'
 
 import { useDialogFocusTrap } from '@/shared/lib/useDialog'
 import { ink } from '@/shared/lib/ink'
@@ -131,6 +138,61 @@ function isCollapsed(folderId: string): boolean {
 const creatingFolder = ref(false)
 const newFolderName = ref('')
 const newFolderInputRef = ref<HTMLInputElement | null>(null)
+
+// --- "New" popover -------------------------------------------------------
+//
+// One button instead of two. A full-width primary button next to a small
+// square icon button read as one important action and one afterthought,
+// when creating a file and creating a folder are the same kind of thing.
+// Same popover shape as `layout/ui/MoreMenu.vue` — local open state, close
+// on outside click, Escape returns focus to the trigger, and
+// `useDialogFocusTrap` for Tab-within-the-menu — rather than a second
+// hand-rolled variant of that behaviour.
+const newMenuOpen = ref(false)
+const newMenuRef = ref<HTMLElement | null>(null)
+const newTriggerRef = ref<HTMLButtonElement | null>(null)
+const newFirstItemRef = ref<HTMLButtonElement | null>(null)
+const { trapFocus: trapNewMenuFocus } = useDialogFocusTrap(newMenuRef, newMenuOpen, newFirstItemRef)
+
+function toggleNewMenu() {
+  newMenuOpen.value = !newMenuOpen.value
+}
+
+function closeNewMenu() {
+  newMenuOpen.value = false
+}
+
+function handleNewMenuOutsideClick(event: MouseEvent) {
+  const target = event.target as Node | null
+  if (target === null) return
+  if (newMenuRef.value?.contains(target) === true) return
+  if (newTriggerRef.value?.contains(target) === true) return
+  closeNewMenu()
+}
+
+watch(newMenuOpen, (isOpen) => {
+  if (isOpen) {
+    document.addEventListener('click', handleNewMenuOutsideClick, true)
+  } else {
+    document.removeEventListener('click', handleNewMenuOutsideClick, true)
+  }
+})
+onUnmounted(() => document.removeEventListener('click', handleNewMenuOutsideClick, true))
+
+function handleNewMenuEscape() {
+  closeNewMenu()
+  newTriggerRef.value?.focus()
+}
+
+function handleCreateDocument() {
+  closeNewMenu()
+  documentCreated()
+}
+
+function handleCreateFolder() {
+  closeNewMenu()
+  startCreateFolder()
+}
 
 function startCreateFolder() {
   creatingFolder.value = true
@@ -380,25 +442,54 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
             </span>
           </div>
 
-          <div class="flex items-center gap-1.5">
+          <div class="relative">
             <button
+              ref="newTriggerRef"
               type="button"
-              class="btn btn-primary btn-xs h-[30px] flex-1 gap-1.5"
-              aria-label="New file"
-              @click="documentCreated()"
+              class="btn btn-primary btn-xs h-[30px] w-full gap-1.5"
+              aria-label="New"
+              aria-haspopup="menu"
+              :aria-expanded="newMenuOpen"
+              @click="toggleNewMenu"
             >
               <PlusIcon class="h-3.5 w-3.5" />
-              New file
+              New
+              <ChevronDownIcon class="h-3 w-3 opacity-70" aria-hidden="true" />
             </button>
-            <button
-              type="button"
-              class="btn btn-ghost btn-xs btn-square h-[30px] w-[30px] border border-base-300"
-              aria-label="New folder"
-              :title="showTooltips ? 'New folder' : undefined"
-              @click="startCreateFolder"
+
+            <div
+              v-if="newMenuOpen"
+              ref="newMenuRef"
+              role="menu"
+              aria-label="New"
+              class="new-menu"
+              style="
+                background: var(--md-pop, var(--color-base-100));
+                border-color: var(--color-base-300);
+              "
+              @keydown.esc="handleNewMenuEscape"
+              @keydown.tab="trapNewMenuFocus"
             >
-              <FolderPlusIcon class="h-3.5 w-3.5" />
-            </button>
+              <button
+                ref="newFirstItemRef"
+                type="button"
+                role="menuitem"
+                class="new-menu-item"
+                @click="handleCreateDocument"
+              >
+                <DocumentPlusIcon class="h-3.5 w-3.5 shrink-0" />
+                New file
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                class="new-menu-item"
+                @click="handleCreateFolder"
+              >
+                <FolderPlusIcon class="h-3.5 w-3.5 shrink-0" />
+                New folder
+              </button>
+            </div>
           </div>
         </div>
 
@@ -704,6 +795,48 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
 }
 
 .dock-btn:focus-visible {
+  outline: 2px solid var(--md-accent);
+  outline-offset: -2px;
+}
+
+/* "New" popover — same flat, square treatment as the header's own menu
+   (`layout/ui/MoreMenu.vue`) and the completion menus, so every popover in
+   this app looks like the same object. Full width of the trigger rather
+   than a fixed width: it sits under a full-width button, and a narrower
+   menu under a wider button reads as a mistake. */
+.new-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  padding: 4px;
+  border: 1px solid;
+  box-shadow: var(--md-shadow-pop);
+}
+
+.new-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  color: var(--color-base-content);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.new-menu-item:hover,
+.new-menu-item:focus-visible {
+  background: var(--md-hov, var(--color-base-200));
+}
+
+.new-menu-item:focus-visible {
   outline: 2px solid var(--md-accent);
   outline-offset: -2px;
 }

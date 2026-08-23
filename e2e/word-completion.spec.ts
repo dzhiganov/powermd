@@ -34,7 +34,10 @@ async function renameActiveDocument(page: Page, title: string): Promise<void> {
 }
 
 async function createDocument(page: Page, title: string): Promise<void> {
-  await page.getByRole('button', { name: 'New file' }).click()
+  // "New file" is a menu item under the "New" button now, not a button of
+  // its own — the two create actions were merged into one popover.
+  await page.getByRole('button', { name: 'New', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'New file' }).click()
   await renameActiveDocument(page, title)
 }
 
