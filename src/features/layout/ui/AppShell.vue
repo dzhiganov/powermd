@@ -151,11 +151,15 @@ const centered = true
       :side="drawerSide"
       @dock-changed="drawerSideChanged"
     >
+      <!-- `side` reaches the two menus so their panels open INWARD. The
+           tools row mirrors with the dock side, and a right-aligned panel
+           grows leftward — so against the left edge of the window it opened
+           off-screen. -->
       <template #tools>
         <ThemeToggle />
         <ImportButton />
-        <ExportMenu />
-        <MoreMenu :show-tooltips="showTooltips" />
+        <ExportMenu :side="drawerSide" />
+        <MoreMenu :show-tooltips="showTooltips" :side="drawerSide" />
       </template>
     </DocumentDrawer>
 

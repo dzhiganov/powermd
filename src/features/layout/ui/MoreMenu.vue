@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import {
   EllipsisHorizontalIcon,
   Cog6ToothIcon,
@@ -17,7 +18,17 @@ import { aboutOpened } from '../model/dialogs'
 // `Toolbar.vue`, its only mounting site, already does for several other
 // features), so this is purely about keeping the prop-threading pattern
 // consistent with the rest of the header rather than a hard boundary rule.
-withDefaults(defineProps<{ showTooltips?: boolean }>(), { showTooltips: false })
+// `side` is the documents panel's dock side, threaded down from
+// `AppShell.vue`. This menu lives in that panel's tools row, which mirrors
+// with it — so the panel has to open away from whichever window edge the
+// row is sitting against, or it renders off-screen. See `PopoverMenu`'s
+// `align` prop for the fuller note.
+const props = withDefaults(defineProps<{ showTooltips?: boolean; side?: 'left' | 'right' }>(), {
+  showTooltips: false,
+  side: 'right',
+})
+
+const menuAlign = computed(() => (props.side === 'left' ? 'start' : 'end'))
 
 // Open/close state, outside-click dismissal, Escape-returns-focus, and the
 // Tab-trap all now live in `PopoverMenu` (`@/shared/ui/PopoverMenu.vue`) —
@@ -41,7 +52,7 @@ function handleAbout(close: () => void): void {
 </script>
 
 <template>
-  <PopoverMenu label="More actions" align="end" width="208px" :z-index="70">
+  <PopoverMenu label="More actions" :align="menuAlign" width="208px" :z-index="70">
     <template #trigger="{ open, toggle, setTriggerRef }">
       <button
         :ref="setTriggerRef"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import {
   ArrowDownTrayIcon,
   DocumentIcon,
@@ -19,6 +20,14 @@ import {
   copyMarkdownRequested,
   copyHtmlRequested,
 } from '../model/transfer'
+
+// `side` is the documents panel's dock side, threaded down from
+// `AppShell.vue` — this menu sits in that panel's tools row, which mirrors
+// with it, so the panel must open away from whichever window edge the row
+// is against. See `PopoverMenu`'s `align` prop.
+const props = withDefaults(defineProps<{ side?: 'left' | 'right' }>(), { side: 'right' })
+
+const menuAlign = computed(() => (props.side === 'left' ? 'start' : 'end'))
 
 const showTooltips = useUnit($showTooltips)
 
@@ -51,7 +60,13 @@ function handleCopyHtml(close: () => void): void {
 </script>
 
 <template>
-  <PopoverMenu class="print:hidden" label="Export document" align="end" width="256px" :z-index="70">
+  <PopoverMenu
+    class="print:hidden"
+    label="Export document"
+    :align="menuAlign"
+    width="256px"
+    :z-index="70"
+  >
     <template #trigger="{ open, toggle, setTriggerRef }">
       <button
         :ref="setTriggerRef"

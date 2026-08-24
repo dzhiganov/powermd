@@ -49,9 +49,18 @@ withDefaults(
     /** Accessible name for the `role="menu"` panel — normally the same
      * string as the trigger's own `aria-label`. */
     label: string
-    /** `'end'` (default): right-aligned, sized by `width`. `'stretch'`:
-     * spans the full width of the trigger's containing box. */
-    align?: 'end' | 'stretch'
+    /** `'end'` (default): right-aligned, sized by `width`. `'start'`:
+     * left-aligned. `'stretch'`: spans the full width of the trigger's
+     * containing box.
+     *
+     * `'start'` exists because a right-aligned panel grows leftward from
+     * its trigger, and a trigger near the left edge of the window therefore
+     * pushes its own panel off-screen. That is exactly what happened to the
+     * tools in the documents panel once the panel could dock left: the
+     * cluster mirrors to the left edge, the menus kept opening rightward-
+     * anchored, and their contents were clipped by the window. Callers that
+     * can end up near either edge pass whichever alignment opens inward. */
+    align?: 'start' | 'end' | 'stretch'
     /** Panel width in `align="end"` mode (e.g. `'208px'`). Ignored in
      * `align="stretch"` mode, where the panel's width tracks the
      * trigger's containing box instead. Omitted, the panel shrinks to fit
@@ -148,11 +157,11 @@ defineExpose({ close })
       role="menu"
       :aria-label="label"
       class="popover-menu-panel"
-      :class="align === 'stretch' ? 'popover-menu-panel--stretch' : 'popover-menu-panel--end'"
+      :class="`popover-menu-panel--${align}`"
       :style="{
         top: `calc(100% + ${offset}px)`,
         zIndex,
-        width: align === 'end' ? width : undefined,
+        width: align === 'stretch' ? undefined : width,
       }"
       @keydown.esc="handleEscape"
       @keydown.tab="trapFocus"
@@ -184,6 +193,10 @@ defineExpose({ close })
 
 .popover-menu-panel--end {
   right: 0;
+}
+
+.popover-menu-panel--start {
+  left: 0;
 }
 
 .popover-menu-panel--stretch {
