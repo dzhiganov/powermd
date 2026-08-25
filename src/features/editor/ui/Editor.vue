@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onUnmounted, ref } from 'vue'
 
+import ScrollJumpButtons from '@/shared/ui/ScrollJumpButtons.vue'
+
 import { useCodeMirror } from '../lib/useCodeMirror'
 import { createEditorScrollHandle } from '../lib/scrollHandle'
 import { $content, contentChanged, loadContent } from '../model/content'
@@ -23,6 +25,15 @@ defineProps<{
 }>()
 
 const container = ref<HTMLDivElement | null>(null)
+
+// The element `ScrollJumpButtons` (below) actually measures/scrolls —
+// CodeMirror's own `.cm-scroller`, a child `useCodeMirror` creates
+// asynchronously inside `container`, never available at `onMounted` time.
+// Set from `onViewReady` below (the same moment `editorScrollHandleMounted`
+// wraps the same `view.scrollDOM` for the scroll-sync feature) and cleared
+// from `onViewDestroy`, so `ScrollJumpButtons` never holds a reference to a
+// torn-down view.
+const scrollElement = ref<HTMLElement | null>(null)
 
 const {
   loadDocument,
@@ -64,10 +75,12 @@ const {
     // `model/view.ts`) — the formatting toolbar and any other in-feature UI
     // dispatch commands against it directly.
     editorViewMounted(view)
+    scrollElement.value = view.scrollDOM
   },
   onViewDestroy: () => {
     editorScrollHandleUnmounted()
     editorViewDestroyed()
+    scrollElement.value = null
   },
 })
 
@@ -151,7 +164,16 @@ onUnmounted(focusModeSubscription.unsubscribe)
 </script>
 
 <template>
-  <div ref="container" class="h-full min-w-0" :class="{ 'editor-centered': centered }" />
+  <!-- `relative`: the containing block `ScrollJumpButtons` (an absolutely
+       positioned overlay) pins its corner against. `container` (where
+       CodeMirror actually mounts) stays the direct, unwrapped element it
+       always was in every other respect — this is purely an extra
+       positioning ancestor, not a change to CodeMirror's own DOM
+       ownership. -->
+  <div class="relative h-full min-w-0">
+    <div ref="container" class="h-full min-w-0" :class="{ 'editor-centered': centered }" />
+    <ScrollJumpButtons :scroll-element="scrollElement" />
+  </div>
 </template>
 
 <style scoped>

@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useUnit } from 'effector-vue/composition'
 
 import { ink } from '@/shared/lib/ink'
+import ScrollJumpButtons from '@/shared/ui/ScrollJumpButtons.vue'
 
 import { $html } from '../model/preview'
 import { previewScrollHandleMounted, previewScrollHandleUnmounted } from '../model/scrollHandle'
@@ -173,15 +174,29 @@ const previewMaxWidth = 'min(680px, var(--md-reading-width, 75ch))'
 <template>
   <!-- Root class/style are open for the parent to extend (Vue's default
        attribute fallthrough) — `layout/ui/PreviewPane.vue` adds `min-w-0
-       flex-1` so this scroller sizes correctly inside its flex parent. -->
-  <div ref="scroller" class="h-full overflow-y-auto print:h-auto print:overflow-visible">
-    <div
-      ref="content"
-      class="markdown-preview prose prose-sm p-4 print:max-w-none print:p-0"
-      :class="centered ? 'mx-auto' : 'max-w-none'"
-      :style="centered ? { maxWidth: previewMaxWidth } : undefined"
-      v-html="html"
-    />
+       flex-1` so this wrapper sizes correctly inside its flex parent.
+       `relative`: the containing block `ScrollJumpButtons` (an absolutely
+       positioned overlay) pins its corner against — `scroller` below stays
+       the actual scrolling element, unchanged in every other respect, this
+       is purely an extra positioning ancestor around it.
+       `print:contents`: removes this wrapper from the box tree entirely
+       when printing (`display: contents` — its children render as if it
+       weren't there), so it introduces no new fixed-height/overflow box
+       for the print renderer to clip against, exactly preserving the
+       print layout `scroller`'s own `print:h-auto print:overflow-visible`
+       (and `content`'s `print:max-w-none print:p-0`) already relied on
+       before this wrapper existed. -->
+  <div class="relative h-full min-w-0 print:contents">
+    <div ref="scroller" class="h-full overflow-y-auto print:h-auto print:overflow-visible">
+      <div
+        ref="content"
+        class="markdown-preview prose prose-sm p-4 print:max-w-none print:p-0"
+        :class="centered ? 'mx-auto' : 'max-w-none'"
+        :style="centered ? { maxWidth: previewMaxWidth } : undefined"
+        v-html="html"
+      />
+    </div>
+    <ScrollJumpButtons :scroll-element="scroller" class="print:hidden" />
   </div>
 </template>
 
