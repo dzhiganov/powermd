@@ -20,3 +20,13 @@ export { taskListItemToggleRequested } from './model/taskList'
 export { EDITOR_SHORTCUTS } from './lib/shortcuts'
 export type { EditorShortcut } from './lib/shortcuts'
 export type { WikiLinkDocument } from './lib/wikiLinkCompletion'
+export {
+  bookmarksChanged,
+  $bookmarkMarkers,
+  bookmarkGutterClicked,
+  bookmarkMarkerClicked,
+  bookmarkToggleAtCursorRequested,
+  bookmarkPositionsChanged,
+  bookmarkJumpRequested,
+} from './model/bookmarks'
+export type { BookmarkMarker } from './lib/bookmarkGutter'

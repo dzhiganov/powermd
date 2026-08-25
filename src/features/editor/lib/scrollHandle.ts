@@ -65,10 +65,53 @@ export interface EditorScrollHandle {
    * it).
    */
   flashLine(line: number): void
+  /** The main selection's head, as an absolute document offset — what
+   * `src/app/bookmarks.ts`'s next/previous navigation measures "which
+   * bookmark comes after/before the cursor" against. */
+  getCursorPos(): number
+  /**
+   * Moves the cursor to `pos` (clamped into the document's current length),
+   * scrolls it into view, and flashes its line — the bookmark "jump to
+   * next/previous" navigation's landing feedback, reusing the exact same
+   * flash mechanism `flashLine` above already provides rather than a
+   * second one. Unlike `flashLine`, this genuinely moves the selection (the
+   * whole point — "jump to" a bookmark means putting the cursor there), but
+   * still never marks the document dirty: the dispatch below carries only a
+   * `selection` and `scrollIntoView`, no document change.
+   */
+  jumpToPos(pos: number): void
 }
 
 export function createEditorScrollHandle(view: EditorView): EditorScrollHandle {
   let flashTimeout: ReturnType<typeof setTimeout> | null = null
+
+  // Factored out of `flashLine` below (rather than the public method
+  // calling `this.flashLine` from `jumpToPos`) so this handle stays safe to
+  // destructure — every other method here is a closure over `view`, never
+  // `this`, and `jumpToPos` reuses this same closure shape.
+  function doFlashLine(line: number): void {
+    if (flashTimeout !== null) {
+      clearTimeout(flashTimeout)
+      flashTimeout = null
+    }
+    const clamped = Math.min(Math.max(line, 1), view.state.doc.lines)
+    const docLine = view.state.doc.line(clamped)
+    view.dispatch({ effects: flashLineEffect.of(docLine.from) })
+    flashTimeout = setTimeout(() => {
+      flashTimeout = null
+      // Guards a view torn down between the dispatch above and this
+      // timeout firing (e.g. a fast unmount right after a jump) —
+      // dispatching on a destroyed view throws. In the far more common
+      // case of a *document switch* mid-flash, `loadDocument`'s
+      // `setState` rebuild has already reset every `StateField` (this
+      // one included) back to its `create()` default, so this dispatch
+      // lands as a harmless no-op rather than clearing something that
+      // matters.
+      if (view.dom.isConnected) {
+        view.dispatch({ effects: clearFlashEffect.of(null) })
+      }
+    }, FLASH_HOLD_MS)
+  }
 
   return {
     getScroller: () => view.scrollDOM,
@@ -89,28 +132,13 @@ export function createEditorScrollHandle(view: EditorView): EditorScrollHandle {
       const top = block.top + fraction * (block.bottom - block.top)
       return top + view.documentPadding.top
     },
-    flashLine(line) {
-      if (flashTimeout !== null) {
-        clearTimeout(flashTimeout)
-        flashTimeout = null
-      }
-      const clamped = Math.min(Math.max(line, 1), view.state.doc.lines)
-      const docLine = view.state.doc.line(clamped)
-      view.dispatch({ effects: flashLineEffect.of(docLine.from) })
-      flashTimeout = setTimeout(() => {
-        flashTimeout = null
-        // Guards a view torn down between the dispatch above and this
-        // timeout firing (e.g. a fast unmount right after a jump) —
-        // dispatching on a destroyed view throws. In the far more common
-        // case of a *document switch* mid-flash, `loadDocument`'s
-        // `setState` rebuild has already reset every `StateField` (this
-        // one included) back to its `create()` default, so this dispatch
-        // lands as a harmless no-op rather than clearing something that
-        // matters.
-        if (view.dom.isConnected) {
-          view.dispatch({ effects: clearFlashEffect.of(null) })
-        }
-      }, FLASH_HOLD_MS)
+    flashLine: doFlashLine,
+    getCursorPos: () => view.state.selection.main.head,
+    jumpToPos(pos) {
+      const clamped = Math.min(Math.max(pos, 0), view.state.doc.length)
+      view.dispatch({ selection: { anchor: clamped }, scrollIntoView: true })
+      view.focus()
+      doFlashLine(view.state.doc.lineAt(clamped).number)
     },
   }
 }

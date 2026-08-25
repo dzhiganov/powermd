@@ -16,7 +16,19 @@ import { buildWordCompletionSource } from './wordCompletion'
 import { inlineCompletionTheme } from './completionTheme'
 import { indentListItem, outdentListItem } from './listIndent'
 import { focusModeExtension } from './focusMode'
+import {
+  bookmarkMarkersField,
+  buildBookmarkGutterExtension,
+  readBookmarkPositions,
+  setBookmarksEffect,
+  type BookmarkMarker,
+} from './bookmarkGutter'
 import { $wikiLinkDocuments, $activeWikiLinkDocumentId } from '../model/editorEvents'
+import {
+  bookmarkGutterClicked,
+  bookmarkMarkerClicked,
+  bookmarkPositionsChanged,
+} from '../model/bookmarks'
 
 /**
  * Marks a dispatched transaction as programmatic so the update listener can
@@ -40,6 +52,18 @@ const wikiLinkCompletionSource = buildWikiLinkCompletionSource(
   () => $wikiLinkDocuments.getState(),
   () => $activeWikiLinkDocumentId.getState(),
 )
+
+/**
+ * Same "built once, reused across every `createState` call" shape as
+ * `wikiLinkCompletionSource` above — the callbacks just forward to this
+ * feature's own model events (`editor/model/bookmarks.ts`), which is safe
+ * to share across every mount/`loadDocument` rebuild since neither callback
+ * closes over anything view- or document-specific.
+ */
+const bookmarkGutterExtension = buildBookmarkGutterExtension({
+  onAddRequested: (pos) => bookmarkGutterClicked(pos),
+  onMarkerActivated: (id) => bookmarkMarkerClicked(id),
+})
 
 /**
  * Same "built once, reused" shape as `wikiLinkCompletionSource` above — the
@@ -193,6 +217,16 @@ interface UseCodeMirrorOptions {
    * through `setFocusMode` instead, which reconfigures the `Compartment` in
    * place — see `lib/focusMode.ts` for the feature itself. */
   initialFocusModeEnabled: boolean
+  /** Initial bookmark marker list for `doc` — read once when the view is
+   * created. Later documents loaded via `loadDocument` bring their own
+   * bookmark list as an explicit second argument (never a closure
+   * variable): unlike every preference above, which changes *while staying
+   * on the same document*, a document switch must seed the NEW document's
+   * bookmarks atomically with its content, not react to it a tick later —
+   * see `loadDocument`'s own doc comment. Live edits (create/recolour/
+   * delete a bookmark while staying on the same document) go through
+   * `setBookmarks` instead. */
+  initialBookmarks: BookmarkMarker[]
   /** Called with the full document string whenever the user edits it. */
   onChange: (value: string) => void
   /** Called once, synchronously, right after the `EditorView` is created.
@@ -286,16 +320,41 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         // `listIndentKeymap`'s own doc comment for the precedence chain
         // this ordering produces.
         listIndentKeymap,
+        // The bookmarks gutter (`lib/bookmarkGutter.ts`) — built once at
+        // module scope (see `bookmarkGutterExtension`'s own comment above).
+        // Its `bookmarkMarkersField` always starts EMPTY on a fresh state
+        // (see that field's own `create`); `loadDocument`/the initial mount
+        // below immediately dispatch `setBookmarksEffect` right after
+        // creating this state to seed the real list, atomically with the
+        // document it belongs to — see `loadDocument`'s own doc comment for
+        // why that has to be an explicit second step rather than baked into
+        // `create()` via a closure variable.
+        bookmarkGutterExtension,
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return
+          // Bookmark position mapping runs for EVERY document-changing
+          // update, including a programmatic one (see `isProgrammatic`
+          // below) — whether a bookmark's anchor needs to move depends only
+          // on whether the TEXT changed, never on who/what triggered the
+          // change (a list-indent command, a task-list toggle, and a
+          // keystroke all move text exactly the same way). Reads the
+          // ALREADY-MAPPED positions back out of the field (see
+          // `readBookmarkPositions`'s own doc comment) — the mapping itself
+          // already happened inside `bookmarkMarkersField`'s own `update`,
+          // via `RangeSet.map`, before this listener ever runs.
+          const positions = readBookmarkPositions(update.state.field(bookmarkMarkersField))
+          if (positions.length > 0) bookmarkPositionsChanged(positions)
+
           // A `view.setState` rebuild (document load, see `loadDocument`)
           // never invokes this listener at all — CodeMirror only calls
           // `updateListener` for updates produced by `dispatch`, and
           // `setState` doesn't go through `dispatch`. So any invocation
           // reaching this point is necessarily a real dispatched
-          // transaction; the only remaining case to skip is an explicitly
-          // programmatic `dispatch` (the `programmatic` annotation), which
-          // must not flow out through `onChange` either.
+          // transaction; the only remaining case to skip (for `onChange`
+          // specifically — bookmark position mapping above already ran
+          // regardless) is an explicitly programmatic `dispatch` (the
+          // `programmatic` annotation), which must not flow out through
+          // `onChange` either.
           const isProgrammatic = update.transactions.some(
             (tr) => tr.annotation(programmatic) === true,
           )
@@ -315,6 +374,16 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
     })
 
     options.onViewReady?.(view.value)
+
+    // Seeds the bookmark gutter for the initial document — `createState`'s
+    // `bookmarkMarkersField` always starts empty (see that field's own
+    // `create`), so the real list has to be applied as an explicit second
+    // step right after the view is created, same as `loadDocument` does for
+    // every later document. Skipped when there's nothing to seed, purely to
+    // avoid a no-op dispatch on the (very common) "no bookmarks yet" case.
+    if (options.initialBookmarks.length > 0) {
+      view.value.dispatch({ effects: setBookmarksEffect.of(options.initialBookmarks) })
+    }
 
     // CodeMirror only re-measures line wrapping and cursor coordinates
     // when it detects a layout change of its own accord (typing, a DOM
@@ -382,12 +451,45 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
    *
    * `setState` preserves the scroller's DOM `scrollTop`, so it is reset
    * explicitly here to open the document at the very top.
+   *
+   * `bookmarks` is the NEW document's own bookmark list, seeded via an
+   * explicit `setBookmarksEffect` dispatch immediately after the state
+   * rebuild — deliberately a parameter here rather than a closure variable
+   * read inside `bookmarkMarkersField`'s `create()` (the way
+   * `currentLineWrap`/`currentSpellcheck`/etc. above are): those preferences
+   * only ever change WHILE STAYING on the same document (a live toggle,
+   * reacted to independently of any document switch), so reading a closure
+   * variable that "whatever it currently is" is exactly right for them.
+   * Bookmarks, by contrast, MUST change atomically with the document being
+   * switched to — a closure variable set by a separate, independently-timed
+   * caller could race the switch (see `Editor.vue`'s own comment on this),
+   * where an explicit parameter passed at the same call site as `value`
+   * cannot.
    */
-  function loadDocument(value: string) {
+  function loadDocument(value: string, bookmarks: BookmarkMarker[]) {
     const current = view.value
     if (!current) return
     current.setState(createState(value))
     current.scrollDOM.scrollTop = 0
+    if (bookmarks.length > 0) {
+      current.dispatch({ effects: setBookmarksEffect.of(bookmarks) })
+    }
+  }
+
+  /**
+   * Applies a fresh bookmark list to the *live* view without a `setState`
+   * rebuild — a plain `dispatch` with only an `effects` entry (same shape as
+   * `setLineWrap` below), so undo history, cursor, and scroll are all
+   * untouched. This is the LIVE-EDIT path: creating, recolouring, or
+   * deleting a bookmark while staying on the same document. Switching
+   * documents goes through `loadDocument`'s own `bookmarks` parameter
+   * instead — see that function's doc comment for why the two are kept
+   * deliberately separate rather than this function alone covering both.
+   */
+  function setBookmarks(bookmarks: BookmarkMarker[]) {
+    const current = view.value
+    if (!current) return
+    current.dispatch({ effects: setBookmarksEffect.of(bookmarks) })
   }
 
   /**
@@ -549,6 +651,7 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
     setSpellcheck,
     setWordCompletion,
     setFocusMode,
+    setBookmarks,
     requestMeasure,
   }
 }

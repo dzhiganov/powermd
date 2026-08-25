@@ -31,6 +31,7 @@ import {
 import { initScrollSync, scrollSyncEnabledChanged } from '@/features/scroll-sync'
 import {
   initDocuments,
+  initBookmarks,
   activeDocumentEdited,
   activeDocumentLoaded,
   documentImported,
@@ -85,6 +86,7 @@ import { initPaneJump } from './paneJump'
 import { initDocumentsSearchShortcut } from './documentsSearchShortcut'
 import { initWikiLinks } from './wikiLinks'
 import { initTaskListToggle } from './taskListToggle'
+import { initBookmarksWiring } from './bookmarks'
 import { isWordCompletionActive } from './lib/wordCompletionScope'
 
 import '@/features/settings'
@@ -157,6 +159,19 @@ initTaskListToggle()
 // from the editor's public API, so `documents` stays free of any editor seed
 // content.
 initDocuments({ welcomeContent: WELCOME_CONTENT })
+
+// Restores every bookmark from IndexedDB — same "plain function called
+// once" shape as `initDocuments` above, and has to run after it (bookmarks
+// are meaningless without the documents they belong to, though nothing here
+// actually depends on load ORDER completing first — both effects run
+// independently and `$activeBookmarks` simply reflects whichever documents/
+// bookmarks have loaded so far). See `features/documents/model/bookmarks.ts`.
+initBookmarks()
+
+// Connects `editor`'s CodeMirror bookmark gutter/keyboard bindings to
+// `documents`' bookmark CRUD/persistence — see `src/app/bookmarks.ts`'s own
+// doc comment for the full design.
+initBookmarksWiring()
 
 // Puts the active document's id in the URL and keeps it there — see
 // `src/app/urlSync.ts` for the routing-approach writeup (query param +

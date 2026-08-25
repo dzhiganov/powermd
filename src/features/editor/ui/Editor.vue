@@ -6,6 +6,7 @@ import { createEditorScrollHandle } from '../lib/scrollHandle'
 import { $content, contentChanged, loadContent } from '../model/content'
 import { editorScrollHandleMounted, editorScrollHandleUnmounted } from '../model/scrollHandle'
 import { editorViewMounted, editorViewDestroyed } from '../model/view'
+import { $bookmarkMarkers } from '../model/bookmarks'
 import {
   $lineWrapEnabled,
   editorFontMetricsChanged,
@@ -29,6 +30,7 @@ const {
   setSpellcheck,
   setWordCompletion,
   setFocusMode,
+  setBookmarks,
   requestMeasure,
 } = useCodeMirror(container, {
   // Read once, synchronously, at mount. If the restored/seeded document has
@@ -48,6 +50,10 @@ const {
   initialWordCompletionEnabled: $wordCompletionEnabled.getState(),
   // Same one-shot read again, for the focus-mode on/off preference.
   initialFocusModeEnabled: $focusModeEnabled.getState(),
+  // Same one-shot read again, for the active document's bookmark markers —
+  // `src/app/wiring.ts` mirrors `documents`' `$activeBookmarks` into
+  // `$bookmarkMarkers` synchronously before this component ever mounts.
+  initialBookmarks: $bookmarkMarkers.getState(),
   onChange: (value) => contentChanged(value),
   onViewReady: (view) => {
     // Wraps the raw `EditorView` into the narrow `EditorScrollHandle` shape
@@ -70,8 +76,32 @@ const {
 // scroll reset to the top, and — crucially — no `contentChanged`, so
 // loading a document never flags it unsaved. `loadContent` only fires for
 // real loads, never on keystrokes, so the view is never rebuilt mid-edit.
-const contentSubscription = loadContent.watch((value) => loadDocument(value))
+//
+// `$bookmarkMarkers.getState()` is read FRESH here (not via a separately
+// timed `.watch()`) rather than trusted to already be in sync by the time
+// this fires: Effector fully resolves the whole reactive graph for one
+// transaction (including `$bookmarkMarkers`, downstream of `documents`'
+// `$activeId` in `src/app/wiring.ts`) before running ANY `.watch()`
+// callback for that transaction, so reading it here is always the value for
+// the document `loadContent`'s own payload belongs to — never a stale one
+// left over from the document being switched away from. See
+// `useCodeMirror.ts`'s `loadDocument` for why this has to be an explicit
+// parameter rather than a closure variable the way every other preference
+// below is handled.
+const contentSubscription = loadContent.watch((value) =>
+  loadDocument(value, $bookmarkMarkers.getState()),
+)
 onUnmounted(contentSubscription.unsubscribe)
+
+// Live bookmark edits (create/recolour/delete) while staying on the SAME
+// document — applied via `setBookmarks`' effects-only dispatch, never a
+// state rebuild, so undo history/cursor/scroll are untouched (same shape as
+// `wrapSubscription` below). Also fires once, redundantly but harmlessly,
+// on every document switch (`$bookmarkMarkers` changes then too) — by the
+// time it does, `loadDocument` above has already seeded the correct list
+// for the new document, so this just re-applies the same data.
+const bookmarksSubscription = $bookmarkMarkers.watch((markers) => setBookmarks(markers))
+onUnmounted(bookmarksSubscription.unsubscribe)
 
 // Settings feature owns the persisted line-wrap preference; wiring.ts
 // mirrors it into this feature's own `$lineWrapEnabled`. `.watch` fires

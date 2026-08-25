@@ -1,4 +1,6 @@
-import type { Folder, GitHubOrigin, MarkdownDocument } from '../model/types'
+import { isBookmarkColorId, DEFAULT_BOOKMARK_COLOR } from '@/shared/config/bookmarkColors'
+
+import type { Bookmark, Folder, GitHubOrigin, MarkdownDocument } from '../model/types'
 
 /**
  * Thin promise wrapper over raw IndexedDB. Chosen over the `idb` package on
@@ -43,11 +45,25 @@ const DB_NAME = 'markdown-editor'
  *     one), same "backfill on the existing cursor walk" treatment as
  *     `folderId`/`origin` before it — folders have no version of their own
  *     to bump independently, they ride the document store's version.
+ *
+ * v4 -> v5: adds the `bookmarks` object store (keyPath `id`, plus a
+ * non-unique `documentId` index so every bookmark belonging to one document
+ * can be found — and cascade-deleted, see `deleteDocument` below — without a
+ * full table scan). This is a NEW, wholly independent store: unlike every
+ * migration above, it does not touch a single field on any existing
+ * `documents`/`folders`/`meta` record — there is nothing to backfill,
+ * because no bookmark rows exist yet in any pre-v5 install (the feature is
+ * new). This is also why this migration is safe to prove correct with a
+ * plain "does an old document survive the upgrade" check rather than a
+ * cursor-walk-content diff: an ADD-A-STORE migration cannot corrupt data it
+ * never touches.
  */
-const DB_VERSION = 4
+const DB_VERSION = 5
 const DOC_STORE = 'documents'
 const META_STORE = 'meta'
 const FOLDER_STORE = 'folders'
+const BOOKMARK_STORE = 'bookmarks'
+const BOOKMARK_DOCUMENT_ID_INDEX = 'documentId'
 const ACTIVE_ID_KEY = 'activeId'
 
 interface MetaRow {
@@ -109,6 +125,34 @@ export function subscribeToFolderBroadcasts(
   const handler = (event: MessageEvent<FolderBroadcast>) => listener(event.data)
   folderBroadcastChannel.addEventListener('message', handler)
   return () => folderBroadcastChannel.removeEventListener('message', handler)
+}
+
+// Same shape again, for bookmarks — including a `deleteMany` variant
+// `deleteDocument`'s cascade uses (see below) so another tab drops every
+// bookmark belonging to a deleted document in one message instead of N.
+const BOOKMARK_BROADCAST_CHANNEL_NAME = 'markdown-editor:bookmarks'
+
+export type BookmarkBroadcast =
+  | { type: 'put'; bookmark: Bookmark }
+  | { type: 'delete'; id: string }
+  | { type: 'deleteMany'; documentId: string }
+
+const bookmarkBroadcastChannel: BroadcastChannel | null =
+  typeof BroadcastChannel === 'undefined'
+    ? null
+    : new BroadcastChannel(BOOKMARK_BROADCAST_CHANNEL_NAME)
+
+function broadcastBookmark(message: BookmarkBroadcast): void {
+  bookmarkBroadcastChannel?.postMessage(message)
+}
+
+export function subscribeToBookmarkBroadcasts(
+  listener: (message: BookmarkBroadcast) => void,
+): () => void {
+  if (bookmarkBroadcastChannel === null) return () => {}
+  const handler = (event: MessageEvent<BookmarkBroadcast>) => listener(event.data)
+  bookmarkBroadcastChannel.addEventListener('message', handler)
+  return () => bookmarkBroadcastChannel.removeEventListener('message', handler)
 }
 
 /**
@@ -182,6 +226,10 @@ function openDatabase(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(FOLDER_STORE)) {
         db.createObjectStore(FOLDER_STORE, { keyPath: 'id' })
+      }
+      if (!db.objectStoreNames.contains(BOOKMARK_STORE)) {
+        const bookmarkStore = db.createObjectStore(BOOKMARK_STORE, { keyPath: 'id' })
+        bookmarkStore.createIndex(BOOKMARK_DOCUMENT_ID_INDEX, 'documentId', { unique: false })
       }
 
       // Backfill new per-document fields on disk in a single cursor walk —
@@ -451,12 +499,39 @@ export async function putDocument(doc: MarkdownDocument, base: number): Promise<
   }
 }
 
+/**
+ * Deletes the document AND every bookmark that belongs to it, in one
+ * `readwrite` transaction spanning both stores — same atomicity reasoning
+ * as `deleteFolderAndOrphanDocuments` below: either the document and all
+ * its bookmarks are gone, or (on any failure) neither is, so there is never
+ * an intermediate state where a bookmark row survives pointing at a
+ * `documentId` that no longer resolves to anything. This is the "deleting a
+ * document must not leave its bookmarks behind" requirement, enforced at
+ * the storage layer rather than left to the in-memory model to remember to
+ * also clean up.
+ */
 export async function deleteDocument(id: string): Promise<void> {
   const db = await getDatabase()
-  const tx = db.transaction(DOC_STORE, 'readwrite')
+  const tx = db.transaction([DOC_STORE, BOOKMARK_STORE], 'readwrite')
   tx.objectStore(DOC_STORE).delete(id)
+  const bookmarkStore = tx.objectStore(BOOKMARK_STORE)
+  const index = bookmarkStore.index(BOOKMARK_DOCUMENT_ID_INDEX)
+  await new Promise<void>((resolve, reject) => {
+    const cursorRequest = index.openCursor(IDBKeyRange.only(id))
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result
+      if (!cursor) {
+        resolve()
+        return
+      }
+      cursor.delete()
+      cursor.continue()
+    }
+    cursorRequest.onerror = () => reject(cursorRequest.error ?? new Error('Cursor walk failed'))
+  })
   await transactionDone(tx)
   broadcast({ type: 'delete', id })
+  broadcastBookmark({ type: 'deleteMany', documentId: id })
 }
 
 export async function getActiveId(): Promise<string | null> {
@@ -572,4 +647,81 @@ export async function deleteFolderAndOrphanDocuments(
   broadcastFolder({ type: 'delete', id: folderId })
 
   return orphaned
+}
+
+// --- Bookmarks ---------------------------------------------------------
+
+/** Same shape/defensiveness as `normalizeDocument`/`normalizeFolder` above
+ * — a corrupt or future-shaped record is dropped (returns `null`) rather
+ * than flowing into the model, and every non-identifying field is repaired
+ * with a safe default rather than trusted blind. `id` AND `documentId` both
+ * have to be present and non-empty — a bookmark with no document to belong
+ * to is meaningless (and `documentId` doubles as the index key
+ * `deleteDocument`'s cascade and `getAllBookmarks`-by-document both rely
+ * on, so a malformed one has to be caught here rather than surfacing as a
+ * cursor lookup that silently finds nothing). */
+function normalizeBookmark(value: unknown): Bookmark | null {
+  if (typeof value !== 'object' || value === null) return null
+  const raw = value as Record<string, unknown>
+  if (typeof raw.id !== 'string' || raw.id === '') return null
+  if (typeof raw.documentId !== 'string' || raw.documentId === '') return null
+  const now = Date.now()
+  return {
+    id: raw.id,
+    documentId: raw.documentId,
+    pos: typeof raw.pos === 'number' && Number.isFinite(raw.pos) && raw.pos >= 0 ? raw.pos : 0,
+    color: isBookmarkColorId(raw.color) ? raw.color : DEFAULT_BOOKMARK_COLOR,
+    comment: typeof raw.comment === 'string' ? raw.comment : '',
+    createdAt:
+      typeof raw.createdAt === 'number' && Number.isFinite(raw.createdAt) ? raw.createdAt : now,
+  }
+}
+
+export async function getAllBookmarks(): Promise<Bookmark[]> {
+  const db = await getDatabase()
+  const tx = db.transaction(BOOKMARK_STORE, 'readonly')
+  const request = tx.objectStore(BOOKMARK_STORE).getAll()
+  const raw = (await requestToPromise(request)) as unknown[]
+  return raw.reduce<Bookmark[]>((bookmarks, entry) => {
+    const normalized = normalizeBookmark(entry)
+    if (normalized !== null) bookmarks.push(normalized)
+    return bookmarks
+  }, [])
+}
+
+/** Unconditional upsert — like `putFolder`, a bookmark write (create,
+ * recolour, edit comment, or a position remap after an edit) is never
+ * debounced-against-a-staleness-guard the way `putDocument`'s `base` check
+ * is: there is no in-flight-edit window here for a second tab to race
+ * against in a way that would silently lose data, just "whichever write
+ * lands last wins", which is an acceptable, simple rule for metadata this
+ * low-stakes. */
+export async function putBookmark(bookmark: Bookmark): Promise<void> {
+  const db = await getDatabase()
+  const tx = db.transaction(BOOKMARK_STORE, 'readwrite')
+  tx.objectStore(BOOKMARK_STORE).put(bookmark)
+  await transactionDone(tx)
+  broadcastBookmark({ type: 'put', bookmark })
+}
+
+/** Batched counterpart of `putBookmark`, for the position-remap flow
+ * (`editor/lib/useCodeMirror.ts`'s `updateListener` can report many
+ * bookmarks' new positions from a single document edit) — one transaction
+ * for the whole batch rather than N separate ones. */
+export async function putBookmarks(bookmarks: readonly Bookmark[]): Promise<void> {
+  if (bookmarks.length === 0) return
+  const db = await getDatabase()
+  const tx = db.transaction(BOOKMARK_STORE, 'readwrite')
+  const store = tx.objectStore(BOOKMARK_STORE)
+  for (const bookmark of bookmarks) store.put(bookmark)
+  await transactionDone(tx)
+  bookmarks.forEach((bookmark) => broadcastBookmark({ type: 'put', bookmark }))
+}
+
+export async function deleteBookmark(id: string): Promise<void> {
+  const db = await getDatabase()
+  const tx = db.transaction(BOOKMARK_STORE, 'readwrite')
+  tx.objectStore(BOOKMARK_STORE).delete(id)
+  await transactionDone(tx)
+  broadcastBookmark({ type: 'delete', id })
 }

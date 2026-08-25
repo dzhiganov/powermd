@@ -203,7 +203,14 @@ interface AfterDelete {
    * auto-created, which must also be persisted. */
   createdDoc: MarkdownDocument | null
 }
-const documentDeleteApplied = createEvent<AfterDelete>()
+// Exported (but not re-exported from this feature's `index.ts` — see
+// ARCHITECTURE.md's boundary rule 1, which only checks the FEATURE
+// boundary, not file-level privacy within one) so `model/bookmarks.ts`, in
+// this same feature, can react to "a document was deleted" without a
+// second, parallel notion of the same event — it needs the exact same
+// pre-computed `deletedId` this one already carries, not a fresh derivation
+// that could disagree with it.
+export const documentDeleteApplied = createEvent<AfterDelete>()
 
 // --- Helpers -------------------------------------------------------------
 

@@ -40,11 +40,11 @@
  * shares, including the export menu, which used to be a visually distinct
  * daisyUI `bg-base-200`/`rounded-box`/`shadow-xl` dropdown.
  */
-import { onBeforeUnmount, ref, watch, type ComponentPublicInstance } from 'vue'
+import { computed, onBeforeUnmount, ref, watch, type ComponentPublicInstance } from 'vue'
 
 import { useDialogFocusTrap } from '../lib/useDialog'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     /** Accessible name for the `role="menu"` panel — normally the same
      * string as the trigger's own `aria-label`. */
@@ -61,6 +61,15 @@ withDefaults(
      * anchored, and their contents were clipped by the window. Callers that
      * can end up near either edge pass whichever alignment opens inward. */
     align?: 'start' | 'end' | 'stretch'
+    /** `'below'` (default): panel opens downward from the trigger
+     * (`top: calc(100% + offset)`) — right for every existing caller so
+     * far, all header/toolbar-row triggers with room below them.
+     * `'above'`: panel opens upward instead (`bottom: calc(100% + offset)`)
+     * — for a trigger that sits at the BOTTOM of the viewport (the status
+     * bar's `BookmarksIndicator.vue`), a downward-opening panel would
+     * render partly or entirely below the viewport edge, unreachable by
+     * mouse or keyboard alike. */
+    placement?: 'below' | 'above'
     /** Panel width in `align="end"` mode (e.g. `'208px'`). Ignored in
      * `align="stretch"` mode, where the panel's width tracks the
      * trigger's containing box instead. Omitted, the panel shrinks to fit
@@ -76,19 +85,24 @@ withDefaults(
      * hardcoded value. */
     zIndex?: number
   }>(),
-  { align: 'end', width: undefined, offset: 6, zIndex: 20 },
+  { align: 'end', placement: 'below', width: undefined, offset: 6, zIndex: 20 },
 )
 
-const open = ref(false)
+// Named `isOpen` internally (not `open`) so it doesn't collide with the
+// exposed `open()` method below — the template still passes it to the
+// trigger slot AS `open` (`:open="isOpen"`), which is the public slot-prop
+// name every existing caller (`DocumentRow.vue`, etc.) already destructures
+// — only this internal variable's own name changed.
+const isOpen = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
 const triggerRef = ref<HTMLElement | null>(null)
 const firstItemRef = ref<HTMLElement | null>(null)
 
 // Tab-wrap within the panel, auto-focus the first item on open, and focus
-// return to the trigger whenever `open` flips back to false — regardless
+// return to the trigger whenever `isOpen` flips back to false — regardless
 // of *why* it closed (Escape, outside click, or an item's own handler
 // calling `close()`), matching `MoreMenu.vue`'s existing behaviour.
-const { trapFocus } = useDialogFocusTrap(menuRef, open, firstItemRef)
+const { trapFocus } = useDialogFocusTrap(menuRef, isOpen, firstItemRef)
 
 /** Passed to the caller's trigger element via `:ref="setTriggerRef"` in
  * the `trigger` slot — this is how the component learns which DOM node is
@@ -106,11 +120,11 @@ function setFirstItemRef(el: Element | ComponentPublicInstance | null): void {
 }
 
 function toggle(): void {
-  open.value = !open.value
+  isOpen.value = !isOpen.value
 }
 
 function close(): void {
-  open.value = false
+  isOpen.value = false
 }
 
 function handleOutsideClick(event: MouseEvent): void {
@@ -121,53 +135,151 @@ function handleOutsideClick(event: MouseEvent): void {
   close()
 }
 
-watch(open, (isOpen) => {
-  if (isOpen) {
-    document.addEventListener('click', handleOutsideClick, true)
-  } else {
-    document.removeEventListener('click', handleOutsideClick, true)
+// --- `placement="above"`: escaping an `overflow: hidden` ancestor ---------
+//
+// `placement="below"` (every caller before `BookmarksIndicator.vue`) needs
+// none of this: the panel is `position: absolute` inside this component's
+// own `.relative` wrapper, and every existing trigger already has enough
+// room below it within its own (non-clipping) ancestors.
+//
+// `BookmarksIndicator.vue`'s trigger lives inside `StatusBar.vue`'s
+// `<footer class="... overflow-hidden ...">` — that `overflow-hidden` is
+// load-bearing there (keeps the status row to one line, see that
+// component's own comment), so it can't just be removed. But it also means
+// an `absolute`-positioned panel, however it's positioned, gets its visual
+// overflow clipped to the footer's own ~32px-tall box — verified while
+// building this: the panel's content was geometrically "positioned"
+// correctly but rendered invisible/unclickable beyond that clipped box.
+// `position: fixed` + `Teleport to="body"` is the standard escape hatch:
+// once the panel is a direct child of `<body>`, no ancestor's
+// `overflow: hidden` applies to it at all, and `position: fixed` measures
+// against the viewport instead of a clipped local containing block.
+// `Teleport`'s own `disabled` prop keeps `placement="below"` callers on the
+// exact unchanged `position: absolute`-in-place behaviour they already
+// had — this whole mechanism only activates for `placement="above"`.
+const fixedTriggerRect = ref<DOMRect | null>(null)
+
+function measureFixedPosition(): void {
+  fixedTriggerRect.value = triggerRef.value?.getBoundingClientRect() ?? null
+}
+
+const panelStyle = computed(() => {
+  if (props.placement === 'above' && fixedTriggerRect.value !== null) {
+    const rect = fixedTriggerRect.value
+    // Always resolved to a `left` (never `right`) and CLAMPED into the
+    // viewport, not just mirrored from `align` the way `placement="below"`
+    // does with plain CSS `right: 0`/`left: 0`. `BookmarksIndicator.vue`'s
+    // status-bar trigger is a genuine case that plain `align="end"` gets
+    // wrong here: the status bar packs its content to whichever side is
+    // OPPOSITE the docked drawer (`StatusBar.vue`'s own `justify-start`/
+    // `-end`), which can leave the trigger sitting well away from either
+    // screen edge — a fixed-width panel simply right-aligned to it (as
+    // `align="end"` would do) can run off the LEFT edge of the viewport
+    // instead, measured while building this: `right: 1098px` on a 1280px
+    // viewport with a 300px panel put its `left` at -118px, entirely
+    // off-screen and unclickable. Clamping is what floating-ui-style
+    // libraries do for exactly this "trigger can be anywhere" case.
+    const panelWidthPx =
+      props.align === 'stretch'
+        ? rect.width
+        : props.width !== undefined
+          ? parseFloat(props.width)
+          : rect.width
+    const desiredLeft =
+      props.align === 'start' || props.align === 'stretch' ? rect.left : rect.right - panelWidthPx
+    const margin = 8
+    const maxLeft = Math.max(window.innerWidth - panelWidthPx - margin, margin)
+    const clampedLeft = Math.min(Math.max(desiredLeft, margin), maxLeft)
+    return {
+      position: 'fixed' as const,
+      bottom: `${window.innerHeight - rect.top + props.offset}px`,
+      left: `${clampedLeft}px`,
+      width: props.align === 'stretch' ? `${rect.width}px` : props.width,
+      zIndex: props.zIndex,
+    }
+  }
+  return {
+    top: props.placement === 'below' ? `calc(100% + ${props.offset}px)` : undefined,
+    bottom: props.placement === 'above' ? `calc(100% + ${props.offset}px)` : undefined,
+    zIndex: props.zIndex,
+    width: props.align === 'stretch' ? undefined : props.width,
   }
 })
-onBeforeUnmount(() => document.removeEventListener('click', handleOutsideClick, true))
+
+watch(isOpen, (nowOpen) => {
+  if (nowOpen) {
+    document.addEventListener('click', handleOutsideClick, true)
+    if (props.placement === 'above') {
+      measureFixedPosition()
+      window.addEventListener('resize', measureFixedPosition)
+      window.addEventListener('scroll', measureFixedPosition, true)
+    }
+  } else {
+    document.removeEventListener('click', handleOutsideClick, true)
+    window.removeEventListener('resize', measureFixedPosition)
+    window.removeEventListener('scroll', measureFixedPosition, true)
+  }
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleOutsideClick, true)
+  window.removeEventListener('resize', measureFixedPosition)
+  window.removeEventListener('scroll', measureFixedPosition, true)
+})
 
 function handleEscape(): void {
   close()
   triggerRef.value?.focus()
 }
 
-// Exposed for the rare caller that needs to close the menu from outside an
-// item click handler (none currently do, but `defineExpose` costs nothing
-// and keeps this from needing a breaking API change later).
-defineExpose({ close })
+// `close` — exposed for the rare caller that needs to close the menu from
+// outside an item click handler (none currently do, but `defineExpose`
+// costs nothing and keeps this from needing a breaking API change later).
+//
+// `open` — added for `documents/ui/BookmarksIndicator.vue`: a bookmark's
+// gutter marker (owned by `editor`, a raw CodeMirror-rendered DOM button,
+// never a Vue-managed element) has no `ref` this component's own `trigger`
+// slot mechanism could bind as a normal trigger, so clicking one has to
+// open THIS popover from the outside via its id — see that component's own
+// doc comment for the full reasoning on why the marker click and the
+// status-bar trigger share one popover instance rather than each getting
+// its own. Every other caller still drives `open` purely through its own
+// trigger slot and never needs this.
+function open(): void {
+  isOpen.value = true
+}
+
+defineExpose({ close, open })
 </script>
 
 <template>
   <div class="relative">
     <slot
       name="trigger"
-      :open="open"
+      :open="isOpen"
       :toggle="toggle"
       :close="close"
       :set-trigger-ref="setTriggerRef"
     />
 
-    <div
-      v-if="open"
-      ref="menuRef"
-      role="menu"
-      :aria-label="label"
-      class="popover-menu-panel"
-      :class="`popover-menu-panel--${align}`"
-      :style="{
-        top: `calc(100% + ${offset}px)`,
-        zIndex,
-        width: align === 'stretch' ? undefined : width,
-      }"
-      @keydown.esc="handleEscape"
-      @keydown.tab="trapFocus"
-    >
-      <slot :close="close" :set-first-item-ref="setFirstItemRef" />
-    </div>
+    <!-- See `panelStyle`'s own doc comment above for why `placement="above"`
+         teleports to `<body>` (escaping `StatusBar.vue`'s clipping
+         `overflow-hidden`) while `placement="below"` (every other caller)
+         stays disabled — i.e. rendered exactly in place, unchanged. -->
+    <Teleport to="body" :disabled="placement !== 'above'">
+      <div
+        v-if="isOpen"
+        ref="menuRef"
+        role="menu"
+        :aria-label="label"
+        class="popover-menu-panel"
+        :class="`popover-menu-panel--${align}`"
+        :style="panelStyle"
+        @keydown.esc="handleEscape"
+        @keydown.tab="trapFocus"
+      >
+        <slot :close="close" :set-first-item-ref="setFirstItemRef" />
+      </div>
+    </Teleport>
   </div>
 </template>
 

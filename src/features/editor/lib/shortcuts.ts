@@ -3,6 +3,7 @@ import { keymap, type KeyBinding } from '@codemirror/view'
 
 import { toggleWrapInline, toggleLink } from './formatting'
 import { saveNowRequested, viewModeCycleRequested, helpRequested } from '../model/editorEvents'
+import { bookmarkJumpRequested, bookmarkToggleAtCursorRequested } from '../model/bookmarks'
 
 export interface EditorShortcut {
   /** CodeMirror key-binding string, e.g. `"Mod-b"`. `Mod` is CodeMirror's
@@ -44,6 +45,14 @@ export const EDITOR_SHORTCUTS: EditorShortcut[] = [
   { keys: 'Mod-s', description: 'Save now' },
   { keys: 'Mod-Shift-v', description: 'Toggle view mode' },
   { keys: 'Mod-/', description: 'Open keyboard shortcuts help' },
+  // `Alt-Shift-b`, not `Mod-Shift-b` — Ctrl/Cmd-Shift-B is Chrome's own
+  // "toggle bookmarks bar" shortcut; binding the same chord here would
+  // either lose the keypress to the browser or fight it, depending on the
+  // platform. `Alt-Shift` has no such reserved meaning in mainstream
+  // browsers.
+  { keys: 'Alt-Shift-b', description: 'Toggle bookmark on the current line' },
+  { keys: 'Mod-Shift-ArrowDown', description: 'Jump to the next bookmark' },
+  { keys: 'Mod-Shift-ArrowUp', description: 'Jump to the previous bookmark' },
   { keys: 'Mod-Click', description: 'Jump to the matching line in the other pane' },
 ]
 
@@ -115,6 +124,39 @@ const bindings: KeyBinding[] = [
     preventDefault: true,
     run: () => {
       helpRequested()
+      return true
+    },
+  },
+  {
+    // The keyboard-only equivalent of a gutter click — see
+    // `bookmarkToggleAtCursorRequested`'s own doc comment
+    // (`model/bookmarks.ts`) for why this exists at all: a keyboard user
+    // has no gutter to click. `line.from`, not the raw cursor offset — same
+    // anchor shape a mouse gutter click uses (`lib/bookmarkGutter.ts`), so
+    // the two paths always produce identically-anchored bookmarks. See
+    // `EDITOR_SHORTCUTS`' own entry above for why this is `Alt-Shift-b`,
+    // not `Mod-Shift-b`.
+    key: 'Alt-Shift-b',
+    preventDefault: true,
+    run: (view) => {
+      const line = view.state.doc.lineAt(view.state.selection.main.head)
+      bookmarkToggleAtCursorRequested(line.from)
+      return true
+    },
+  },
+  {
+    key: 'Mod-Shift-ArrowDown',
+    preventDefault: true,
+    run: () => {
+      bookmarkJumpRequested('next')
+      return true
+    },
+  },
+  {
+    key: 'Mod-Shift-ArrowUp',
+    preventDefault: true,
+    run: () => {
+      bookmarkJumpRequested('previous')
       return true
     },
   },

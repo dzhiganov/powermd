@@ -2,6 +2,7 @@ export { default as DocumentDrawer } from './ui/DocumentDrawer.vue'
 export { default as DrawerToggleButton } from './ui/DrawerToggleButton.vue'
 export { default as DocumentTitle } from './ui/DocumentTitle.vue'
 export { default as SaveIndicator } from './ui/SaveIndicator.vue'
+export { default as BookmarksIndicator } from './ui/BookmarksIndicator.vue'
 
 export {
   initDocuments,
@@ -42,5 +43,20 @@ export {
   $searchResults,
 } from './model/search'
 
-export type { MarkdownDocument, SaveStatus, Folder, GitHubOrigin } from './model/types'
+export {
+  initBookmarks,
+  bookmarkAddRequested,
+  bookmarkToggleAtCursorRequested,
+  bookmarkCommentChanged,
+  bookmarkColorChanged,
+  bookmarkDeleteRequested,
+  bookmarkPositionsRemapped,
+  bookmarkEditorOpenRequested,
+  bookmarkNavigateRequested,
+  bookmarkJumpToRequested,
+  $activeBookmarks,
+  $activeBookmarkCount,
+} from './model/bookmarks'
+
+export type { MarkdownDocument, SaveStatus, Folder, GitHubOrigin, Bookmark } from './model/types'
 export type { SearchResult, SearchMatchLocation } from './lib/search'

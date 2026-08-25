@@ -10,6 +10,7 @@
 // it does for `DocumentDrawer.vue`/`Toolbar.vue`.
 import { WordCount } from '@/features/editor'
 import { SyncStatusIndicator } from '@/features/github'
+import { BookmarksIndicator } from '@/features/documents'
 
 withDefaults(defineProps<{ showTooltips?: boolean; side?: 'left' | 'right' }>(), {
   side: 'right',
@@ -52,6 +53,7 @@ withDefaults(defineProps<{ showTooltips?: boolean; side?: 'left' | 'right' }>(),
     aria-label="Status bar"
   >
     <WordCount />
+    <BookmarksIndicator :show-tooltips="showTooltips" />
     <SyncStatusIndicator :show-tooltips="showTooltips" />
   </footer>
 </template>
