@@ -166,9 +166,18 @@ const centered = true
     <!-- No `order-*` needed any more: the drawer above is `position:
          absolute` (out of flow) now, so this is the only flex child left
          in the shell's own row and there is nothing left to order it
-         against. -->
+         against.
+
+         `relative`: the containing block for the floating header and status
+         bar below. At desktop widths both go `position: absolute` (see
+         their own scoped rules) so `<main>` claims the column's full height
+         and document text scrolls to the top and bottom edges of the
+         window, passing underneath them. Anchoring them HERE rather than to
+         the viewport is what keeps them aligned to the panes when the
+         sidebar is open — this column is the element the shell's own
+         padding narrows, so its edges are already the panes' edges. -->
     <div
-      class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden print:block print:h-auto print:overflow-visible"
+      class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden print:block print:h-auto print:overflow-visible"
     >
       <Toolbar :side="drawerSide" />
       <MobileTabs v-show="!isDesktop" />

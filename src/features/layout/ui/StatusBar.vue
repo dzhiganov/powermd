@@ -42,16 +42,44 @@ withDefaults(defineProps<{ showTooltips?: boolean; side?: 'left' | 'right' }>(),
        keeps it to one line at any width — see `WordCount.vue`/
        `SyncStatusIndicator.vue`'s own `sm:`-breakpoint rules for how each
        degrades its own content down to fit a narrow phone instead. -->
-  <!-- No background, same reasoning as the header (see `Toolbar.vue`): it
-       spans only the panes now, so it sits on the pane surface rather than
-       banding a second colour across it. The top border still divides it
-       from the text above. -->
+  <!-- Out of flow at desktop widths (see the scoped `.status-bar` rule
+       below) — the mirror image of `Toolbar.vue`'s floating header, for the
+       same reason: the panes run the full height of the window and the
+       document's last line scrolls to the bottom edge, passing under this
+       readout instead of stopping short at a band above it.
+       `pointer-events-none` on the strip, re-enabled on the chip, so a
+       click anywhere in the 32px band that isn't on the chip lands in the
+       editor underneath and places the caret. -->
   <footer
-    class="flex h-8 shrink-0 items-center gap-3 overflow-hidden px-3 text-xs print:hidden"
+    class="status-bar pointer-events-none flex h-8 shrink-0 items-center overflow-hidden px-3 text-xs print:hidden"
     :class="side === 'right' ? 'justify-start' : 'justify-end'"
     aria-label="Status bar"
   >
-    <WordCount />
-    <SyncStatusIndicator :show-tooltips="showTooltips" />
+    <!-- Both readouts share ONE chip rather than one each: they are a single
+         status line, and two separate pills with a gap between them read as
+         two unrelated controls. `gap-3` moved off the strip onto this row so
+         the chip hugs its content instead of spanning the pane. -->
+    <div class="md-glass-chip pointer-events-auto flex items-center gap-3 rounded-full px-3 py-0.5">
+      <WordCount />
+      <SyncStatusIndicator :show-tooltips="showTooltips" />
+    </div>
   </footer>
 </template>
+
+<style scoped>
+/*
+ * Out of flow at desktop widths — see `Toolbar.vue`'s `.header` rule for
+ * the full reasoning (same containing block, same breakpoint, same z-index
+ * band); this is its bottom-edge counterpart. The 32px it used to occupy
+ * comes back to the panes as `--md-chrome-bottom` (main.css), added as
+ * padding inside their own scrollable content.
+ */
+@media (min-width: 768px) {
+  .status-bar {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 15;
+  }
+}
+</style>

@@ -175,9 +175,19 @@ const previewMaxWidth = 'min(680px, var(--md-reading-width, 75ch))'
        attribute fallthrough) — `layout/ui/PreviewPane.vue` adds `min-w-0
        flex-1` so this scroller sizes correctly inside its flex parent. -->
   <div ref="scroller" class="h-full overflow-y-auto print:h-auto print:overflow-visible">
+    <!-- `px-4` plus explicit top/bottom rather than a flat `p-4`: the
+         vertical padding has to clear the floating header and status bar
+         (`--md-chrome-top`/`--md-chrome-bottom`, main.css — both 0 on
+         mobile, where those two are still in-flow bands that reserve their
+         own space). Same contract as the editor's `.cm-content` padding in
+         `editor/lib/theme.ts`, and deliberately the same top value, so a
+         given line sits at the same height in both panes and split-view
+         scroll sync stays aligned. `print:py-0` alongside the existing
+         `print:p-0` because a `pt-`/`pb-` utility outranks a plain `p-` on
+         its own side and would otherwise survive into print. -->
     <div
       ref="content"
-      class="markdown-preview prose prose-sm p-4 print:max-w-none print:p-0"
+      class="markdown-preview prose prose-sm px-4 pt-[calc(var(--md-chrome-top)+1rem)] pb-[calc(var(--md-chrome-bottom)+1rem)] print:max-w-none print:p-0 print:py-0"
       :class="centered ? 'mx-auto' : 'max-w-none'"
       :style="centered ? { maxWidth: previewMaxWidth } : undefined"
       v-html="html"

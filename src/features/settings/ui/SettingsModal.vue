@@ -1106,5 +1106,23 @@ watch(open, (isOpen) => {
  */
 .settings-time-input {
   border-color: color-mix(in srgb, var(--color-base-content) 75%, transparent);
+  /* WIDTH, or the AM/PM field renders UNDER the clock icon. Left to size
+   * itself, Chrome gives `input[type="time"]` an intrinsic width of ~84px
+   * — computed from its own inner fields plus the picker indicator, and
+   * WITHOUT accounting for daisyUI's `.input` padding (`0.75rem` each
+   * side, 24px total). Those 24px come out of the fields, so at
+   * `.input-sm`'s 12px type the last glyph of "07:00 AM" ended up sitting
+   * on top of `::-webkit-calendar-picker-indicator`. Note `scrollWidth ===
+   * clientWidth` in that state: nothing overflows, so no overflow-based
+   * check would have caught this — it was only visible in a screenshot.
+   *
+   * 8.5rem (136px) is the intrinsic 84px plus the 24px of padding it
+   * ignores, plus ~28px of slack. The slack matters because the field set
+   * is LOCALE-dependent: a 24-hour locale renders "07:00" with no AM/PM
+   * and needs less, while a locale with wider digit glyphs needs more, and
+   * this is a fixed value rather than something that re-measures per
+   * locale. `min-width`, not `width`, so the field can still grow if a
+   * locale needs more than this. */
+  min-width: 8.5rem;
 }
 </style>

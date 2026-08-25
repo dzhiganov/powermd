@@ -87,30 +87,46 @@ const viewModeOptions: ViewModeOption[] = [
        under 46px, so nothing clips. Every icon button in this header
        stays `btn-xs` (24x24, daisyUI's `--size-field` scale), meeting the
        24x24 minimum hit target regardless of the header's own height. -->
-  <!-- No background of its own: the header sits directly on the pane behind
-       it, so the editor surface runs unbroken from the top of the window.
-       It kept a `--md-head` fill while the sidebar was a separate band, and
-       with the sidebar now a full-height column the header only ever spans
-       the panes — a second surface colour there just drew a line across
-       them for no reason. No bottom border either: with no fill behind it,
-       a rule under the header was the only thing still drawing a band
-       across the top of the document. -->
+  <!-- No background of its own, and at desktop widths no LAYOUT of its own
+       either: the scoped `.header` rule below takes this strip out of flow
+       (`position: absolute`) so the panes run the full height of the window
+       and the document text scrolls to the very top edge, passing under the
+       two chips below. Before this, the header was a 46px in-flow band that
+       cut the text off at a hard line partway down the window — the text
+       simply stopped there, which read as the document starting late.
+       Everything the strip itself contributes is now a hit-testing hole:
+       `pointer-events-none` here, re-enabled on each chip, so a click
+       anywhere in the 46px band that ISN'T on a chip lands in the editor
+       underneath and places the caret, exactly as if the header weren't
+       there. -->
   <header
-    class="header flex h-[46px] shrink-0 items-center gap-4 px-3.5 print:hidden"
+    class="header pointer-events-none flex h-[46px] shrink-0 items-center gap-4 px-3.5 print:hidden"
     :style="headerStyle"
   >
     <div class="flex min-w-0 flex-1 items-center gap-3">
       <!-- Breadcrumb (folder / title) + the unsaved dot — both owned by
            `DocumentTitle.vue`, see its doc comment. Always left-pinned,
-           regardless of `side`. -->
-      <DocumentTitle :show-tooltips="showTooltips" />
+           regardless of `side`. `md-glass-chip` (main.css) is what lets it
+           stay legible with body text scrolling underneath; `min-w-0` +
+           `max-w-full` keep a long title truncating inside the chip instead
+           of stretching it across the pane. -->
+      <div
+        class="md-glass-chip pointer-events-auto flex min-w-0 max-w-full items-center rounded-full px-3 py-1"
+      >
+        <DocumentTitle :show-tooltips="showTooltips" />
+      </div>
     </div>
 
+    <!-- NOT `md-glass-chip`: this control's active/inactive states are
+         measured against its own `--md-seg` track fill (see the `.view-tabs`
+         comment in the scoped style below), so it gets the same translucency
+         + blur applied to THAT colour rather than being repainted in the
+         chip's `--color-base-100`. Same glass, different base. -->
     <div
-      class="view-tabs shrink-0"
+      class="view-tabs pointer-events-auto shrink-0"
       role="group"
       aria-label="View mode"
-      style="background: var(--md-seg, var(--color-base-200)); border-color: var(--color-base-300)"
+      style="border-color: var(--color-base-300)"
     >
       <button
         v-for="option in viewModeOptions"
@@ -158,6 +174,37 @@ const viewModeOptions: ViewModeOption[] = [
 }
 
 /*
+ * OUT OF FLOW at desktop widths — the change that lets document text reach
+ * the top edge of the window. `AppShell.vue`'s content column is the
+ * containing block (it carries `relative` for exactly this); with the
+ * header no longer a flex item, `<main>`'s `flex-1` claims the column's
+ * full height and both panes scroll edge to edge underneath.
+ *
+ * The 46px this strip used to occupy is handed back to the panes as
+ * `--md-chrome-top` (main.css), which they add as padding INSIDE their own
+ * scrollable content — so the first line still rests below the chips at
+ * rest, and scrolls under them from there.
+ *
+ * Breakpoint matches `--md-chrome-top`'s own (768px, Tailwind's `md` and
+ * the same threshold `isDesktop` uses in script): below it the header stays
+ * a normal in-flow band, because `MobileTabs.vue` sits directly beneath it
+ * there and a floating header would cover it.
+ *
+ * `z-index: 15` — above pane content (which sets none), below the drawer
+ * toggle (55), the popover menus (30/70) and the modals (60). The sidebar
+ * panel itself never overlaps this strip: the shell pads the content column
+ * aside by the panel's own width whenever it is open.
+ */
+@media (min-width: 768px) {
+  .header {
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    z-index: 15;
+  }
+}
+
+/*
  * Segmented Write/Split/Read control — raw `var(--color-*)`/`--md-*`
  * rather than daisyUI's `join`/`btn-primary` utilities. This is a
  * deliberate style change from the pre-redesign switcher (which filled the
@@ -199,6 +246,28 @@ const viewModeOptions: ViewModeOption[] = [
   padding: 3px;
   border: 1px solid;
   border-radius: 999px;
+  /* Glass, but built on this control's OWN `--md-seg` track colour rather
+   * than `.md-glass-chip`'s `--color-base-100` — every state contrast
+   * documented above (active fill vs track, inactive label vs track) is
+   * measured against `--md-seg`, so repainting the track in a different
+   * base would invalidate all of it. 88%, higher than the chip's 82%: the
+   * inactive label is a deliberately muted `--md-seg-fg` sitting right at
+   * its 4.5:1 floor against an opaque track, so this one has less headroom
+   * to spend on letting the backdrop through than the breadcrumb does.
+   * `-webkit-` first then unprefixed, for the minifier reason in main.css. */
+  background-color: color-mix(in srgb, var(--md-seg, var(--color-base-200)) 88%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+  backdrop-filter: blur(14px) saturate(180%);
+}
+
+/* Matches `.md-glass-chip`'s own reduced-transparency fallback in main.css
+ * — back to the fully opaque track this control shipped with before. */
+@media (prefers-reduced-transparency: reduce) {
+  .view-tabs {
+    background-color: var(--md-seg, var(--color-base-200));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 .view-tab {

@@ -99,6 +99,38 @@ body {
   --md-motion-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --md-icon-fade-duration: 200ms;
   --md-icon-rotate-duration: 320ms;
+
+  /* FLOATING CHROME. The header and the status bar are out of flow at
+   * desktop widths (`Toolbar.vue`/`StatusBar.vue` go `position: absolute`
+   * there), so the panes run the full height of the window and the document
+   * text scrolls all the way to the top and bottom edges, passing UNDER the
+   * floating breadcrumb / view-switcher / word-count chips. That was the
+   * point of the change: a header band clipped the text at a hard line
+   * partway down the window, which read as the document starting late.
+   *
+   * These two values are how the panes get that height back as padding
+   * INSIDE their own scrollable content (`editor/lib/theme.ts`'s
+   * `.cm-content`, `preview/ui/Preview.vue`'s content div) — so the first
+   * and last lines still have somewhere to sit at rest, but the text can
+   * scroll past them rather than being cut off by them. They must stay
+   * equal to the two components' own heights; that is the whole contract
+   * between them.
+   *
+   * ZERO below 768px, deliberately. Mobile keeps both in normal flow: the
+   * `MobileTabs.vue` bar sits between the header and the panes there, so a
+   * floating header would either cover it or need a second, conflicting
+   * offset — and the pane padding above would then be double-counting the
+   * header height that flow already reserved. One media query here flips
+   * the whole system, instead of every consumer branching on width. */
+  --md-chrome-top: 0px;
+  --md-chrome-bottom: 0px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --md-chrome-top: 46px;
+    --md-chrome-bottom: 32px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -785,4 +817,61 @@ body {
  * `--btn-fg` stays `--color-primary-content` (white) — already correct. */
 [data-theme='light'] .btn-primary {
   --btn-color: var(--md-btn-primary);
+}
+
+/*
+ * GLASS CHIP — the shared surface for every floating piece of chrome that
+ * now sits ON the panes rather than in a band above or below them: the
+ * breadcrumb, the Write/Split/Read switcher (`Toolbar.vue`), and the word
+ * count / sync readout (`StatusBar.vue`). Document text scrolls underneath
+ * all three, so each needs a surface of its own to stay legible against
+ * whatever happens to be passing behind it.
+ *
+ * Same two-rule construction as `SettingsModal.vue`'s `.settings-panel`
+ * (see its much longer comment for the full derivation), and for the same
+ * reason — legibility must never depend on `backdrop-filter` support:
+ *
+ *   1. An always-applied translucent tint, opaque enough to carry the text
+ *      contrast on its own. 82% here rather than the panel's 78%: a chip is
+ *      a small target sitting directly on running body text, where the
+ *      backdrop is high-frequency (glyph edges) rather than the panel's
+ *      large flat scrim, and a thinner tint let ascenders show through the
+ *      breadcrumb.
+ *   2. The blur, layered on top, purely decorative. `saturate(180%)` for
+ *      the same reason as the panel: blur alone greys the backdrop out, and
+ *      pushing saturation back up is what separates "glass" from "fog".
+ *
+ * `-webkit-` first, then unprefixed — the same order `.settings-panel`
+ * ships, and it is load-bearing: the build's minifier drops the unprefixed
+ * declaration when it FOLLOWS a `-webkit-` one written the other way round,
+ * which silently ships a Safari-only blur.
+ *
+ * No border and no shadow — the tint alone does the separating. That is a
+ * deliberate call, not an oversight: the request was for the chrome to read
+ * as "flowing elements", and this user has asked three separate times in
+ * screenshot review to delete rules and edges from this app's chrome. The
+ * cost is that in the LIGHT theme a chip is nearly invisible where no text
+ * happens to be passing behind it (`--color-base-100` at 82% over a
+ * `--color-base-100` pane is very close to the pane itself) — you notice it
+ * mainly as text disappearing cleanly under it. In the dark theme the tint
+ * separates clearly on its own. If that reads as too faint in use, a 1px
+ * `color-mix(in srgb, var(--color-base-300) 70%, transparent)` edge is the
+ * change to make — it would also bring these two chips into line with the
+ * view-mode switcher, which does carry a border.
+ */
+.md-glass-chip {
+  background-color: color-mix(in srgb, var(--color-base-100) 82%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+  backdrop-filter: blur(14px) saturate(180%);
+}
+
+/* Same escape hatch as `.settings-panel`: users who ask for reduced
+ * transparency get the fully opaque pane colour and no blur, which is
+ * exactly what these chips looked like when they were still solid bands. */
+@media (prefers-reduced-transparency: reduce) {
+  .md-glass-chip {
+    background-color: var(--color-base-100);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }

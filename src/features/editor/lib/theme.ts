@@ -55,7 +55,17 @@ export const daisyEditorTheme = EditorView.theme({
     // line you are actually typing pinned to the very bottom edge. This is
     // padding INSIDE the scrollable content, so it scrolls with the text
     // and gives the last line somewhere to sit.
-    padding: '1rem 0 6rem',
+    //
+    // `--md-chrome-top` (main.css) is the floating header's own height —
+    // 46px at desktop widths, 0 on mobile where that header is still an
+    // in-flow band that reserves its own space. Adding it here is what
+    // keeps the first line resting below the breadcrumb at rest now that
+    // the header no longer occupies layout: the text starts in the same
+    // place it always did, but scrolls UNDER the header from there instead
+    // of being clipped by it. The existing 6rem bottom already clears
+    // `--md-chrome-bottom` (32px) with room to spare, so it needs no
+    // equivalent term.
+    padding: 'calc(var(--md-chrome-top) + 1rem) 0 6rem',
   },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
     backgroundColor:
