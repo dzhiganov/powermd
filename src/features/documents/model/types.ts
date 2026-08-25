@@ -1,5 +1,3 @@
-import type { BookmarkColorId } from '@/shared/config/bookmarkColors'
-
 /**
  * Where this document's automatic one-way sync to GitHub stands. Every
  * document is a candidate for sync once a repo connection exists — this is
@@ -56,37 +54,6 @@ export interface MarkdownDocument {
   updatedAt: number
   folderId: string | null
   origin: GitHubOrigin | null
-}
-
-/**
- * A single bookmark — a coloured, commentable marker anchored to a text
- * position within one document. Local metadata only: bookmarks are NEVER
- * written into a document's markdown `content` (see `MarkdownDocument`'s
- * own doc comment on `content` for why anything that touches the synced
- * source text is treated this carefully) — they live in their own
- * IndexedDB store (`lib/db.ts`'s `bookmarks` object store, added in the
- * v4->v5 migration) and are deleted along with their document
- * (`db.deleteDocument`'s cascade).
- *
- * `pos` is an absolute document-offset anchor (the bookmarked line's own
- * `line.from`), not a line number — see `features/editor/lib
- * /bookmarkPosition.ts`'s "ANCHOR CHOICE" doc comment for the full
- * reasoning, and its "DELETION BEHAVIOUR" comment for what happens to `pos`
- * when the bookmarked text is deleted outright (never dropped — collapses
- * to the edit point). Only ever read/written by the `editor` feature's
- * CodeMirror gutter and this feature's own persistence/CRUD; nothing else
- * needs to interpret it as a position at all.
- */
-export interface Bookmark {
-  id: string
-  documentId: string
-  pos: number
-  color: BookmarkColorId
-  /** User-authored note. Empty string, not optional/undefined — same
-   * "always a concrete value, `''` when there's nothing to show" shape as
-   * `MarkdownDocument.title`/`content`. */
-  comment: string
-  createdAt: number
 }
 
 /** A flat (non-nested) grouping for documents. `createdAt` is epoch
