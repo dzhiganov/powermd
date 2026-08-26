@@ -8,7 +8,8 @@ import {
 } from '@heroicons/vue/24/outline'
 
 import PopoverMenu from '@/shared/ui/PopoverMenu.vue'
-import { settingsOpened, helpOpened } from '@/features/settings'
+import { settingsOpened, helpOpened, ThemeToggle } from '@/features/settings'
+import { ImportButton, ExportMenuItems } from '@/features/transfer'
 
 import { aboutOpened } from '../model/dialogs'
 
@@ -52,7 +53,11 @@ function handleAbout(close: () => void): void {
 </script>
 
 <template>
-  <PopoverMenu label="More actions" :align="menuAlign" width="208px" :z-index="70">
+  <!-- 256px, up from 208px: the export rows ("Styled HTML (.html)", "Copy
+       rendered HTML") are the widest labels in the app's menus, and every
+       `popover-menu-item` is `white-space: nowrap`. This is the width
+       `ExportMenu.vue` already used for the same five rows. -->
+  <PopoverMenu label="More actions" :align="menuAlign" width="256px" :z-index="70">
     <template #trigger="{ open, toggle, setTriggerRef }">
       <button
         :ref="setTriggerRef"
@@ -68,23 +73,30 @@ function handleAbout(close: () => void): void {
       </button>
     </template>
 
-    <!-- Import, Print, and GitHub sync used to live here too — all
-         removed (user request): Import duplicated the toolbar's own
-         `ImportButton` (`Toolbar.vue`, plain icon-button variant, added
-         alongside `ExportMenu`), Print duplicated `ExportMenu`'s own
-         "Print / PDF" entry, and GitHub sync's connection UI moved into
-         Settings' own "GitHub sync" category (see
-         `features/github/ui/GitHubSyncPanel.vue`) — `SyncStatusIndicator`
-         in `Toolbar.vue` and this menu's own "Settings" item are both
-         already sufficient ways to reach it, so a third, GitHub-specific
-         entry here would just be redundant. None of the three features
-         were removed, only this second entry point onto each —
-         `ImportButton.vue`'s `menuItem` prop variant this popover used to
-         render stays in that component for the toolbar-vs-menu-item shape
-         switch, even though nothing here uses it anymore. -->
+    <!-- THE app's tools menu. The documents panel's tools row used to hold
+         four separate controls — a theme cycle button, an import button, an
+         export popover and this one; the user asked for all of them behind
+         the "…", so that row is now a single trigger and this menu owns
+         everything it used to sit next to.
+         Three sections, divided: what you do to the APP (theme, import),
+         what you do to THIS DOCUMENT (export/copy), and where you go
+         (settings, shortcuts, about).
+         The theme, import and export rows are components owned by the
+         features they belong to (`settings`, `transfer`) rather than markup
+         written here — `layout` composes the menu, it does not own what the
+         rows do. -->
     <template #default="{ close, setFirstItemRef }">
+      <!-- `setFirstItemRef` moves with the first row, whatever it is — this
+           is the element `PopoverMenu` focuses the instant the menu opens. -->
+      <ThemeToggle :ref="setFirstItemRef" menu-item />
+      <ImportButton menu-item @picked="close" />
+
+      <div class="popover-menu-divider" />
+      <div class="popover-menu-heading">Export</div>
+      <ExportMenuItems :close="close" />
+
+      <div class="popover-menu-divider" />
       <button
-        :ref="setFirstItemRef"
         type="button"
         role="menuitem"
         class="popover-menu-item"

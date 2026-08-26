@@ -1,5 +1,8 @@
 export { default as ImportButton } from './ui/ImportButton.vue'
-export { default as ExportMenu } from './ui/ExportMenu.vue'
+// `ExportMenuItems`, not `ExportMenu` — the export actions no longer carry
+// their own trigger button and popover. They are rows inside `layout`'s "…"
+// menu now; see `ui/ExportMenuItems.vue`.
+export { default as ExportMenuItems } from './ui/ExportMenuItems.vue'
 export { default as DropOverlay } from './ui/DropOverlay.vue'
 
 export {

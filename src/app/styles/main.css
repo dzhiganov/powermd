@@ -865,6 +865,85 @@ body {
   backdrop-filter: blur(14px) saturate(180%);
 }
 
+/*
+ * POPOVER MENU CONTENTS — the row, heading and divider inside every popover
+ * in the app (`shared/ui/PopoverMenu.vue` owns the panel itself; these style
+ * what callers put in it).
+ *
+ * GLOBAL, not scoped to `PopoverMenu` via `:slotted()`, which is where they
+ * used to live. `:slotted()` only reaches the slot content's own root
+ * elements — fine while every item was a raw `<button>` in a caller's
+ * template, but items now also come from nested components
+ * (`transfer`'s `ImportButton`/`ExportMenuItems`, `settings`' `ThemeToggle`,
+ * all rendered inside `layout/ui/MoreMenu.vue`'s slot), whose markup sits a
+ * component deeper than `:slotted()` can see. The alternative was a private
+ * copy of this block in each of those three; `ImportButton.vue` already had
+ * one (`.more-menu-item`) for exactly that reason, and this deletes it.
+ */
+.popover-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-base-content);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.popover-menu-item:hover,
+.popover-menu-item:focus-visible {
+  background: var(--md-hov, var(--color-base-200));
+}
+
+.popover-menu-item:focus-visible {
+  outline: 2px solid var(--md-accent);
+  outline-offset: -2px;
+}
+
+/* Disabled items (e.g. a row's own current folder in its "Move to" list)
+ * are exempt from WCAG text-contrast floors — dimming is the affordance,
+ * not a bug. */
+.popover-menu-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* Destructive items (a row's "Delete") — same `--color-error` role
+ * daisyUI's `text-error` already resolved to, applied directly rather than
+ * through that utility class. */
+.popover-menu-item--danger {
+  color: var(--color-error);
+}
+
+/* Non-interactive section heading (the export section's "Copy", a row's
+ * "Move to") — kept out of the tab order by construction: a `<div>`/`<span>`
+ * with no `tabindex`, `href`, or form-control semantics, so nothing needs an
+ * explicit `tabindex="-1"`. Full-strength `--color-base-content`, not a
+ * muted `--md-t3`/`--md-t4`: those two are documented above as unsafe for
+ * small text on these surfaces, so the muted LOOK comes from size, weight
+ * and tracking only, which costs nothing in contrast. */
+.popover-menu-heading {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-base-content);
+}
+
+.popover-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--color-base-300);
+}
+
 /* Same escape hatch as `.settings-panel`: users who ask for reduced
  * transparency get the fully opaque pane colour and no blur, which is
  * exactly what these chips looked like when they were still solid bands. */

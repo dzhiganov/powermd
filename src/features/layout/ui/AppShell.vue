@@ -12,12 +12,10 @@ import {
 import {
   SettingsModal,
   ShortcutsModal,
-  ThemeToggle,
   $showTooltips,
   $drawerSide,
   drawerSideChanged,
 } from '@/features/settings'
-import { ExportMenu, ImportButton } from '@/features/transfer'
 
 import Toolbar from './Toolbar.vue'
 import MoreMenu from './MoreMenu.vue'
@@ -151,14 +149,14 @@ const centered = true
       :side="drawerSide"
       @dock-changed="drawerSideChanged"
     >
-      <!-- `side` reaches the two menus so their panels open INWARD. The
-           tools row mirrors with the dock side, and a right-aligned panel
-           grows leftward — so against the left edge of the window it opened
+      <!-- One control, not four. The theme cycle, import, and export used to
+           sit here as separate buttons; all three are rows inside this menu
+           now (user request) — see `MoreMenu.vue`.
+           `side` still reaches it so the panel opens INWARD: this row
+           mirrors with the dock side, and a right-aligned panel grows
+           leftward, so against the left edge of the window it opened
            off-screen. -->
       <template #tools>
-        <ThemeToggle />
-        <ImportButton />
-        <ExportMenu :side="drawerSide" />
         <MoreMenu :show-tooltips="showTooltips" :side="drawerSide" />
       </template>
     </DocumentDrawer>

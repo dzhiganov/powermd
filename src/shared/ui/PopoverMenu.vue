@@ -100,9 +100,25 @@ function setTriggerRef(el: Element | ComponentPublicInstance | null): void {
 /** Passed to the caller's first item via `:ref="setFirstItemRef"` in the
  * default slot — the element `useDialogFocusTrap` focuses the instant the
  * panel opens. Optional: a caller with no naturally-first focusable item
- * (there is none among the current menus) can simply not bind it. */
+ * can simply not bind it.
+ *
+ * Unwraps `$el` when the ref lands on a COMPONENT rather than a plain
+ * element. `MoreMenu.vue`'s first row is `<ThemeToggle menu-item />`, and a
+ * `:ref` on a component yields its `ComponentPublicInstance`, not an
+ * `HTMLElement` — the old `el instanceof HTMLElement ? el : null` quietly
+ * stored `null` for that case, which does not throw or warn anywhere. It
+ * just means the panel opens with nothing focused, so the first Tab goes
+ * somewhere unrelated and keyboard users lose the menu. Guarded again after
+ * the unwrap because `$el` is a comment node for a component whose root is
+ * `v-if`'d off, and a fragment root yields the first node of the fragment,
+ * which need not be an element either. */
 function setFirstItemRef(el: Element | ComponentPublicInstance | null): void {
-  firstItemRef.value = el instanceof HTMLElement ? el : null
+  if (el instanceof HTMLElement) {
+    firstItemRef.value = el
+    return
+  }
+  const root = (el as ComponentPublicInstance | null)?.$el ?? null
+  firstItemRef.value = root instanceof HTMLElement ? root : null
 }
 
 function toggle(): void {
@@ -205,80 +221,19 @@ defineExpose({ close })
 }
 
 /*
- * `:slotted()` — every item, heading, and divider below lives in the
- * caller's own template (passed in via the default slot), not this
- * component's. Vue's `scoped` attribute normally only reaches elements
- * this component renders itself; `:slotted()` is the documented escape
- * hatch for styling slot content from the child that owns the slot, which
- * is what lets one shared class name style items across five different
- * callers instead of each caller duplicating this block in its own
- * `<style scoped>` (which is exactly the drift this component exists to
- * end — `MoreMenu.vue` and `DocumentDrawer.vue` used to carry
- * byte-for-byte copies of it under `.more-menu-item`/`.new-menu-item`).
+ * `.popover-menu-item` / `-heading` / `-divider` are NOT here. They live in
+ * `app/styles/main.css` as plain global classes.
+ *
+ * They used to live here as `:slotted()` rules, which was correct while
+ * every item was a raw `<button>` written directly in a caller's default
+ * slot. It stopped being enough once items started coming from nested
+ * COMPONENTS instead (`transfer`'s `ImportButton`/`ExportMenuItems`,
+ * `settings`' `ThemeToggle`, all rendered inside `layout/ui/MoreMenu.vue`'s
+ * slot): `:slotted()` reaches the slot content's own root elements, not
+ * markup rendered one component deeper, so those three would each have
+ * needed a private copy of the block. `ImportButton.vue` already carried
+ * exactly such a copy, under `.more-menu-item`, with a comment explaining
+ * it could not reach these rules — that duplication is what the move
+ * deletes.
  */
-:slotted(.popover-menu-item) {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--color-base-content);
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-  white-space: nowrap;
-}
-
-:slotted(.popover-menu-item:hover),
-:slotted(.popover-menu-item:focus-visible) {
-  background: var(--md-hov, var(--color-base-200));
-}
-
-:slotted(.popover-menu-item:focus-visible) {
-  outline: 2px solid var(--md-accent);
-  outline-offset: -2px;
-}
-
-/* Disabled items (e.g. a row's own current folder in its "Move to" list)
- * are exempt from WCAG text-contrast floors — dimming is the affordance,
- * not a bug — see the `:disabled` state note in the migration report. */
-:slotted(.popover-menu-item:disabled) {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-/* Destructive items (a row's "Delete") — same `--color-error` role
- * daisyUI's `text-error` already resolved to before this component
- * existed, just applied directly rather than through that utility class. */
-:slotted(.popover-menu-item--danger) {
-  color: var(--color-error);
-}
-
-/* Non-interactive section heading (the export menu's "Copy", a row's own
- * "Move to") — kept out of the tab order by construction: it's a `<div>`/
- * `<span>` with no `tabindex`, `href`, or form-control semantics, so
- * nothing here needs an explicit `tabindex="-1"` to achieve that. Full-
- * strength `--color-base-content` (not a muted `--md-t3`/`--md-t4` token)
- * for its text colour — those two tokens are documented in this file's
- * `KNOWN CONTRAST LIMITATIONS` block as unsafe for small text against
- * these surfaces; the muted *look* instead comes from size/weight/tracking
- * only, which costs nothing in contrast. */
-:slotted(.popover-menu-heading) {
-  padding: 8px 10px 4px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--color-base-content);
-}
-
-:slotted(.popover-menu-divider) {
-  height: 1px;
-  margin: 4px 6px;
-  background: var(--color-base-300);
-}
 </style>

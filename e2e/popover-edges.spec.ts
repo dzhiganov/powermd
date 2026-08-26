@@ -1,16 +1,22 @@
 import { test, expect, type Page } from '@playwright/test'
 
 /**
- * Menus in the documents panel's tools row must stay inside the window on
+ * The menu in the documents panel's tools row must stay inside the window on
  * BOTH dock sides.
  *
  * A right-aligned panel grows leftward from its trigger. The tools row
  * mirrors with the dock side, so once the panel could dock left the row sat
- * against the left edge of the window and its menus opened straight off it
- * — the More menu's contents were clipped and unreadable. Nothing else
- * catches this: the menus opened, focus trapped, items were present and
- * clickable, contrast was fine. The only thing wrong was where the panel
- * landed relative to the window, so that is what this measures.
+ * against the left edge of the window and its menu opened straight off it —
+ * the contents were clipped and unreadable. Nothing else catches this: the
+ * menu opened, focus trapped, items were present and clickable, contrast was
+ * fine. The only thing wrong was where the panel landed relative to the
+ * window, so that is what this measures.
+ *
+ * One menu, not two: the export actions used to have a second trigger next
+ * to this one and were measured separately. They are rows inside this same
+ * menu now (`layout/ui/MoreMenu.vue`), so they are covered by it — and since
+ * they made it the widest panel in the app (256px), this measures the worst
+ * case rather than a narrower one.
  */
 
 const DRAWER_SIDE_KEY = 'markdown-editor:drawer-side'
@@ -27,27 +33,19 @@ async function openWithSide(page: Page, side: 'left' | 'right'): Promise<void> {
 }
 
 for (const side of ['right', 'left'] as const) {
-  for (const menu of [
-    { trigger: 'More actions', panel: 'More actions' },
-    { trigger: 'Export document', panel: 'Export document' },
-  ]) {
-    test(`${menu.trigger} stays fully on screen with the panel docked ${side}`, async ({
-      page,
-    }) => {
-      await openWithSide(page, side)
+  test(`More actions stays fully on screen with the panel docked ${side}`, async ({ page }) => {
+    await openWithSide(page, side)
 
-      await page.getByRole('button', { name: menu.trigger }).click()
-      const panel = page.locator(`[role="menu"][aria-label="${menu.panel}"]`)
-      await panel.waitFor()
+    await page.getByRole('button', { name: 'More actions' }).click()
+    const panel = page.locator('[role="menu"][aria-label="More actions"]')
+    await panel.waitFor()
 
-      const box = (await panel.boundingBox())!
-      const viewport = (await page.viewportSize())!
+    const box = (await panel.boundingBox())!
+    const viewport = (await page.viewportSize())!
 
-      expect(box.x, `${menu.trigger} (${side}): left edge is on screen`).toBeGreaterThanOrEqual(0)
-      expect(
-        box.x + box.width,
-        `${menu.trigger} (${side}): right edge is on screen`,
-      ).toBeLessThanOrEqual(viewport.width)
-    })
-  }
+    expect(box.x, `docked ${side}: left edge is on screen`).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width, `docked ${side}: right edge is on screen`).toBeLessThanOrEqual(
+      viewport.width,
+    )
+  })
 }

@@ -599,74 +599,48 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
       <!-- No `border-t`. The dock control is a small pill floating at the
              bottom of an otherwise empty column; a rule above it implied a
              footer section that has no other content to separate. -->
+      <!-- ONE button showing only the side you can move to, not a two-button
+           segmented control showing both (user request). The old pair had to
+           communicate which of the two was currently active, which needed a
+           track, an active fill, and `aria-pressed` on both halves — a lot of
+           furniture for a control with exactly one meaningful action at any
+           moment. Now the icon IS the destination: docked right, it shows the
+           panel on the left and moves it there. Same
+           `dock-changed` event and the same `settings`-owned preference as
+           before (Settings > "Documents panel side" still offers the direct
+           Left/Right pick), so nothing about the underlying state changed. -->
       <footer class="flex h-8 shrink-0 items-center justify-end px-2.5">
-        <div
-          class="flex items-center gap-0.5 rounded-full p-0.5"
-          role="group"
-          aria-label="Documents panel side"
-          style="background: var(--md-seg, var(--color-base-200))"
+        <button
+          type="button"
+          class="dock-btn"
+          :aria-label="side === 'left' ? 'Dock sidebar right' : 'Dock sidebar left'"
+          :title="showTooltips ? (side === 'left' ? 'Dock right' : 'Dock left') : undefined"
+          @click="emit('dock-changed', side === 'left' ? 'right' : 'left')"
         >
-          <button
-            type="button"
-            class="dock-btn"
-            :class="{ 'dock-btn-active': side === 'left' }"
-            :aria-pressed="side === 'left'"
-            aria-label="Dock sidebar left"
-            :title="showTooltips ? 'Dock left' : undefined"
-            @click="emit('dock-changed', 'left')"
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.25"
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.25"
-            >
-              <rect x="1.8" y="2.6" width="12.4" height="10.8" rx="2" />
-              <rect
-                x="1.8"
-                y="2.6"
-                width="4.6"
-                height="10.8"
-                rx="2"
-                fill="currentColor"
-                stroke="none"
-                opacity="0.55"
-              />
-            </svg>
-          </button>
-          <button
-            type="button"
-            class="dock-btn"
-            :class="{ 'dock-btn-active': side === 'right' }"
-            :aria-pressed="side === 'right'"
-            aria-label="Dock sidebar right"
-            :title="showTooltips ? 'Dock right' : undefined"
-            @click="emit('dock-changed', 'right')"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.25"
-            >
-              <rect x="1.8" y="2.6" width="12.4" height="10.8" rx="2" />
-              <rect
-                x="9.6"
-                y="2.6"
-                width="4.6"
-                height="10.8"
-                rx="2"
-                fill="currentColor"
-                stroke="none"
-                opacity="0.55"
-              />
-            </svg>
-          </button>
-        </div>
+            <rect x="1.8" y="2.6" width="12.4" height="10.8" rx="2" />
+            <!-- The filled bar sits on the side the panel would MOVE to:
+                 x=9.6 (right) while docked left, x=1.8 (left) while docked
+                 right. -->
+            <rect
+              :x="side === 'left' ? 9.6 : 1.8"
+              y="2.6"
+              width="4.6"
+              height="10.8"
+              rx="2"
+              fill="currentColor"
+              stroke="none"
+              opacity="0.55"
+            />
+          </svg>
+        </button>
       </footer>
     </aside>
 
@@ -770,13 +744,20 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
  * the previous height fell under the 24x24 minimum hit-target size; the
  * 32px-tall footer (`h-8` in the template) has room for it with its
  * `p-0.5` wrapper unchanged. */
+/* A single ghost button now, not one half of a segmented pair — so the
+ * track fill (`--md-seg`), the active fill (`--md-seg-active`) and the
+ * `.dock-btn-active` rule that switched between them are all gone with it.
+ * Nothing here has to show "which side is selected" any more: there is one
+ * button and it always means "move the panel to the other side".
+ * `border-radius: 6px` rather than the old pill: it matches the rounded
+ * square of every other small square control in this panel. */
 .dock-btn {
   display: grid;
   place-items: center;
   width: 24px;
   height: 24px;
   border: none;
-  border-radius: 999px;
+  border-radius: 6px;
   cursor: pointer;
   background: transparent;
   color: var(--md-seg-fg, var(--color-base-content));
@@ -785,12 +766,8 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
     color 120ms ease;
 }
 
-.dock-btn:not(.dock-btn-active):hover {
+.dock-btn:hover {
   background: var(--md-hov, var(--color-base-300));
-}
-
-.dock-btn-active {
-  background: var(--md-seg-active, var(--color-base-100));
   color: var(--color-base-content);
 }
 

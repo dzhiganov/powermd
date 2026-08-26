@@ -288,7 +288,16 @@ test.describe('theme schedule — Settings UI', () => {
     await page.reload()
     await page.locator('.cm-content').waitFor()
 
-    const toggle = page.getByRole('button', {
+    // The theme cycle is a row inside the "…" menu now, not a standalone
+    // button in the documents panel's tools row — so the menu has to be
+    // opened first. It is opened ONCE for all four clicks on purpose: that
+    // row deliberately leaves the popover open when clicked (see
+    // `ThemeToggle.vue`'s comment on why it is the one exception among its
+    // siblings), and cycling all the way round without the menu closing
+    // underneath is exactly the behaviour worth pinning down here.
+    await page.getByRole('button', { name: 'More actions' }).click()
+
+    const toggle = page.getByRole('menuitem', {
       name: /Switch to (dark|system|schedule|light) theme/,
     })
     await expect(toggle).toHaveAttribute('aria-label', 'Switch to dark theme')
