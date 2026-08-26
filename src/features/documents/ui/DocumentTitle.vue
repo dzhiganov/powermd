@@ -70,7 +70,16 @@ function cancelRename() {
 </script>
 
 <template>
-  <div class="flex min-w-0 items-baseline gap-2">
+  <!-- `items-center`, NOT `items-baseline`. The unsaved dot below is an
+       empty 5px span with no text in it, and an empty box's baseline is its
+       bottom margin edge — so under baseline alignment the dot hung its
+       BOTTOM off the text baseline and its centre landed 1.5px below the
+       title's (measured: title centre y=23, dot centre y=24.5). Centring
+       the row costs nothing typographically here: the folder label and the
+       title differ by a single pixel of font size (13px vs the button's
+       12px), so their baselines still land within half a pixel of each
+       other. -->
+  <div class="flex min-w-0 items-center gap-2">
     <!-- `--md-t3`/`--md-t4` here are exactly the "small secondary label"
          case they're safe for (13px breadcrumb chrome, not running text) —
          see `app/styles/main.css`'s contrast-limitation note on those two

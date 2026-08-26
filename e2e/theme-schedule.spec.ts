@@ -161,7 +161,21 @@ test.describe('theme schedule — resolves correctly on load, no flash', () => {
 test.describe('theme schedule — applies live while the app stays open', () => {
   test('crossing the light boundary (07:00) flips the theme with no reload', async ({ page }) => {
     // 2 seconds before the default light-starts time.
-    await page.clock.install({ time: new Date(2024, 0, 15, 6, 59, 58) })
+    //
+    // `pauseAt` immediately, before any setup runs. `install()` alone does
+    // NOT freeze the clock — it keeps ticking along with real time (probed:
+    // ~0.24s of drift across a fast `goto` + `reload`). With only a 2-second
+    // margin to the boundary, any run where the setup below took longer than
+    // that in REAL time — a loaded machine, a parallel worker, a slow
+    // reload — sailed past 07:00 before the assertion, and the app then
+    // correctly resolved 'light' while the test still demanded 'dark'. That
+    // failed for the one reason a test never should: the product was right.
+    // Pausing here pins the clock at 06:59:58 no matter how long setup
+    // takes, so the ONLY thing that ever moves it is this test's own
+    // explicit `pauseAt` past the boundary further down.
+    const beforeBoundary = new Date(2024, 0, 15, 6, 59, 58)
+    await page.clock.install({ time: beforeBoundary })
+    await page.clock.pauseAt(beforeBoundary)
     await openApp(page)
     await setScheduleStorage(page)
     await page.reload()
@@ -193,7 +207,11 @@ test.describe('theme schedule — applies live while the app stays open', () => 
   })
 
   test('crossing the dark boundary (19:00) flips the theme with no reload', async ({ page }) => {
-    await page.clock.install({ time: new Date(2024, 0, 15, 18, 59, 58) })
+    // Paused at install for the same reason as the light-boundary test
+    // above — see its comment for the drift measurement.
+    const beforeBoundary = new Date(2024, 0, 15, 18, 59, 58)
+    await page.clock.install({ time: beforeBoundary })
+    await page.clock.pauseAt(beforeBoundary)
     await openApp(page)
     await setScheduleStorage(page)
     await page.reload()
