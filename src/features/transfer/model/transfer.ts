@@ -1,4 +1,5 @@
 import { createEffect, createEvent, createStore, sample } from 'effector'
+import { zipSync, strToU8 } from 'fflate'
 
 import { toastRequested } from '@/shared/lib/toast'
 import { formatMegabytes } from '@/shared/lib/formatBytes'
@@ -11,7 +12,13 @@ import {
   readTextFileStrict,
 } from '../lib/fileValidation'
 import { stripExtension, sanitizeFilename } from '../lib/filenames'
-import { downloadText } from '../lib/download'
+import { downloadText, downloadBlob } from '../lib/download'
+import {
+  buildArchiveEntries,
+  archiveFilename,
+  type ArchiveDocument,
+  type ArchiveFolder,
+} from '../lib/archive'
 import { buildStandaloneHtml } from '../lib/htmlExport'
 import { copyPlainText, copyRichHtml } from '../lib/clipboard'
 import { printDocument } from '../lib/print'
@@ -30,18 +37,37 @@ export interface TransferDeps {
   /** Same pipeline + sanitize schema as the live preview — see
    * `features/preview/lib/exportRender.ts`. */
   renderMarkdown: (source: string) => Promise<string>
+  /** Every document and folder, read fresh at the moment "Download all" is
+   * clicked.
+   *
+   * A PULL, not a pushed mirror — deliberately unlike `exportSourceChanged`
+   * above, which `wiring.ts` samples in continuously. That one carries a
+   * single document; this would carry EVERY document's full content, so
+   * mirroring it into a store here would keep a second complete copy of the
+   * user's whole workspace in memory and rewrite it on every keystroke, to
+   * serve a button most people press rarely if ever. Reading on demand also
+   * means the archive can't be built from a stale snapshot. Same shape as
+   * `renderMarkdown`'s injection, and the same "read `.getState()` fresh at
+   * call time" pattern `wiring.ts` already uses for wiki-link resolution. */
+  listWorkspace: () => { documents: ArchiveDocument[]; folders: ArchiveFolder[] }
 }
 
 let deps: TransferDeps | null = null
 
+/** Only reachable if an export effect somehow fires before `initTransfer`
+ * runs from `wiring.ts` at startup — a programming error, not a runtime
+ * condition a user can hit. */
+function requireDeps(): TransferDeps {
+  if (deps === null) throw new Error('[transfer] initTransfer was not called')
+  return deps
+}
+
 function renderForExport(source: string): Promise<string> {
-  if (deps === null) {
-    // Only reachable if an export effect somehow fires before
-    // `initTransfer` runs from `wiring.ts` at startup — a programming
-    // error, not a runtime condition a user can hit.
-    return Promise.reject(new Error('[transfer] initTransfer was not called'))
+  try {
+    return requireDeps().renderMarkdown(source)
+  } catch (error) {
+    return Promise.reject(error instanceof Error ? error : new Error(String(error)))
   }
-  return deps.renderMarkdown(source)
 }
 
 // --- Drag-and-drop + file picker import -----------------------------------
@@ -124,6 +150,10 @@ export const exportHtmlRequested = createEvent()
 export const exportPdfRequested = createEvent()
 export const copyMarkdownRequested = createEvent()
 export const copyHtmlRequested = createEvent()
+/** Every document and folder, as one `.zip`. Unlike every other export
+ * above, this is workspace-scoped rather than about the active document —
+ * see `ui/DownloadAllItem.vue` for where it sits in the menu and why. */
+export const downloadAllRequested = createEvent()
 
 const exportMarkdownFx = createEffect((doc: ExportDocument): void => {
   downloadText(doc.content, `${sanitizeFilename(doc.title)}.md`, 'text/markdown;charset=utf-8')
@@ -146,6 +176,33 @@ const copyMarkdownFx = createEffect((doc: ExportDocument): Promise<void> =>
 const copyHtmlFx = createEffect(async (doc: ExportDocument): Promise<void> => {
   const html = await renderForExport(doc.content)
   await copyRichHtml(html)
+})
+
+/**
+ * Builds the archive and hands it to the browser as a download. Returns the
+ * document count so the success toast can say how much was in it — "1
+ * document" reads very differently from "247 documents" when you are
+ * checking that a backup actually worked.
+ *
+ * `zipSync`, not fflate's async/worker API, and on the main thread on
+ * purpose. The async variant builds its worker from a blob: URL, which a
+ * strict `worker-src` CSP blocks — a failure that would only show up in
+ * production, not in dev or in these tests. Markdown is small and deflate
+ * runs at tens of MB/s, so the synchronous cost is milliseconds for any
+ * realistic workspace; the trade is a predictable few-frame hitch for a
+ * very large one, against a feature that silently fails to work at all.
+ */
+const downloadAllFx = createEffect((): number => {
+  const { documents, folders } = requireDeps().listWorkspace()
+  const entries = buildArchiveEntries(documents, folders)
+  if (entries.length === 0) throw new Error('empty-workspace')
+
+  const files: Record<string, Uint8Array> = {}
+  for (const entry of entries) files[entry.path] = strToU8(entry.content)
+
+  const zipped = zipSync(files)
+  downloadBlob(new Blob([zipped], { type: 'application/zip' }), archiveFilename(new Date()))
+  return documents.length
 })
 
 function isExportDocument(doc: ExportDocument | null): doc is ExportDocument {
@@ -177,6 +234,9 @@ sample({
   filter: isExportDocument,
   target: copyHtmlFx,
 })
+// No `source`/`filter`: this one doesn't read the active document at all,
+// it pulls the whole workspace itself when it runs.
+sample({ clock: downloadAllRequested, target: downloadAllFx })
 
 // --- Export/copy feedback ---------------------------------------------------
 
@@ -212,6 +272,29 @@ sample({
 sample({
   clock: copyHtmlFx.done,
   fn: (): { text: string; tone: 'info' } => ({ text: 'HTML copied to clipboard.', tone: 'info' }),
+  target: toastRequested,
+})
+
+// A "download all" is usually someone taking a backup, and a silent
+// download that may or may not have contained everything is exactly the
+// wrong feedback for that — so the count is confirmed explicitly.
+sample({
+  clock: downloadAllFx.doneData,
+  fn: (count): { text: string; tone: 'info' } => ({
+    text: `Downloaded ${count} ${count === 1 ? 'document' : 'documents'}.`,
+    tone: 'info',
+  }),
+  target: toastRequested,
+})
+sample({
+  clock: downloadAllFx.fail,
+  fn: ({ error }): { text: string; tone: 'error' } => ({
+    text:
+      error instanceof Error && error.message === 'empty-workspace'
+        ? 'There is nothing to download yet.'
+        : 'Could not build the archive.',
+    tone: 'error',
+  }),
   target: toastRequested,
 })
 

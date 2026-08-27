@@ -41,6 +41,7 @@
     "@lezer/highlight": "^1.2.3",
     "effector": "^23.4.4",
     "effector-vue": "^23.1.1",
+    "fflate": "^0.8.3",
     "mdast-util-find-and-replace": "^3.0.2",
     "mermaid": "^11.16.0",
     "patronum": "^2.3.0",

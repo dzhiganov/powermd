@@ -274,7 +274,25 @@ function renderMarkdownForExportWithWikiLinks(source: string): Promise<string> {
   )
 }
 
-initTransfer({ renderMarkdown: renderMarkdownForExportWithWikiLinks })
+// "Download all" needs every document and folder, not just the active one.
+// Read fresh from `.getState()` on each call rather than sampled into a
+// store inside `transfer` — see `TransferDeps.listWorkspace`'s own comment
+// for why a continuously-mirrored copy of every document's full content
+// would be the wrong trade. Projected down to exactly what the archive
+// builder names files from, the same way the `github` snapshot above
+// projects `$documentList` down to what its sync engine needs.
+function listWorkspace() {
+  return {
+    documents: $documentList.getState().map((doc) => ({
+      title: doc.title,
+      content: doc.content,
+      folderId: doc.folderId,
+    })),
+    folders: $folders.getState().map((folder) => ({ id: folder.id, name: folder.name })),
+  }
+}
+
+initTransfer({ renderMarkdown: renderMarkdownForExportWithWikiLinks, listWorkspace })
 
 // --- settings <-> editor / documents (Step 8) -------------------------------
 //

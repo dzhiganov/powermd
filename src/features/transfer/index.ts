@@ -3,6 +3,7 @@ export { default as ImportButton } from './ui/ImportButton.vue'
 // their own trigger button and popover. They are rows inside `layout`'s "…"
 // menu now; see `ui/ExportMenuItems.vue`.
 export { default as ExportMenuItems } from './ui/ExportMenuItems.vue'
+export { default as DownloadAllItem } from './ui/DownloadAllItem.vue'
 export { default as DropOverlay } from './ui/DropOverlay.vue'
 
 export {

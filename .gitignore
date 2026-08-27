@@ -34,3 +34,7 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Scratch state written by AI coding tooling into this working copy — not
+# part of the project, and it churns on its own between commands.
+.omc/

@@ -9,7 +9,7 @@ import {
 
 import PopoverMenu from '@/shared/ui/PopoverMenu.vue'
 import { settingsOpened, helpOpened, ThemeToggle } from '@/features/settings'
-import { ImportButton, ExportMenuItems } from '@/features/transfer'
+import { ImportButton, ExportMenuItems, DownloadAllItem } from '@/features/transfer'
 
 import { aboutOpened } from '../model/dialogs'
 
@@ -90,9 +90,16 @@ function handleAbout(close: () => void): void {
            is the element `PopoverMenu` focuses the instant the menu opens. -->
       <ThemeToggle :ref="setFirstItemRef" menu-item />
       <ImportButton menu-item @picked="close" />
+      <DownloadAllItem :close="close" />
 
+      <!-- "This document", not "Export": "Download all (.zip)" directly
+           above is an export too, so a heading that only said "Export"
+           would read as covering it — and then "Markdown (.md)" below,
+           which exports the OPEN document alone, becomes ambiguous. The
+           heading now says what the section is scoped to instead of what it
+           does. -->
       <div class="popover-menu-divider" />
-      <div class="popover-menu-heading">Export</div>
+      <div class="popover-menu-heading">This document</div>
       <ExportMenuItems :close="close" />
 
       <div class="popover-menu-divider" />
