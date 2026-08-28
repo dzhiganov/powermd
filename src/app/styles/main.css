@@ -124,12 +124,27 @@ body {
    * the whole system, instead of every consumer branching on width. */
   --md-chrome-top: 0px;
   --md-chrome-bottom: 0px;
+
+  /* Height of the soft fade at the top and bottom of the panes (see
+   * `.md-edge-fade-*` further down). Its own tokens rather than reusing
+   * `--md-chrome-*` above: the fade wants to run a little PAST the chrome it
+   * sits under, so the text has finished disappearing by the time it reaches
+   * the chip rather than sliding out from behind a hard edge.
+   *
+   * Zero below 768px for the same reason the chrome heights are: nothing
+   * floats there, the header and status bar are in flow, so text never
+   * passes under anything and a fade would just dim the first and last lines
+   * for no reason. */
+  --md-edge-fade-top: 0px;
+  --md-edge-fade-bottom: 0px;
 }
 
 @media (min-width: 768px) {
   :root {
     --md-chrome-top: 46px;
     --md-chrome-bottom: 32px;
+    --md-edge-fade-top: 64px;
+    --md-edge-fade-bottom: 48px;
   }
 }
 
@@ -863,6 +878,61 @@ body {
   background-color: color-mix(in srgb, var(--color-base-100) 82%, transparent);
   -webkit-backdrop-filter: blur(14px) saturate(180%);
   backdrop-filter: blur(14px) saturate(180%);
+}
+
+/*
+ * EDGE FADE — a short gradient at the top and bottom of the panes, so text
+ * dissolves into the surface instead of being cut off at a hard line.
+ *
+ * This is the finishing half of the floating chrome. The panes now run the
+ * full height of the window and the document scrolls under the breadcrumb
+ * and the word count; without a fade, a line passing behind those chips
+ * simply stops mid-glyph at the window edge, which reads as clipping rather
+ * than as scrolling.
+ *
+ * Fades to `--color-base-100`, the pane's own surface — so it is light in
+ * the light theme and dark in the dark one automatically, with no per-theme
+ * value to keep in sync.
+ *
+ * NO BANDING here, unlike the gradient tried on the settings panel earlier
+ * (which was removed for exactly that): banding comes from spreading few
+ * 8-bit steps over many pixels, and that one faded 14% to 0% across ~600px,
+ * about one step every 17px. This runs the FULL alpha range over 48-64px —
+ * several steps per pixel — which is the opposite end of that trade.
+ *
+ * The end colour is `--color-base-100` at zero alpha rather than the
+ * `transparent` keyword. They are equivalent in browsers that interpolate
+ * gradients in premultiplied alpha, but `transparent` is literally
+ * `rgba(0, 0, 0, 0)`, so anywhere that premultiplication is missed the fade
+ * runs toward BLACK and leaves a grey cast over the light theme.
+ */
+.md-edge-fade-top,
+.md-edge-fade-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 10; /* over the pane text, under the chrome chips (15) */
+  pointer-events: none;
+}
+
+.md-edge-fade-top {
+  top: 0;
+  height: var(--md-edge-fade-top);
+  background: linear-gradient(
+    to bottom,
+    var(--color-base-100),
+    color-mix(in srgb, var(--color-base-100) 0%, transparent)
+  );
+}
+
+.md-edge-fade-bottom {
+  bottom: 0;
+  height: var(--md-edge-fade-bottom);
+  background: linear-gradient(
+    to top,
+    var(--color-base-100),
+    color-mix(in srgb, var(--color-base-100) 0%, transparent)
+  );
 }
 
 /*

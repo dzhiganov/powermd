@@ -189,6 +189,20 @@ const centered = true
         <PreviewPane v-show="showPreview" :centered="centered" />
       </main>
 
+      <!-- Soft fades at the top and bottom of the pane area — the finishing
+           half of the floating chrome above: text scrolls UNDER the
+           breadcrumb and the word count now, and without these it would
+           simply stop mid-glyph at the window edge, reading as clipped
+           rather than scrolled. Siblings of `<main>` rather than children of
+           either pane, so one pair covers both panes and the splitter
+           between them and neither pane has to know they exist.
+           `print:hidden` — a fade to the screen's surface colour over the
+           first and last lines of a printed page would just look like a
+           smudge. See `.md-edge-fade-*` in main.css; both collapse to zero
+           height on mobile, where nothing floats. -->
+      <div class="md-edge-fade-top print:hidden" aria-hidden="true" />
+      <div class="md-edge-fade-bottom print:hidden" aria-hidden="true" />
+
       <!-- Word count + GitHub sync status, pulled out of the documents
            drawer's footer and the header respectively into one dedicated
            bottom bar — see `StatusBar.vue` for the full layout/alignment
