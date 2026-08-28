@@ -16,6 +16,7 @@ import { buildWordCompletionSource } from './wordCompletion'
 import { inlineCompletionTheme } from './completionTheme'
 import { indentListItem, outdentListItem } from './listIndent'
 import { focusModeExtension } from './focusMode'
+import { codeFenceCompletion } from './codeFence'
 import { $wikiLinkDocuments, $activeWikiLinkDocumentId } from '../model/editorEvents'
 
 /**
@@ -274,6 +275,13 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         ),
         daisyMarkdownTheme,
         imagePasteHandler,
+        // Typing the third backtick of a fence writes the closing one — see
+        // `lib/codeFence.ts`. Placed after `markdown()` above because it
+        // reads that language's syntax tree to tell "opening a block" from
+        // "closing the one I'm already in"; an `inputHandler` rather than a
+        // keymap, so it needs no position in the keymap precedence chain
+        // that `completionAcceptKeymap`/`listIndentKeymap` below care about.
+        codeFenceCompletion,
         jumpFlashField,
         completionCompartment.of(buildCompletionExtension(currentWordCompletionEnabled)),
         focusModeCompartment.of(currentFocusModeEnabled ? focusModeExtension : []),
