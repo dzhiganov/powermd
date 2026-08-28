@@ -17,6 +17,7 @@ import { inlineCompletionTheme } from './completionTheme'
 import { indentListItem, outdentListItem } from './listIndent'
 import { focusModeExtension } from './focusMode'
 import { codeFenceCompletion } from './codeFence'
+import { codeSpellcheckOff } from './codeSpellcheck'
 import { $wikiLinkDocuments, $activeWikiLinkDocumentId } from '../model/editorEvents'
 
 /**
@@ -273,6 +274,13 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         spellcheckCompartment.of(
           EditorView.contentAttributes.of(buildContentAttributes(currentSpellcheck)),
         ),
+        // ...but never over code. The attribute above applies to the whole
+        // document, which put a red squiggle under every identifier in every
+        // code block; this overrides it back to `false` on the code ranges
+        // only. Outside the compartment deliberately — it is not a
+        // preference, it holds whether spell check is on or off (false
+        // inside false is still false), so there is nothing to reconfigure.
+        codeSpellcheckOff,
         daisyMarkdownTheme,
         imagePasteHandler,
         // Typing the third backtick of a fence writes the closing one — see
