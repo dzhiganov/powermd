@@ -138,6 +138,12 @@ body {
   --md-edge-fade-top: 0px;
   --md-edge-fade-bottom: 0px;
 
+  /* The highlights column. Narrower than the documents panel's 320px: it
+   * holds short quotes and notes rather than file names that must not
+   * truncate, and it competes for width with the documents panel when both
+   * are open. */
+  --md-highlights-width: 288px;
+
   /* HIGHLIGHT COLOURS (see `shared/config/highlightColors.ts`).
    *
    * ONE declaration serves all four theme x soft-contrast combinations,

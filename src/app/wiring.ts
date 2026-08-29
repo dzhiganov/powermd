@@ -85,6 +85,7 @@ import { initPaneJump } from './paneJump'
 import { initDocumentsSearchShortcut } from './documentsSearchShortcut'
 import { initWikiLinks } from './wikiLinks'
 import { initTaskListToggle } from './taskListToggle'
+import { initHighlightsWiring } from './highlights'
 import { isWordCompletionActive } from './lib/wordCompletionScope'
 
 import '@/features/settings'
@@ -149,6 +150,12 @@ initWikiLinks()
 // `taskListToggle.ts`'s own doc comment for why this needs both `preview`
 // and `editor` and so lives here, same shape as `initWikiLinks()` above.
 initTaskListToggle()
+
+// Text highlights: `editor` paints the ranges and reports selections,
+// `documents` owns the database, `highlights` owns the list and the UI, and
+// none of the three imports another — see `highlights.ts`'s own doc comment,
+// same shape as `initWikiLinks()`/`initTaskListToggle()` above.
+initHighlightsWiring()
 
 // --- documents <-> editor -------------------------------------------------
 //

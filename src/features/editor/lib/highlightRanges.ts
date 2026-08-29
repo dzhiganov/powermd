@@ -21,12 +21,19 @@ export interface RemapResult {
 /**
  * Re-anchors highlight ranges across a document change.
  *
- * ASSOCIATION. `from` maps with assoc `-1` and `to` with `+1`, so each end
- * leans OUTWARD. Typing at the very start or end of a highlight therefore
- * extends it rather than escaping it, which is what "I'm still writing this
- * bit" should do. Both ends leaning the same way would make one edge sticky
- * and the other slippery — insert at the start and the highlight would
- * silently lose its first word, or gain text nobody highlighted.
+ * ASSOCIATION. Both ends lean INWARD — `from` maps with assoc `+1`, `to`
+ * with `-1` — so text typed at either boundary stays OUTSIDE the highlight,
+ * and only text typed strictly inside is absorbed. The rule is "a highlight
+ * covers the text you highlighted", which is the one users can predict
+ * without being told.
+ *
+ * Leaning outward was tried first, on the reasoning that typing at an edge
+ * means "I'm still writing this bit". It is wrong at the leading edge, and
+ * an end-to-end test caught it: with a highlight at the very start of the
+ * document, typing a new opening sentence in front of it silently swallowed
+ * that sentence into the highlight. Prefixing text is not continuing the
+ * highlighted thought, and there is no way to type before a highlight that
+ * starts at offset 0 if its leading edge is sticky.
  *
  * DELETION. A highlight whose text is entirely gone is REMOVED, not
  * collapsed to a zero-width marker. This is the deliberate difference from
@@ -66,8 +73,8 @@ export function remapRanges(ranges: readonly AnchoredRange[], changes: ChangeDes
       continue
     }
 
-    const from = changes.mapPos(range.from, -1)
-    const to = changes.mapPos(range.to, 1)
+    const from = changes.mapPos(range.from, 1)
+    const to = changes.mapPos(range.to, -1)
 
     // Belt and braces: a range that still collapsed has no text to colour.
     if (to <= from) {

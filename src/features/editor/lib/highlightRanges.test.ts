@@ -25,16 +25,24 @@ describe('remapRanges', () => {
     expect(result.removed).toEqual([])
   })
 
-  it('extends the range when typing at its start', () => {
-    // `from` leans outward (assoc -1), so the new text joins the highlight
-    // instead of the highlight sliding off it.
+  it('does NOT swallow text typed at its start', () => {
+    // Both ends lean inward, so prefixing text stays outside the highlight —
+    // the span slides along instead of growing. An outward-leaning `from`
+    // made it impossible to type in front of a highlight at offset 0.
     const result = remapRanges([range('a', 6, 11)], change(11, { from: 6, insert: 'X' }))
-    expect(result.moved).toEqual([{ id: 'a', from: 6, to: 12 }])
+    expect(result.moved).toEqual([{ id: 'a', from: 7, to: 12 }])
   })
 
-  it('extends the range when typing at its end', () => {
+  it('does NOT swallow text typed at its end', () => {
+    // Nothing moves at all: the span still covers exactly its own text.
     const result = remapRanges([range('a', 6, 11)], change(11, { from: 11, insert: 'X' }))
-    expect(result.moved).toEqual([{ id: 'a', from: 6, to: 12 }])
+    expect(result.moved).toEqual([])
+  })
+
+  it('absorbs text typed strictly inside it', () => {
+    // The one case where growing is unavoidable and correct.
+    const result = remapRanges([range('a', 6, 11)], change(11, { from: 8, insert: 'XY' }))
+    expect(result.moved).toEqual([{ id: 'a', from: 6, to: 13 }])
   })
 
   it('shrinks the range when text inside it is deleted', () => {

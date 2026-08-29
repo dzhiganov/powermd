@@ -42,5 +42,16 @@ export {
   $searchResults,
 } from './model/search'
 
+// Highlight STORAGE only. This feature owns `lib/db.ts`, so the `highlights`
+// feature cannot reach the database itself — it has these injected instead
+// (see `app/highlights.ts`). Deliberately no `Highlight` type and no
+// behaviour: `documents` stores highlight rows, it does not know what a
+// highlight means.
+export {
+  getHighlightsForDocument as loadHighlightsForDocument,
+  putHighlights as saveHighlights,
+  deleteHighlights as removeHighlights,
+} from './lib/db'
+
 export type { MarkdownDocument, SaveStatus, Folder, GitHubOrigin } from './model/types'
 export type { SearchResult, SearchMatchLocation } from './lib/search'

@@ -16,6 +16,7 @@ import {
   $drawerSide,
   drawerSideChanged,
 } from '@/features/settings'
+import { HighlightsPanel, HighlightToolbar, $panelOpen } from '@/features/highlights'
 
 import Toolbar from './Toolbar.vue'
 import MoreMenu from './MoreMenu.vue'
@@ -73,6 +74,15 @@ const showSplitter = computed(() => isDesktop.value && viewMode.value === 'split
 // block below) so the content column's edge and the panel's edge arrive
 // together. Mobile's drawer is a full-viewport overlay over otherwise-
 // static content (unchanged from before), so nothing is reserved there.
+// The highlights column docks on the side the documents panel isn't, so both
+// can be open at once and neither has to move when the other opens. It is a
+// plain in-flow flex child (unlike the documents panel, which is absolute so
+// it can slide), so it needs no padding reserved for it — `flex-1` on the
+// content column already yields the space.
+const highlightsOpen = useUnit($panelOpen)
+const highlightsSide = computed(() => (drawerSide.value === 'left' ? 'right' : 'left'))
+const showHighlights = computed(() => isDesktop.value && highlightsOpen.value)
+
 const shellStyle = computed(() => {
   if (!isDesktop.value) return {}
   const reserved = drawerOpen.value ? 'var(--md-sidebar-width)' : '0px'
@@ -161,10 +171,27 @@ const centered = true
       </template>
     </DocumentDrawer>
 
+    <!-- The floating selection toolbar. Mounted at the shell so it is never
+         clipped by a pane's own `overflow-hidden`; it positions itself with
+         `fixed` from the coordinates the editor measured. -->
+    <HighlightToolbar />
+
+    <!-- Highlights column, on the side the documents panel is not. An
+         in-flow flex child (unlike the documents panel, which is absolute so
+         it can slide), ordered before or after the content column so it sits
+         on the correct edge. -->
+    <HighlightsPanel
+      v-if="showHighlights"
+      :side="highlightsSide"
+      :class="highlightsSide === 'left' ? 'order-1' : 'order-3'"
+    />
+
     <!-- No `order-*` needed any more: the drawer above is `position:
          absolute` (out of flow) now, so this is the only flex child left
          in the shell's own row and there is nothing left to order it
-         against.
+         against. (`order-2` only matters while the highlights column above
+         is mounted, which is the one case there is anything to order
+         against.)
 
          `relative`: the containing block for the floating header and status
          bar below. At desktop widths both go `position: absolute` (see
@@ -175,7 +202,7 @@ const centered = true
          sidebar is open — this column is the element the shell's own
          padding narrows, so its edges are already the panes' edges. -->
     <div
-      class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden print:block print:h-auto print:overflow-visible"
+      class="relative order-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden print:block print:h-auto print:overflow-visible"
     >
       <Toolbar :side="drawerSide" />
       <MobileTabs v-show="!isDesktop" />

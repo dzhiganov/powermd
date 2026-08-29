@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useUnit } from 'effector-vue/composition'
 import {
   EllipsisHorizontalIcon,
   Cog6ToothIcon,
   QuestionMarkCircleIcon,
   InformationCircleIcon,
+  PencilSquareIcon,
 } from '@heroicons/vue/24/outline'
 
 import PopoverMenu from '@/shared/ui/PopoverMenu.vue'
 import { settingsOpened, helpOpened, ThemeToggle } from '@/features/settings'
 import { ImportButton, ExportMenuItems, DownloadAllItem } from '@/features/transfer'
+import { panelToggled, $panelOpen, $highlightCount } from '@/features/highlights'
 
 import { aboutOpened } from '../model/dialogs'
 
@@ -30,6 +33,9 @@ const props = withDefaults(defineProps<{ showTooltips?: boolean; side?: 'left' |
 })
 
 const menuAlign = computed(() => (props.side === 'left' ? 'start' : 'end'))
+
+const highlightsOpen = useUnit($panelOpen)
+const highlightCount = useUnit($highlightCount)
 
 // Open/close state, outside-click dismissal, Escape-returns-focus, and the
 // Tab-trap all now live in `PopoverMenu` (`@/shared/ui/PopoverMenu.vue`) —
@@ -89,6 +95,21 @@ function handleAbout(close: () => void): void {
       <!-- `setFirstItemRef` moves with the first row, whatever it is — this
            is the element `PopoverMenu` focuses the instant the menu opens. -->
       <ThemeToggle :ref="setFirstItemRef" menu-item />
+      <button
+        type="button"
+        role="menuitem"
+        class="popover-menu-item"
+        @click="
+          () => {
+            panelToggled()
+            close()
+          }
+        "
+      >
+        <PencilSquareIcon class="h-3.5 w-3.5 shrink-0" />
+        {{ highlightsOpen ? 'Hide highlights' : 'Show highlights' }}
+        <span v-if="highlightCount > 0" class="ml-auto opacity-50">{{ highlightCount }}</span>
+      </button>
       <ImportButton menu-item @picked="close" />
       <DownloadAllItem :close="close" />
 
