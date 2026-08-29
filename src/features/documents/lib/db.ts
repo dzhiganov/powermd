@@ -1,4 +1,6 @@
-import type { Folder, GitHubOrigin, MarkdownDocument } from '../model/types'
+import { isHighlightColorId, DEFAULT_HIGHLIGHT_COLOR } from '@/shared/config/highlightColors'
+
+import type { Folder, GitHubOrigin, Highlight, MarkdownDocument } from '../model/types'
 
 /**
  * Thin promise wrapper over raw IndexedDB. Chosen over the `idb` package on
@@ -56,6 +58,13 @@ const DB_NAME = 'markdown-editor'
  * cursor-walk-content diff: an ADD-A-STORE migration cannot corrupt data it
  * never touches.
  *
+ * v5 -> v6: adds the `highlights` object store (keyPath `id`, plus a
+ * non-unique `documentId` index, so a document's highlights can be loaded —
+ * and cascade-deleted with it — without scanning the whole store). Another
+ * ADD-A-STORE migration, with the same properties as v4 -> v5 above: it
+ * touches no existing record, so it cannot corrupt data it never reads, and
+ * "does an old document survive the upgrade" is enough to prove it.
+ *
  * WHY v5 SURVIVES A ROLLED-BACK FEATURE. The bookmarks UI was reverted (see
  * the `bookmarks-and-scroll-jump` branch, where the whole feature is parked
  * for later), but this store and this version number deliberately stayed.
@@ -70,12 +79,14 @@ const DB_NAME = 'markdown-editor'
  * outlive their document. When bookmarks return, the store is already there
  * with the user's data intact.
  */
-const DB_VERSION = 5
+const DB_VERSION = 6
 const DOC_STORE = 'documents'
 const META_STORE = 'meta'
 const FOLDER_STORE = 'folders'
 const BOOKMARK_STORE = 'bookmarks'
 const BOOKMARK_DOCUMENT_ID_INDEX = 'documentId'
+const HIGHLIGHT_STORE = 'highlights'
+const HIGHLIGHT_DOCUMENT_ID_INDEX = 'documentId'
 const ACTIVE_ID_KEY = 'activeId'
 
 interface MetaRow {
@@ -214,6 +225,10 @@ function openDatabase(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(BOOKMARK_STORE)) {
         const bookmarkStore = db.createObjectStore(BOOKMARK_STORE, { keyPath: 'id' })
         bookmarkStore.createIndex(BOOKMARK_DOCUMENT_ID_INDEX, 'documentId', { unique: false })
+      }
+      if (!db.objectStoreNames.contains(HIGHLIGHT_STORE)) {
+        const highlightStore = db.createObjectStore(HIGHLIGHT_STORE, { keyPath: 'id' })
+        highlightStore.createIndex(HIGHLIGHT_DOCUMENT_ID_INDEX, 'documentId', { unique: false })
       }
 
       // Backfill new per-document fields on disk in a single cursor walk —
@@ -483,24 +498,17 @@ export async function putDocument(doc: MarkdownDocument, base: number): Promise<
   }
 }
 
-/**
- * Deletes the document AND every bookmark that belongs to it, in one
- * `readwrite` transaction spanning both stores — same atomicity reasoning
- * as `deleteFolderAndOrphanDocuments` below: either the document and all
- * its bookmarks are gone, or (on any failure) neither is, so there is never
- * an intermediate state where a bookmark row survives pointing at a
- * `documentId` that no longer resolves to anything. This is the "deleting a
- * document must not leave its bookmarks behind" requirement, enforced at
- * the storage layer rather than left to the in-memory model to remember to
- * also clean up.
- */
-export async function deleteDocument(id: string): Promise<void> {
-  const db = await getDatabase()
-  const tx = db.transaction([DOC_STORE, BOOKMARK_STORE], 'readwrite')
-  tx.objectStore(DOC_STORE).delete(id)
-  const bookmarkStore = tx.objectStore(BOOKMARK_STORE)
-  const index = bookmarkStore.index(BOOKMARK_DOCUMENT_ID_INDEX)
-  await new Promise<void>((resolve, reject) => {
+/** Deletes every row in `store` whose `documentId` index matches `id`,
+ * within an already-open transaction. Shared by the two per-document
+ * satellite stores rather than written twice. */
+function deleteByDocumentId(
+  tx: IDBTransaction,
+  storeName: string,
+  indexName: string,
+  id: string,
+): Promise<void> {
+  const index = tx.objectStore(storeName).index(indexName)
+  return new Promise<void>((resolve, reject) => {
     const cursorRequest = index.openCursor(IDBKeyRange.only(id))
     cursorRequest.onsuccess = () => {
       const cursor = cursorRequest.result
@@ -513,8 +521,124 @@ export async function deleteDocument(id: string): Promise<void> {
     }
     cursorRequest.onerror = () => reject(cursorRequest.error ?? new Error('Cursor walk failed'))
   })
+}
+
+/**
+ * Deletes the document AND everything that belongs to it — its highlights,
+ * and any bookmark rows left over from that parked feature — in ONE
+ * `readwrite` transaction spanning all three stores. Same atomicity
+ * reasoning as `deleteFolderAndOrphanDocuments` below: either the document
+ * and all its satellites are gone, or (on any failure) none of it is, so
+ * there is never an intermediate state where a row survives pointing at a
+ * `documentId` that no longer resolves to anything. Enforced at the storage
+ * layer rather than left to the in-memory model to remember.
+ */
+export async function deleteDocument(id: string): Promise<void> {
+  const db = await getDatabase()
+  const tx = db.transaction([DOC_STORE, BOOKMARK_STORE, HIGHLIGHT_STORE], 'readwrite')
+  tx.objectStore(DOC_STORE).delete(id)
+  await deleteByDocumentId(tx, BOOKMARK_STORE, BOOKMARK_DOCUMENT_ID_INDEX, id)
+  await deleteByDocumentId(tx, HIGHLIGHT_STORE, HIGHLIGHT_DOCUMENT_ID_INDEX, id)
   await transactionDone(tx)
   broadcast({ type: 'delete', id })
+}
+
+// --- Highlights ------------------------------------------------------------
+
+/** Same shape/defensiveness as `normalizeDocument`/`normalizeFolder` — a
+ * corrupt or future-shaped record is dropped rather than flowing into the
+ * model, and every non-identifying field is repaired with a safe default
+ * rather than trusted.
+ *
+ * `id` and `documentId` must both be present: a highlight with no document
+ * to belong to is meaningless, and `documentId` doubles as the index key
+ * `deleteDocument`'s cascade and `getHighlightsForDocument` rely on, so a
+ * malformed one has to be caught here rather than surfacing later as a
+ * cursor lookup that silently finds nothing.
+ *
+ * A range that is reversed or empty is dropped rather than clamped. Those
+ * are not "slightly wrong" values that a default can rescue — they mean the
+ * record no longer describes a span of text, and rendering a zero-width
+ * highlight would put an invisible, unclickable entry in the panel. */
+function normalizeHighlight(value: unknown): Highlight | null {
+  if (typeof value !== 'object' || value === null) return null
+  const raw = value as Record<string, unknown>
+  if (typeof raw.id !== 'string' || raw.id === '') return null
+  if (typeof raw.documentId !== 'string' || raw.documentId === '') return null
+  if (typeof raw.from !== 'number' || !Number.isFinite(raw.from) || raw.from < 0) return null
+  if (typeof raw.to !== 'number' || !Number.isFinite(raw.to) || raw.to <= raw.from) return null
+  return {
+    id: raw.id,
+    documentId: raw.documentId,
+    from: raw.from,
+    to: raw.to,
+    color: isHighlightColorId(raw.color) ? raw.color : DEFAULT_HIGHLIGHT_COLOR,
+    note: typeof raw.note === 'string' ? raw.note : '',
+    text: typeof raw.text === 'string' ? raw.text : '',
+    createdAt:
+      typeof raw.createdAt === 'number' && Number.isFinite(raw.createdAt)
+        ? raw.createdAt
+        : Date.now(),
+  }
+}
+
+/** Every highlight belonging to one document, via the `documentId` index —
+ * not a full-store scan, so a workspace with thousands of highlights across
+ * many documents still opens one document at constant-ish cost. */
+export async function getHighlightsForDocument(documentId: string): Promise<Highlight[]> {
+  const db = await getDatabase()
+  const tx = db.transaction(HIGHLIGHT_STORE, 'readonly')
+  const index = tx.objectStore(HIGHLIGHT_STORE).index(HIGHLIGHT_DOCUMENT_ID_INDEX)
+  const raw = (await requestToPromise(index.getAll(IDBKeyRange.only(documentId)))) as unknown[]
+  return raw.reduce<Highlight[]>((highlights, entry) => {
+    const normalized = normalizeHighlight(entry)
+    if (normalized !== null) highlights.push(normalized)
+    return highlights
+  }, [])
+}
+
+/** Unconditional upsert — like `putFolder`, a highlight write (create,
+ * recolour, edit note, or a range remap after an edit) has no in-flight-edit
+ * window for a second tab to race against in a way that would silently lose
+ * data. "Whichever write lands last wins" is an acceptable rule for metadata
+ * this low-stakes, and much simpler than `putDocument`'s compare-before-
+ * write. */
+export async function putHighlight(highlight: Highlight): Promise<void> {
+  const db = await getDatabase()
+  const tx = db.transaction(HIGHLIGHT_STORE, 'readwrite')
+  tx.objectStore(HIGHLIGHT_STORE).put(highlight)
+  await transactionDone(tx)
+}
+
+/** Batched counterpart for the range-remap flow: one document edit can move
+ * every highlight after the caret, so this writes them in a single
+ * transaction rather than N. */
+export async function putHighlights(highlights: readonly Highlight[]): Promise<void> {
+  if (highlights.length === 0) return
+  const db = await getDatabase()
+  const tx = db.transaction(HIGHLIGHT_STORE, 'readwrite')
+  const store = tx.objectStore(HIGHLIGHT_STORE)
+  for (const highlight of highlights) store.put(highlight)
+  await transactionDone(tx)
+}
+
+export async function deleteHighlight(id: string): Promise<void> {
+  const db = await getDatabase()
+  const tx = db.transaction(HIGHLIGHT_STORE, 'readwrite')
+  tx.objectStore(HIGHLIGHT_STORE).delete(id)
+  await transactionDone(tx)
+}
+
+/** Used by the range-remap flow when an edit deletes a highlight's text
+ * outright — several can vanish in one keystroke (select a paragraph, type
+ * over it), so they go in one transaction. */
+export async function deleteHighlights(ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) return
+  const db = await getDatabase()
+  const tx = db.transaction(HIGHLIGHT_STORE, 'readwrite')
+  const store = tx.objectStore(HIGHLIGHT_STORE)
+  for (const id of ids) store.delete(id)
+  await transactionDone(tx)
 }
 
 export async function getActiveId(): Promise<string | null> {

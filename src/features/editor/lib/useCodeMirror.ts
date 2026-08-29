@@ -18,6 +18,12 @@ import { indentListItem, outdentListItem } from './listIndent'
 import { focusModeExtension } from './focusMode'
 import { codeFenceCompletion } from './codeFence'
 import { codeSpellcheckOff } from './codeSpellcheck'
+import { highlightExtension, highlightInteraction } from './highlightDecorations'
+import {
+  editorSelectionChanged,
+  editorHighlightClicked,
+  remapAnchoredHighlights,
+} from '../model/highlights'
 import { $wikiLinkDocuments, $activeWikiLinkDocumentId } from '../model/editorEvents'
 
 /**
@@ -281,6 +287,14 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         // preference, it holds whether spell check is on or off (false
         // inside false is still false), so there is nothing to reconfigure.
         codeSpellcheckOff,
+        // Coloured highlight spans, plus the selection/click reporting the
+        // `highlights` feature drives its toolbar and panel from. See
+        // `lib/highlightDecorations.ts` and `model/highlights.ts`.
+        highlightExtension,
+        highlightInteraction({
+          onSelection: (info) => editorSelectionChanged(info),
+          onHighlightClick: (id) => editorHighlightClicked(id),
+        }),
         daisyMarkdownTheme,
         imagePasteHandler,
         // Typing the third backtick of a fence writes the closing one — see
@@ -304,6 +318,13 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         listIndentKeymap,
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return
+          // Re-anchor highlight ranges BEFORE `onChange` propagates the new
+          // text. Both a real edit and a programmatic one move them — the
+          // ranges describe positions in the document, and the document has
+          // moved either way — so this deliberately runs above the
+          // `isProgrammatic` guard below, which is only about not marking
+          // the document dirty.
+          remapAnchoredHighlights(update.changes)
           // A `view.setState` rebuild (document load, see `loadDocument`)
           // never invokes this listener at all — CodeMirror only calls
           // `updateListener` for updates produced by `dispatch`, and

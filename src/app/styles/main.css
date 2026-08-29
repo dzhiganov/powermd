@@ -137,6 +137,35 @@ body {
    * for no reason. */
   --md-edge-fade-top: 0px;
   --md-edge-fade-bottom: 0px;
+
+  /* HIGHLIGHT COLOURS (see `shared/config/highlightColors.ts`).
+   *
+   * ONE declaration serves all four theme x soft-contrast combinations,
+   * because each surface is its hue mixed a short way into
+   * `--color-base-100` rather than a fixed value. Custom properties resolve
+   * against the element they are declared on, and every theme sets
+   * `--color-base-100` on that same element (`<html>`) — so `--md-hl-amber`
+   * is automatically a pale wash on the light surface and a deep one on the
+   * dark surface, with nothing to keep in sync.
+   *
+   * 22% is the whole contrast argument. Body text is already proven against
+   * `--color-base-100`; moving the surface 22% toward a mid-tone hue cannot
+   * move it far enough to break that, and it holds in the soft-contrast
+   * variants for the same reason. A fixed hex per colour would instead have
+   * needed 24 separate measurements (4 colours x 4 combinations, text and
+   * bar) and would go stale the moment a surface token moved.
+   *
+   * The `-accent` form is the raw hue: the panel card's left bar and a
+   * selected swatch. A 22% tint is legible as a wash behind text but nearly
+   * invisible as a 3px bar, so those two jobs genuinely need two values. */
+  --md-hl-amber: color-mix(in srgb, #c99a3f 22%, var(--color-base-100));
+  --md-hl-green: color-mix(in srgb, #7b9b6a 22%, var(--color-base-100));
+  --md-hl-blue: color-mix(in srgb, #6f86b0 22%, var(--color-base-100));
+  --md-hl-rose: color-mix(in srgb, #b0736f 22%, var(--color-base-100));
+  --md-hl-amber-accent: #c99a3f;
+  --md-hl-green-accent: #7b9b6a;
+  --md-hl-blue-accent: #6f86b0;
+  --md-hl-rose-accent: #b0736f;
 }
 
 @media (min-width: 768px) {
