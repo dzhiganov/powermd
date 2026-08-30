@@ -29,7 +29,7 @@ const { trapFocus } = useDialogFocusTrap(dialogRef, open, firstControlRef)
   >
     <div class="w-full max-w-sm rounded-box bg-base-100 p-5 shadow-xl">
       <div class="flex items-center justify-between">
-        <h2 id="shortcuts-dialog-title" class="text-base font-semibold text-base-content">
+        <h2 id="shortcuts-dialog-title" class="text-xs font-semibold text-base-content">
           Keyboard shortcuts
         </h2>
         <button
@@ -46,7 +46,7 @@ const { trapFocus } = useDialogFocusTrap(dialogRef, open, firstControlRef)
         <li
           v-for="shortcut in EDITOR_SHORTCUTS"
           :key="shortcut.keys"
-          class="flex items-center justify-between gap-4 text-sm"
+          class="flex items-center justify-between gap-4 text-xs"
         >
           <span class="text-base-content">{{ shortcut.description }}</span>
           <kbd class="kbd kbd-sm">{{ formatShortcut(shortcut.keys) }}</kbd>

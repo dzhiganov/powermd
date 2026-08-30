@@ -91,13 +91,13 @@ function cancelRename() {
          nothing in front of it. -->
     <template v-if="folderName !== null">
       <span
-        class="shrink-0 truncate text-[13px]"
+        class="shrink-0 truncate text-xs"
         style="color: var(--md-t3, var(--color-base-content))"
       >
         {{ folderName }}
       </span>
       <span
-        class="shrink-0 text-[13px]"
+        class="shrink-0 text-xs"
         style="color: var(--md-t4, var(--color-base-content))"
         aria-hidden="true"
         >/</span

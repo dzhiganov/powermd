@@ -26,7 +26,7 @@ function selectTab(tab: 'editor' | 'preview') {
     <button
       type="button"
       :aria-pressed="activeTab === 'editor'"
-      class="mobile-tab flex flex-1 items-center justify-center gap-1.5 rounded-field px-3 py-1.5 text-sm font-medium text-base-content/60"
+      class="mobile-tab flex flex-1 items-center justify-center gap-1.5 rounded-field px-3 py-1.5 text-xs font-medium text-base-content/60"
       :class="{ active: activeTab === 'editor' }"
       @click="selectTab('editor')"
     >
@@ -36,7 +36,7 @@ function selectTab(tab: 'editor' | 'preview') {
     <button
       type="button"
       :aria-pressed="activeTab === 'preview'"
-      class="mobile-tab flex flex-1 items-center justify-center gap-1.5 rounded-field px-3 py-1.5 text-sm font-medium text-base-content/60"
+      class="mobile-tab flex flex-1 items-center justify-center gap-1.5 rounded-field px-3 py-1.5 text-xs font-medium text-base-content/60"
       :class="{ active: activeTab === 'preview' }"
       @click="selectTab('preview')"
     >

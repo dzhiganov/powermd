@@ -175,7 +175,7 @@ const lastSyncLabel = computed(() => {
     v-if="status === 'disconnected' || status === 'error' || status === 'reauth-required'"
     class="flex flex-col gap-3"
   >
-    <p class="text-sm text-base-content/70">
+    <p class="text-xs text-base-content/70">
       Every document and folder syncs automatically to a repository — one-way, this app is always
       the source of truth.
     </p>
@@ -275,12 +275,12 @@ const lastSyncLabel = computed(() => {
     </button>
 
     <form v-if="showPatForm" class="flex flex-col gap-2" @submit.prevent="submitToken">
-      <p class="text-sm text-base-content/70">
+      <p class="text-xs text-base-content/70">
         Create a fine-grained personal access token with Contents (Read and write) on only the
         repository you intend to sync here — that way a leak has a bounded blast radius.
       </p>
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-base-content">Personal access token</span>
+        <span class="text-xs text-base-content">Personal access token</span>
         <input
           v-model="tokenInput"
           type="password"
@@ -301,7 +301,7 @@ const lastSyncLabel = computed(() => {
   <!-- Connecting: a simple loading state. -->
   <div
     v-else-if="status === 'connecting'"
-    class="flex items-center gap-2 text-sm text-base-content/70"
+    class="flex items-center gap-2 text-xs text-base-content/70"
   >
     <span class="loading loading-spinner loading-sm" aria-hidden="true"></span>
     <span>Connecting to GitHub…</span>
@@ -312,7 +312,7 @@ const lastSyncLabel = computed(() => {
   <div v-else class="flex flex-col gap-3">
     <div class="flex items-center justify-between gap-2">
       <div class="flex min-w-0 flex-col">
-        <span class="truncate text-sm text-base-content">
+        <span class="truncate text-xs text-base-content">
           Connected as {{ login ?? 'GitHub user' }}
         </span>
         <span v-if="maskedToken !== null" class="text-xs text-base-content/60">
@@ -340,7 +340,7 @@ const lastSyncLabel = computed(() => {
       v-if="syncConnection === null && !reposLoading && reposError === null && repos.length === 0"
       class="flex flex-col gap-2"
     >
-      <p class="text-sm text-base-content/70">
+      <p class="text-xs text-base-content/70">
         No repositories available yet. If the GitHub App isn't installed on any repository, install
         it on the ones you want to sync, then refresh.
       </p>
@@ -364,7 +364,7 @@ const lastSyncLabel = computed(() => {
       @submit.prevent="submitConnect"
     >
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-base-content">Repository</span>
+        <span class="text-xs text-base-content">Repository</span>
         <select
           class="select select-sm w-full"
           aria-label="Repository"
@@ -382,7 +382,7 @@ const lastSyncLabel = computed(() => {
       </label>
 
       <label v-if="wizardRepo !== null" class="flex flex-col gap-1">
-        <span class="text-sm text-base-content">Branch</span>
+        <span class="text-xs text-base-content">Branch</span>
         <select
           class="select select-sm w-full"
           aria-label="Branch"
@@ -403,7 +403,7 @@ const lastSyncLabel = computed(() => {
       </label>
 
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-base-content">Subfolder (optional)</span>
+        <span class="text-xs text-base-content">Subfolder (optional)</span>
         <input
           :value="wizardSubfolder"
           type="text"
@@ -431,7 +431,7 @@ const lastSyncLabel = computed(() => {
     <!-- Sync target chosen: status, not a browser — sync itself is
          automatic and happens in the background from here on. -->
     <div v-else class="flex flex-col gap-3">
-      <div class="flex flex-col gap-0.5 text-sm text-base-content">
+      <div class="flex flex-col gap-0.5 text-xs text-base-content">
         <span class="font-medium">{{ syncConnection.owner }}/{{ syncConnection.repo }}</span>
         <span class="text-xs text-base-content/60">
           Branch {{ syncConnection.branch }}
@@ -441,7 +441,7 @@ const lastSyncLabel = computed(() => {
         </span>
       </div>
 
-      <div class="flex items-center gap-2 text-sm">
+      <div class="flex items-center gap-2 text-xs">
         <span
           v-if="syncStatus === 'syncing' || importPending"
           class="loading loading-spinner loading-xs"

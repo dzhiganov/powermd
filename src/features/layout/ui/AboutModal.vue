@@ -105,7 +105,7 @@ const links: AboutLink[] = [
          where the eye already expects the header controls to be rather than
          shifting the whole chrome when this opens. -->
     <div class="flex h-[46px] shrink-0 items-center justify-between border-b border-base-300 px-3">
-      <h2 id="about-dialog-title" class="text-sm font-semibold text-base-content">About</h2>
+      <h2 id="about-dialog-title" class="text-xs font-semibold text-base-content">About</h2>
       <button
         ref="firstControlRef"
         type="button"
@@ -123,14 +123,14 @@ const links: AboutLink[] = [
            normal measure and centres, exactly as the editor's own reading
            width does. -->
       <div class="mx-auto w-full max-w-2xl px-6 py-10">
-        <p class="text-base text-base-content/70">
+        <p class="text-xs text-base-content/70">
           A Markdown editor that runs entirely in your browser.
         </p>
 
         <dl class="mt-8 flex flex-col gap-6">
           <div v-for="faq in faqs" :key="faq.question">
-            <dt class="text-sm font-semibold text-base-content">{{ faq.question }}</dt>
-            <dd class="mt-1.5 text-sm leading-relaxed text-base-content/70">{{ faq.answer }}</dd>
+            <dt class="text-xs font-semibold text-base-content">{{ faq.question }}</dt>
+            <dd class="mt-1.5 text-xs leading-relaxed text-base-content/70">{{ faq.answer }}</dd>
           </div>
         </dl>
 
@@ -141,7 +141,7 @@ const links: AboutLink[] = [
             :href="link.href"
             target="_blank"
             rel="noopener noreferrer"
-            class="text-sm underline"
+            class="text-xs underline"
             :style="{ color: linkColor }"
           >
             {{ link.label }}

@@ -380,7 +380,7 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
           <input
             ref="searchInputRef"
             type="text"
-            class="min-w-0 flex-1 border-none bg-transparent text-[13px] outline-none"
+            class="min-w-0 flex-1 border-none bg-transparent text-xs outline-none"
             placeholder="Search"
             aria-label="Search documents"
             :value="searchQuery"
@@ -658,10 +658,10 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
       @keydown.tab="trapFocus"
     >
       <div class="w-full max-w-sm rounded-box bg-base-100 p-5 shadow-xl">
-        <h2 id="delete-dialog-title" class="text-base font-semibold text-base-content">
+        <h2 id="delete-dialog-title" class="text-xs font-semibold text-base-content">
           Delete document?
         </h2>
-        <p class="mt-2 text-sm text-base-content/70">
+        <p class="mt-2 text-xs text-base-content/70">
           “{{ pendingDelete.title || 'Untitled' }}” will be permanently deleted. This can’t be
           undone.
         </p>
@@ -696,10 +696,10 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
       @keydown.tab="trapFolderDialogFocus"
     >
       <div class="w-full max-w-sm rounded-box bg-base-100 p-5 shadow-xl">
-        <h2 id="delete-folder-dialog-title" class="text-base font-semibold text-base-content">
+        <h2 id="delete-folder-dialog-title" class="text-xs font-semibold text-base-content">
           Delete folder?
         </h2>
-        <p class="mt-2 text-sm text-base-content/70">
+        <p class="mt-2 text-xs text-base-content/70">
           “{{ pendingFolderDelete.name }}” will be deleted. The documents inside it are kept and
           moved to the root — they are not deleted.
         </p>

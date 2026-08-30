@@ -148,7 +148,7 @@ function handleDelete(event: MouseEvent, close: () => void) {
         :title="showTooltips && active ? 'Click to rename' : undefined"
         @click="handleTitleClick"
       >
-        <span class="truncate text-sm" :class="active ? 'font-medium' : ''">
+        <span class="truncate text-xs" :class="active ? 'font-medium' : ''">
           <HighlightedText v-if="query" :text="doc.title || 'Untitled'" :query="query" />
           <template v-else>{{ doc.title || 'Untitled' }}</template>
         </span>
@@ -181,7 +181,7 @@ function handleDelete(event: MouseEvent, close: () => void) {
             :ref="setFirstItemRef"
             type="button"
             role="menuitem"
-            class="popover-menu-item text-sm"
+            class="popover-menu-item text-xs"
             @click.stop="handleRename(close)"
           >
             Rename
@@ -189,7 +189,7 @@ function handleDelete(event: MouseEvent, close: () => void) {
           <button
             type="button"
             role="menuitem"
-            class="popover-menu-item text-sm"
+            class="popover-menu-item text-xs"
             @click.stop="handleDuplicate(close)"
           >
             Duplicate
@@ -198,7 +198,7 @@ function handleDelete(event: MouseEvent, close: () => void) {
           <button
             type="button"
             role="menuitem"
-            class="popover-menu-item text-sm"
+            class="popover-menu-item text-xs"
             :disabled="doc.folderId === null"
             @click.stop="moveTo(null, close)"
           >
@@ -209,7 +209,7 @@ function handleDelete(event: MouseEvent, close: () => void) {
             :key="folder.id"
             type="button"
             role="menuitem"
-            class="popover-menu-item truncate text-sm"
+            class="popover-menu-item truncate text-xs"
             :disabled="doc.folderId === folder.id"
             @click.stop="moveTo(folder.id, close)"
           >
@@ -219,7 +219,7 @@ function handleDelete(event: MouseEvent, close: () => void) {
           <button
             type="button"
             role="menuitem"
-            class="popover-menu-item popover-menu-item--danger text-sm"
+            class="popover-menu-item popover-menu-item--danger text-xs"
             @click.stop="handleDelete($event, close)"
           >
             Delete

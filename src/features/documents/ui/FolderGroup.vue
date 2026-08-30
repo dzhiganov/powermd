@@ -124,7 +124,7 @@ const documentCount = computed(() => String(props.documents.length))
       <button
         v-else
         type="button"
-        class="min-w-0 flex-1 truncate rounded-field py-1 text-left text-sm font-medium"
+        class="min-w-0 flex-1 truncate rounded-field py-1 text-left text-xs font-medium"
         @click="folderCollapseToggled(folder.id)"
       >
         {{ folder.name }}
@@ -165,7 +165,7 @@ const documentCount = computed(() => String(props.documents.length))
             :ref="setFirstItemRef"
             type="button"
             role="menuitem"
-            class="popover-menu-item text-sm"
+            class="popover-menu-item text-xs"
             @click.stop="handleRename(close)"
           >
             Rename
@@ -173,7 +173,7 @@ const documentCount = computed(() => String(props.documents.length))
           <button
             type="button"
             role="menuitem"
-            class="popover-menu-item popover-menu-item--danger text-sm"
+            class="popover-menu-item popover-menu-item--danger text-xs"
             @click.stop="handleDelete($event, close)"
           >
             Delete

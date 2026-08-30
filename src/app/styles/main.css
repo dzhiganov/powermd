@@ -79,12 +79,18 @@
  * resolves against the *root* (`html`) font-size specifically, regardless
  * of `body`'s. Changing `html`'s font-size would silently rescale every
  * `rem`-based utility class in the app (padding, gaps, radii, ...) — a
- * layout change entirely out of scope for this token/font/type-scale-only
- * phase. `body`'s font-size only affects text that inherits it without an
- * explicit Tailwind `text-*` class of its own, which is already true of
- * most of this UI (`text-sm`/`text-base`/etc. cover the rest). */
+ * layout change entirely out of scope. `body`'s font-size only affects text
+ * that inherits it without an explicit Tailwind `text-*` class of its own.
+ *
+ * 12px, down from 14px (user request: one UI text size, 12px). This alone
+ * would not have done it — most UI text carried a `text-sm`/`text-base`
+ * class, which is `rem`-based and so resolves against `html`'s 16px, not
+ * against this. Those were folded onto `text-xs` (Tailwind's real 12px
+ * step) across the UI in the same change, rather than redefining
+ * `--text-sm`/`--text-base` to 12px here: that would have left every one of
+ * those class names lying about its own size to the next reader. */
 body {
-  font-size: 14px;
+  font-size: 12px;
 }
 
 /*
@@ -999,7 +1005,7 @@ body {
   color: var(--color-base-content);
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
   text-align: left;
   white-space: nowrap;
 }

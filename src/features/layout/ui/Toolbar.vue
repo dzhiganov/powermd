@@ -279,7 +279,7 @@ const viewModeOptions: ViewModeOption[] = [
   background: transparent;
   color: var(--md-seg-fg, var(--color-base-content));
   font: inherit;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 400;
   transition:
     background 120ms ease,

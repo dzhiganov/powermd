@@ -279,9 +279,7 @@ watch(open, (isOpen) => {
       class="settings-panel flex h-[600px] max-h-[calc(100dvh-2rem)] w-[640px] max-w-[calc(100dvw-2rem)] flex-col rounded-box shadow-xl"
     >
       <div class="flex shrink-0 items-center justify-between p-5 pb-4">
-        <h2 id="settings-dialog-title" class="text-base font-semibold text-base-content">
-          Settings
-        </h2>
+        <h2 id="settings-dialog-title" class="text-xs font-semibold text-base-content">Settings</h2>
         <button
           ref="firstControlRef"
           type="button"
@@ -334,7 +332,7 @@ watch(open, (isOpen) => {
           <!-- Editor: font, size, wrap, spell check, language -->
           <div v-if="activeCategory === 'editor'" class="flex flex-col gap-4">
             <label class="flex flex-col gap-1">
-              <span class="text-sm text-base-content">Editor font size — {{ fontSize }}px</span>
+              <span class="text-xs text-base-content">Editor font size — {{ fontSize }}px</span>
               <input
                 type="range"
                 class="range range-sm"
@@ -348,7 +346,7 @@ watch(open, (isOpen) => {
             </label>
 
             <div class="flex flex-col gap-1">
-              <span id="settings-font-family-label" class="text-sm text-base-content"
+              <span id="settings-font-family-label" class="text-xs text-base-content"
                 >Editor font family</span
               >
               <div class="join" role="group" aria-labelledby="settings-font-family-label">
@@ -374,7 +372,7 @@ watch(open, (isOpen) => {
             </div>
 
             <label class="flex items-center justify-between">
-              <span class="text-sm text-base-content">Line wrapping</span>
+              <span class="text-xs text-base-content">Line wrapping</span>
               <input
                 type="checkbox"
                 class="toggle toggle-sm"
@@ -386,7 +384,7 @@ watch(open, (isOpen) => {
 
             <div class="flex flex-col gap-1">
               <label class="flex items-center justify-between">
-                <span class="text-sm text-base-content">Focus mode</span>
+                <span class="text-xs text-base-content">Focus mode</span>
                 <input
                   type="checkbox"
                   class="toggle toggle-sm"
@@ -415,7 +413,7 @@ watch(open, (isOpen) => {
                    `model/editorPreferences.ts` for the contrast arithmetic
                    behind the floor. -->
               <label class="flex flex-col gap-1 pt-1">
-                <span class="text-sm text-base-content"
+                <span class="text-xs text-base-content"
                   >Focus dim level — {{ focusDimLevel }}%</span
                 >
                 <input
@@ -440,7 +438,7 @@ watch(open, (isOpen) => {
 
             <div class="flex flex-col gap-1">
               <label class="flex items-center justify-between">
-                <span class="text-sm text-base-content">Word completion</span>
+                <span class="text-xs text-base-content">Word completion</span>
                 <input
                   type="checkbox"
                   class="toggle toggle-sm"
@@ -464,7 +462,7 @@ watch(open, (isOpen) => {
                  under the toggle it modifies rather than its own section,
                  since it only ever matters together with it. -->
             <div class="flex flex-col gap-1">
-              <span id="settings-word-completion-folders-label" class="text-sm text-base-content">
+              <span id="settings-word-completion-folders-label" class="text-xs text-base-content">
                 Turn off word completion in these folders
               </span>
               <!-- No folders at all: an explanatory line instead of an
@@ -491,7 +489,7 @@ watch(open, (isOpen) => {
               >
                 <li v-for="folder in documentFolders" :key="folder.id">
                   <label
-                    class="flex items-center justify-between gap-2 rounded px-2 py-1 text-sm text-base-content"
+                    class="flex items-center justify-between gap-2 rounded px-2 py-1 text-xs text-base-content"
                   >
                     <span class="truncate">{{ folder.name }}</span>
                     <input
@@ -515,7 +513,7 @@ watch(open, (isOpen) => {
             </div>
 
             <label class="flex items-center justify-between">
-              <span class="text-sm text-base-content">Spell check</span>
+              <span class="text-xs text-base-content">Spell check</span>
               <input
                 type="checkbox"
                 class="toggle toggle-sm"
@@ -526,7 +524,7 @@ watch(open, (isOpen) => {
             </label>
 
             <div class="flex flex-col gap-1">
-              <label for="settings-spellcheck-language" class="text-sm text-base-content">
+              <label for="settings-spellcheck-language" class="text-xs text-base-content">
                 Spell check language
               </label>
               <select
@@ -562,7 +560,7 @@ watch(open, (isOpen) => {
                toolbar, tooltips, documents panel side, scroll sync. -->
           <div v-else-if="activeCategory === 'appearance'" class="flex flex-col gap-4">
             <div class="flex flex-col gap-1">
-              <span id="settings-theme-label" class="text-sm text-base-content">Theme</span>
+              <span id="settings-theme-label" class="text-xs text-base-content">Theme</span>
               <div class="join" role="group" aria-labelledby="settings-theme-label">
                 <button
                   v-for="option in THEME_MODE_OPTIONS"
@@ -586,7 +584,7 @@ watch(open, (isOpen) => {
                  means they're already right the moment the user switches
                  the mode above to Schedule. -->
             <div class="flex flex-col gap-2">
-              <span id="settings-schedule-label" class="text-sm text-base-content"
+              <span id="settings-schedule-label" class="text-xs text-base-content"
                 >Theme schedule</span
               >
               <div
@@ -628,7 +626,7 @@ watch(open, (isOpen) => {
             </div>
 
             <label class="flex flex-col gap-1">
-              <span class="text-sm text-base-content">Reading width — {{ readingWidth }}ch</span>
+              <span class="text-xs text-base-content">Reading width — {{ readingWidth }}ch</span>
               <input
                 type="range"
                 class="range range-sm"
@@ -641,7 +639,7 @@ watch(open, (isOpen) => {
             </label>
 
             <label class="flex items-center justify-between">
-              <span class="text-sm text-base-content">Show formatting toolbar</span>
+              <span class="text-xs text-base-content">Show formatting toolbar</span>
               <input
                 type="checkbox"
                 class="toggle toggle-sm"
@@ -652,7 +650,7 @@ watch(open, (isOpen) => {
             </label>
 
             <label class="flex items-center justify-between">
-              <span class="text-sm text-base-content">Show tooltips</span>
+              <span class="text-xs text-base-content">Show tooltips</span>
               <input
                 type="checkbox"
                 class="toggle toggle-sm"
@@ -668,7 +666,7 @@ watch(open, (isOpen) => {
                  default. See `app/styles/main.css`'s `[data-soft='true']`
                  blocks for the token overrides this drives. -->
             <label class="flex items-center justify-between">
-              <span class="text-sm text-base-content">Soft contrast</span>
+              <span class="text-xs text-base-content">Soft contrast</span>
               <input
                 type="checkbox"
                 class="toggle toggle-sm"
@@ -679,7 +677,7 @@ watch(open, (isOpen) => {
             </label>
 
             <div class="flex flex-col gap-1">
-              <span id="settings-drawer-side-label" class="text-sm text-base-content"
+              <span id="settings-drawer-side-label" class="text-xs text-base-content"
                 >Documents panel side</span
               >
               <div class="join" role="group" aria-labelledby="settings-drawer-side-label">
@@ -708,7 +706,7 @@ watch(open, (isOpen) => {
                  follow each other unless explicitly turned on here. See
                  `features/scroll-sync/model/scrollSync.ts`. -->
             <label class="flex items-center justify-between">
-              <span class="text-sm text-base-content">Sync editor and preview scroll</span>
+              <span class="text-xs text-base-content">Sync editor and preview scroll</span>
               <input
                 type="checkbox"
                 class="toggle toggle-sm"
@@ -735,7 +733,7 @@ watch(open, (isOpen) => {
                 Local autosave
               </h3>
               <label class="flex flex-col gap-1">
-                <span class="text-sm text-base-content">Autosave delay — {{ autosaveMs }}ms</span>
+                <span class="text-xs text-base-content">Autosave delay — {{ autosaveMs }}ms</span>
                 <input
                   type="range"
                   class="range range-sm"
@@ -760,7 +758,7 @@ watch(open, (isOpen) => {
                 GitHub sync
               </h3>
               <div class="flex flex-col gap-1">
-                <label for="settings-auto-sync-interval" class="text-sm text-base-content">
+                <label for="settings-auto-sync-interval" class="text-xs text-base-content">
                   Auto-sync interval
                 </label>
                 <select
@@ -825,10 +823,10 @@ watch(open, (isOpen) => {
     @keydown.tab="trapResetDialogFocus"
   >
     <div class="w-full max-w-sm rounded-box bg-base-100 p-5 shadow-xl">
-      <h2 id="reset-dialog-title" class="text-base font-semibold text-base-content">
+      <h2 id="reset-dialog-title" class="text-xs font-semibold text-base-content">
         Reset settings to defaults?
       </h2>
-      <p class="mt-2 text-sm text-base-content/70">
+      <p class="mt-2 text-xs text-base-content/70">
         Restores font size, font family, line wrapping, focus mode (including its dim level), word
         completion (including which folders it's turned off in), spell check, autosave delay,
         reading width, tooltips, formatting toolbar, documents panel side, scroll sync, auto-sync
@@ -1044,7 +1042,7 @@ watch(open, (isOpen) => {
   color: var(--md-seg-fg, var(--color-base-content));
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;

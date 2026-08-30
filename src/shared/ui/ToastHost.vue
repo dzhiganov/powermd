@@ -19,7 +19,7 @@ const toasts = useUnit($toasts)
     <div
       v-for="toast in toasts"
       :key="toast.id"
-      class="toast-item pointer-events-auto flex w-full max-w-sm items-start gap-2 rounded-box border px-3 py-2 text-sm text-base-content shadow-xl"
+      class="toast-item pointer-events-auto flex w-full max-w-sm items-start gap-2 rounded-box border px-3 py-2 text-xs text-base-content shadow-xl"
       :class="{
         'toast-warning': toast.tone === 'warning',
         'toast-error': toast.tone === 'error',
