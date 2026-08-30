@@ -147,24 +147,41 @@ export default defineConfig({
           '*.html',
           'assets/*.js',
           'assets/*.css',
-          // Self-hosted IBM Plex fonts (see src/app/styles/main.css) — only
-          // the Latin + Latin Extended woff2 subsets, the ones actually
-          // needed to render this UI's own (English) chrome text and the
-          // overwhelming majority of document content. The Cyrillic/Greek/
-          // Vietnamese subsets each font also ships are left to
-          // `runtimeCaching` below: cached the first time a document
-          // actually renders a glyph from one of those ranges, rather than
-          // installed unconditionally for every user.
+          // Self-hosted fonts (see src/app/styles/main.css) — only the Latin
+          // + Latin Extended woff2 subsets, the ones actually needed to
+          // render this UI's own (English) chrome text and the overwhelming
+          // majority of document content. The Cyrillic/Greek/Vietnamese
+          // subsets each font also ships are left to `runtimeCaching` below:
+          // cached the first time a document actually renders a glyph from
+          // one of those ranges, rather than installed unconditionally for
+          // every user.
+          //
+          // THIS LIST NAMES FONTS BY HAND, so it does not follow a font
+          // swap on its own. Change a family in main.css and this has to
+          // change with it.
+          // Geist Mono FIRST because it is the app's own face — the UI, the
+          // editor, and rendered code blocks. It was missing from this list
+          // when it replaced IBM Plex Mono, which the build said out loud:
+          // workbox warns "one of the glob patterns doesn't match any files"
+          // for every pattern naming a font that no longer exists, and those
+          // four warnings were the only sign that the new font had not taken
+          // the old one's place here. Nothing broke — a pattern matching
+          // nothing contributes nothing, so the service worker installed
+          // cleanly — it just meant every offline load fell back to the
+          // system monospace for the entire interface.
+          'assets/geist-mono-latin-400-normal-*.woff2',
+          'assets/geist-mono-latin-500-normal-*.woff2',
+          'assets/geist-mono-latin-600-normal-*.woff2',
+          'assets/geist-mono-latin-ext-400-normal-*.woff2',
+          'assets/geist-mono-latin-ext-500-normal-*.woff2',
+          'assets/geist-mono-latin-ext-600-normal-*.woff2',
+          // IBM Plex Sans is now the rendered document's face only.
           'assets/ibm-plex-sans-latin-400-normal-*.woff2',
           'assets/ibm-plex-sans-latin-500-normal-*.woff2',
           'assets/ibm-plex-sans-latin-600-normal-*.woff2',
           'assets/ibm-plex-sans-latin-ext-400-normal-*.woff2',
           'assets/ibm-plex-sans-latin-ext-500-normal-*.woff2',
           'assets/ibm-plex-sans-latin-ext-600-normal-*.woff2',
-          'assets/ibm-plex-mono-latin-400-normal-*.woff2',
-          'assets/ibm-plex-mono-latin-500-normal-*.woff2',
-          'assets/ibm-plex-mono-latin-ext-400-normal-*.woff2',
-          'assets/ibm-plex-mono-latin-ext-500-normal-*.woff2',
         ],
         // Every other path (a document id in the URL — see
         // `src/app/urlSync.ts` — or any other client-side route) falls back
