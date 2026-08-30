@@ -148,7 +148,16 @@ function handleDelete(event: MouseEvent, close: () => void) {
         :title="showTooltips && active ? 'Click to rename' : undefined"
         @click="handleTitleClick"
       >
-        <span class="truncate text-xs" :class="active ? 'font-medium' : ''">
+        <!-- The open document is the only row at full strength. Everything
+             else is dimmed a little so the eye lands on it without having to
+             read the list — it already carries the primary accent bar and
+             the selected fill, and those only read as "selected" in contrast
+             to something. Dimming the rest is what supplies that contrast
+             without adding another colour.
+             `--md-row-muted` (main.css) rather than a raw opacity here: the
+             value had to be chosen against the text-contrast floor, and that
+             reasoning belongs next to the other measured tokens. -->
+        <span class="truncate text-xs" :class="active ? 'font-medium' : 'doc-row-muted'">
           <HighlightedText v-if="query" :text="doc.title || 'Untitled'" :query="query" />
           <template v-else>{{ doc.title || 'Untitled' }}</template>
         </span>
@@ -265,5 +274,19 @@ function handleDelete(event: MouseEvent, close: () => void) {
 .popover-menu-item:active {
   background-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
   color: var(--color-base-content);
+}
+
+/* Every row except the open one. See `--md-row-muted` in main.css for why
+ * this is a shared token and how far it is allowed to go. It lifts back to
+ * full strength on hover, so a row you are pointing at is never harder to
+ * read than one you are not — the dimming is there to mark what is NOT
+ * selected, not to make the list harder to scan. */
+.doc-row-muted {
+  opacity: var(--md-row-muted);
+  transition: opacity 120ms ease;
+}
+
+.doc-row:hover .doc-row-muted {
+  opacity: 1;
 }
 </style>

@@ -124,7 +124,7 @@ const documentCount = computed(() => String(props.documents.length))
       <button
         v-else
         type="button"
-        class="min-w-0 flex-1 truncate rounded-field py-1 text-left text-xs font-medium"
+        class="folder-name min-w-0 flex-1 truncate rounded-field py-1 text-left text-xs font-medium"
         @click="folderCollapseToggled(folder.id)"
       >
         {{ folder.name }}
@@ -222,5 +222,20 @@ const documentCount = computed(() => String(props.documents.length))
 .popover-menu-item:active {
   background-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
   color: var(--color-base-content);
+}
+
+/* Folders are dimmed unconditionally, unlike document rows which dim only
+ * when they are not the open one. A folder is never "the open document" —
+ * there is no selected state for it to hold — so it is always part of the
+ * surroundings the open document stands out FROM. Same token and the same
+ * hover lift as `DocumentRow.vue`, so a folder and a document sitting next
+ * to each other in the list read at the same weight. */
+.folder-name {
+  opacity: var(--md-row-muted);
+  transition: opacity 120ms ease;
+}
+
+.folder-row:hover .folder-name {
+  opacity: 1;
 }
 </style>

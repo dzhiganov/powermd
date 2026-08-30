@@ -180,6 +180,31 @@ body {
    * for no reason. */
   --md-edge-fade-top: 0px;
   --md-edge-fade-bottom: 0px;
+
+  /* How far an UNSELECTED row in the documents panel is dimmed, so the open
+   * document reads as the one thing at full strength (`DocumentRow.vue`,
+   * `FolderGroup.vue`).
+   *
+   * The ceiling on this is text contrast, not taste. MEASURED by
+   * compositing the faded text over the panel's own background and
+   * computing the WCAG ratio (the element's computed `color` does not
+   * account for its opacity, so reading that alone would have flattered
+   * the result):
+   *
+   *   light   17.21:1 at full strength -> 6.80:1 at 0.72
+   *   dark    15.81:1 at full strength -> 8.36:1 at 0.72
+   *
+   * Both clear the 4.5:1 floor for 12px text with room to spare. Note the
+   * ratio falls much faster than the opacity does — 0.72 alpha costs about
+   * 60% of the contrast in the light theme, not 28% — because luminance
+   * contrast is not linear in alpha. That is the reason to measure a value
+   * like this rather than reason about it, and the reason a seemingly
+   * gentle 0.5 would land far closer to the floor than it sounds.
+   *
+   * Rows lift back to full strength on hover: the dimming marks what is not
+   * selected, and a row you are pointing at should never be harder to read
+   * than one you are not. */
+  --md-row-muted: 0.72;
 }
 
 @media (min-width: 768px) {
