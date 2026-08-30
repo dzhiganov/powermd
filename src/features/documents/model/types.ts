@@ -1,5 +1,3 @@
-import type { HighlightColorId } from '@/shared/config/highlightColors'
-
 /**
  * Where this document's automatic one-way sync to GitHub stands. Every
  * document is a candidate for sync once a repo connection exists — this is
@@ -56,43 +54,6 @@ export interface MarkdownDocument {
   updatedAt: number
   folderId: string | null
   origin: GitHubOrigin | null
-}
-
-/**
- * A coloured span of a document, with an optional note.
- *
- * LOCAL METADATA ONLY. A highlight is never written into the document's
- * markdown `content` — it lives in its own IndexedDB store (`lib/db.ts`'s
- * `highlights`, added in the v5->v6 migration) and is deleted with its
- * document. That is what keeps the file you sync to GitHub, export, or
- * download identical whether or not you highlight anything in it.
- *
- * `from`/`to` are absolute document offsets into `content`, not line/column.
- * The editor maps them through every edit (`features/editor/lib/
- * highlightRanges.ts`), which is a facility CodeMirror provides for offsets
- * and not for line/column pairs; storing lines would mean re-deriving the
- * span after every keystroke and getting it wrong whenever a line was split
- * or joined.
- *
- * `text` is the highlighted text as it read WHEN THE HIGHLIGHT WAS MADE. It
- * is a display cache for the side panel, not the source of truth — the panel
- * has to show every highlight in the document, including ones scrolled far
- * out of view, and `from`/`to` alone would mean holding the whole document
- * to render a list. It is refreshed whenever the range is re-anchored, so it
- * follows edits rather than going stale.
- */
-export interface Highlight {
-  id: string
-  documentId: string
-  from: number
-  to: number
-  color: HighlightColorId
-  /** User-authored note. Empty string, not optional — the same "always a
-   * concrete value" shape as `MarkdownDocument.title`/`content`. */
-  note: string
-  /** Cached copy of the highlighted text — see the doc comment above. */
-  text: string
-  createdAt: number
 }
 
 /** A flat (non-nested) grouping for documents. `createdAt` is epoch

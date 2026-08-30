@@ -17,15 +17,6 @@ export {
   focusModeChanged,
 } from './model/editorEvents'
 export { taskListItemToggleRequested } from './model/taskList'
-export {
-  editorHighlightsChanged,
-  $editorSelection,
-  editorHighlightsRemapped,
-  editorHighlightClicked,
-} from './model/highlights'
-export type { EditorSelectionInfo } from './model/highlights'
-export type { EditorHighlight } from './lib/highlightDecorations'
-export type { AnchoredRange, RemapResult } from './lib/highlightRanges'
 export { EDITOR_SHORTCUTS } from './lib/shortcuts'
 export type { EditorShortcut } from './lib/shortcuts'
 export type { WikiLinkDocument } from './lib/wikiLinkCompletion'

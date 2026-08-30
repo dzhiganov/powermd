@@ -1,6 +1,4 @@
-import { isHighlightColorId, DEFAULT_HIGHLIGHT_COLOR } from '@/shared/config/highlightColors'
-
-import type { Folder, GitHubOrigin, Highlight, MarkdownDocument } from '../model/types'
+import type { Folder, GitHubOrigin, MarkdownDocument } from '../model/types'
 
 /**
  * Thin promise wrapper over raw IndexedDB. Chosen over the `idb` package on
@@ -64,6 +62,18 @@ const DB_NAME = 'markdown-editor'
  * ADD-A-STORE migration, with the same properties as v4 -> v5 above: it
  * touches no existing record, so it cannot corrupt data it never reads, and
  * "does an old document survive the upgrade" is enough to prove it.
+ *
+ * v6 IS ALSO A ROLLED-BACK FEATURE'S STORE — highlights, parked on the
+ * `highlights` branch, exactly as bookmarks are below, and for exactly the
+ * same reason: the version SHIPPED. It went to production before the
+ * rollback, so every browser that loaded the app in that window holds a v6
+ * database, and `indexedDB.open(name, 5)` throws `VersionError` in all of
+ * them — at which point the app fails to read ANY document, not just
+ * highlights. (Local dev and e2e installs are in the same position.)
+ *
+ * The schema is append-only in practice. Rolling a feature back means
+ * leaving its store behind, unused: an unused table costs a table, while
+ * reclaiming it costs everyone their documents.
  *
  * WHY v5 SURVIVES A ROLLED-BACK FEATURE. The bookmarks UI was reverted (see
  * the `bookmarks-and-scroll-jump` branch, where the whole feature is parked
@@ -541,104 +551,6 @@ export async function deleteDocument(id: string): Promise<void> {
   await deleteByDocumentId(tx, HIGHLIGHT_STORE, HIGHLIGHT_DOCUMENT_ID_INDEX, id)
   await transactionDone(tx)
   broadcast({ type: 'delete', id })
-}
-
-// --- Highlights ------------------------------------------------------------
-
-/** Same shape/defensiveness as `normalizeDocument`/`normalizeFolder` — a
- * corrupt or future-shaped record is dropped rather than flowing into the
- * model, and every non-identifying field is repaired with a safe default
- * rather than trusted.
- *
- * `id` and `documentId` must both be present: a highlight with no document
- * to belong to is meaningless, and `documentId` doubles as the index key
- * `deleteDocument`'s cascade and `getHighlightsForDocument` rely on, so a
- * malformed one has to be caught here rather than surfacing later as a
- * cursor lookup that silently finds nothing.
- *
- * A range that is reversed or empty is dropped rather than clamped. Those
- * are not "slightly wrong" values that a default can rescue — they mean the
- * record no longer describes a span of text, and rendering a zero-width
- * highlight would put an invisible, unclickable entry in the panel. */
-function normalizeHighlight(value: unknown): Highlight | null {
-  if (typeof value !== 'object' || value === null) return null
-  const raw = value as Record<string, unknown>
-  if (typeof raw.id !== 'string' || raw.id === '') return null
-  if (typeof raw.documentId !== 'string' || raw.documentId === '') return null
-  if (typeof raw.from !== 'number' || !Number.isFinite(raw.from) || raw.from < 0) return null
-  if (typeof raw.to !== 'number' || !Number.isFinite(raw.to) || raw.to <= raw.from) return null
-  return {
-    id: raw.id,
-    documentId: raw.documentId,
-    from: raw.from,
-    to: raw.to,
-    color: isHighlightColorId(raw.color) ? raw.color : DEFAULT_HIGHLIGHT_COLOR,
-    note: typeof raw.note === 'string' ? raw.note : '',
-    text: typeof raw.text === 'string' ? raw.text : '',
-    createdAt:
-      typeof raw.createdAt === 'number' && Number.isFinite(raw.createdAt)
-        ? raw.createdAt
-        : Date.now(),
-  }
-}
-
-/** Every highlight belonging to one document, via the `documentId` index —
- * not a full-store scan, so a workspace with thousands of highlights across
- * many documents still opens one document at constant-ish cost. */
-export async function getHighlightsForDocument(documentId: string): Promise<Highlight[]> {
-  const db = await getDatabase()
-  const tx = db.transaction(HIGHLIGHT_STORE, 'readonly')
-  const index = tx.objectStore(HIGHLIGHT_STORE).index(HIGHLIGHT_DOCUMENT_ID_INDEX)
-  const raw = (await requestToPromise(index.getAll(IDBKeyRange.only(documentId)))) as unknown[]
-  return raw.reduce<Highlight[]>((highlights, entry) => {
-    const normalized = normalizeHighlight(entry)
-    if (normalized !== null) highlights.push(normalized)
-    return highlights
-  }, [])
-}
-
-/** Unconditional upsert — like `putFolder`, a highlight write (create,
- * recolour, edit note, or a range remap after an edit) has no in-flight-edit
- * window for a second tab to race against in a way that would silently lose
- * data. "Whichever write lands last wins" is an acceptable rule for metadata
- * this low-stakes, and much simpler than `putDocument`'s compare-before-
- * write. */
-export async function putHighlight(highlight: Highlight): Promise<void> {
-  const db = await getDatabase()
-  const tx = db.transaction(HIGHLIGHT_STORE, 'readwrite')
-  tx.objectStore(HIGHLIGHT_STORE).put(highlight)
-  await transactionDone(tx)
-}
-
-/** Batched counterpart for the range-remap flow: one document edit can move
- * every highlight after the caret, so this writes them in a single
- * transaction rather than N. */
-export async function putHighlights(highlights: readonly Highlight[]): Promise<void> {
-  if (highlights.length === 0) return
-  const db = await getDatabase()
-  const tx = db.transaction(HIGHLIGHT_STORE, 'readwrite')
-  const store = tx.objectStore(HIGHLIGHT_STORE)
-  for (const highlight of highlights) store.put(highlight)
-  await transactionDone(tx)
-}
-
-export async function deleteHighlight(id: string): Promise<void> {
-  const db = await getDatabase()
-  const tx = db.transaction(HIGHLIGHT_STORE, 'readwrite')
-  tx.objectStore(HIGHLIGHT_STORE).delete(id)
-  await transactionDone(tx)
-}
-
-/** Used by the range-remap flow when an edit deletes a highlight's text
- * outright — several can vanish in one keystroke (select a paragraph, type
- * over it), so they go in one transaction. */
-export async function deleteHighlights(ids: readonly string[]): Promise<void> {
-  if (ids.length === 0) return
-  const db = await getDatabase()
-  const tx = db.transaction(HIGHLIGHT_STORE, 'readwrite')
-  const store = tx.objectStore(HIGHLIGHT_STORE)
-  for (const id of ids) store.delete(id)
-  await transactionDone(tx)
 }
 
 export async function getActiveId(): Promise<string | null> {
