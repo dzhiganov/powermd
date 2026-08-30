@@ -349,7 +349,7 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
     })
     resizeObserver.observe(container.value)
 
-    // The self-hosted IBM Plex Mono `@font-face`s (`app/styles/main.css`)
+    // The self-hosted Geist Mono `@font-face`s (`app/styles/main.css`)
     // load asynchronously, same as any web font — `font-display: swap`
     // means CodeMirror's very first layout happens in the fallback
     // monospace stack, then the real font swaps in once it's fetched. That

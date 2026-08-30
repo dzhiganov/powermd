@@ -176,12 +176,17 @@ const DEFAULT_READING_WIDTH = 75
 
 /** Applied as `--md-editor-font-family` (see `applyEditorCssVarsFx` below,
  * and `features/editor/lib/theme.ts` which consumes it). `mono` leads with
- * the self-hosted IBM Plex Mono (`app/styles/main.css`'s `@fontsource`
- * imports, Phase 1 visual redesign) with the previous system-monospace
- * stack kept as the fallback chain; `serif` is the "system/serif"
- * alternative called for in the Step 8 spec, unchanged by that redesign. */
+ * the self-hosted Geist Mono (`app/styles/main.css`'s `@fontsource`
+ * imports), with the system-monospace stack kept as the fallback chain;
+ * `serif` is the "system/serif" alternative called for in the Step 8 spec.
+ *
+ * A LITERAL stack, not `var(--font-mono)`. This string is written onto
+ * `<html>`'s inline style, so it is the one place naming the editor's face
+ * that lives outside `main.css` — and therefore the one that can silently
+ * fall out of step with it. It did not, here: both moved to Geist Mono in
+ * the same commit. If you change one, change the other. */
 const FONT_FAMILY_STACKS: Record<EditorFontFamily, string> = {
-  mono: '"IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+  mono: '"Geist Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
   serif: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
 }
 

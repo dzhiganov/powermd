@@ -7,25 +7,29 @@
  * stays same-origin. Only the weights actually on screen are imported, not
  * the full variable-axis packages, to keep the font payload proportional.
  *
- * THREE FAMILIES, THREE JOBS:
- *   - Geist Mono — the UI. Licensed SIL OFL 1.1 (see
+ * TWO FAMILIES, TWO JOBS:
+ *   - Geist Mono — everything monospace: the UI, the editor, and code
+ *     blocks. Licensed SIL OFL 1.1 (see
  *     `node_modules/@fontsource/geist-mono/LICENSE`), which permits
  *     embedding and commercial use; the conditions are that the licence
  *     travels with the font files (it does, in the package) and that the
  *     font is not sold on its own.
  *   - IBM Plex Sans — the RENDERED DOCUMENT only, via `--font-prose` below.
- *   - IBM Plex Mono — the editor and code blocks.
  *
- * 400/500/600 for Geist Mono covers body, the medium used on active
- * segmented-control labels, and the semibold on headings/emphasis. */
+ * IBM Plex Mono is gone entirely: once the editor and code blocks moved to
+ * Geist Mono nothing referenced it, and shipping an unreferenced family is
+ * pure payload. Removing it is what keeps this change from ADDING weight —
+ * one family replaced another rather than joining it.
+ *
+ * 400/500/600 for Geist Mono covers UI body text, the medium on active
+ * segmented-control labels, and the semibold used for headings and emphasis
+ * in both the UI and the editor's own syntax highlighting. */
 @import '@fontsource/geist-mono/400.css';
 @import '@fontsource/geist-mono/500.css';
 @import '@fontsource/geist-mono/600.css';
 @import '@fontsource/ibm-plex-sans/400.css';
 @import '@fontsource/ibm-plex-sans/500.css';
 @import '@fontsource/ibm-plex-sans/600.css';
-@import '@fontsource/ibm-plex-mono/400.css';
-@import '@fontsource/ibm-plex-mono/500.css';
 
 /* Overriding Tailwind v4's `--font-sans`/`--font-mono` theme keys (rather
  * than a one-off `body { font-family }` rule) means every consumer of the
@@ -36,7 +40,7 @@
  * from `--font-mono` the same way) — see `node_modules/tailwindcss/{theme,
  * preflight}.css`. That second one is what makes the preview's rendered
  * `<code>`/`<pre>` (Tailwind Typography, `features/preview/ui/Preview.vue`)
- * pick up IBM Plex Mono with no change to that component at all. The
+ * pick up the mono face with no change to that component at all. The
  * system-ui/monospace tails are kept as the fallback chain for the instant
  * before the self-hosted `@font-face`s above finish loading (`font-display:
  * swap` already avoids invisible text in the meantime).
@@ -51,7 +55,12 @@
    * The rendered document deliberately does NOT follow it — see
    * `--font-prose` below. */
   --font-sans: 'Geist Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  /* Same family as `--font-sans` above, deliberately kept as a separate key
+   * rather than collapsed into one. They mean different things — "the UI
+   * face" and "the code face" — and happen to agree right now; merging them
+   * would make a future decision to set code in something else a refactor
+   * instead of a value change. */
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
   /* The rendered document, applied to `.markdown-preview` (see further down)
    * rather than inherited from the body.

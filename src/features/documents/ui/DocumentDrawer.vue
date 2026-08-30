@@ -417,7 +417,7 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
                  the token already measured >=4.5:1 in both themes. -->
           <!-- `inline-flex items-center leading-none`, and the UI font
                  rather than mono. On macOS this renders ⇧⌘F, and those glyphs
-                 are not in IBM Plex Mono — the browser substitutes a system
+                 are not in Geist Mono — the browser substitutes a system
                  face whose baseline and line-height differ, so a chip laid
                  out on the text baseline sits visibly off-centre against the
                  search field next to it. Centring the box instead of
