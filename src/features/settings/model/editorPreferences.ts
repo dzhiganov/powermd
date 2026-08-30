@@ -18,11 +18,28 @@ const READING_WIDTH_KEY = 'markdown-editor:reading-width'
 const SPELLCHECK_ENABLED_KEY = 'markdown-editor:spellcheck-enabled'
 const SPELLCHECK_LANGUAGE_KEY = 'markdown-editor:spellcheck-language'
 
-export const FONT_SIZE_MIN = 12
+/**
+ * 8px, down from 12px (user request).
+ *
+ * Deliberately below what any accessibility guideline would call a readable
+ * body size, and that is fine here for the same reason the focus-mode dim
+ * level is allowed down to 10%: this is a personal preference dial the user
+ * sets on their own editor and can move back at any moment, not published
+ * content someone else has to read at a size they did not choose. The floors
+ * this codebase holds to elsewhere — 4.5:1 text contrast, 24x24 hit targets —
+ * apply to what the app decides FOR the user. This is the user deciding.
+ *
+ * Nothing downstream depends on a minimum: `--md-editor-font-size` feeds
+ * CodeMirror's `.cm-scroller`, which re-measures its own line heights
+ * whenever the value changes (see `editorFontMetricsChanged` in
+ * `app/wiring.ts` for the nudge that guarantees it), so a smaller size is
+ * just a smaller number to that machinery.
+ */
+export const FONT_SIZE_MIN = 8
 export const FONT_SIZE_MAX = 20
 // 14.5px matches the reference design's editor type scale
 // (`design-template.html`'s `<textarea>` rule) — still just the *default*
-// within the existing 12-20px user-adjustable range, not a new floor/ceiling.
+// within the user-adjustable range, not a new floor/ceiling.
 const DEFAULT_FONT_SIZE = 14.5
 
 const DEFAULT_LINE_WRAP = true
