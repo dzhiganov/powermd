@@ -110,7 +110,7 @@ function handleDelete(event: MouseEvent, close: () => void) {
 
 <template>
   <div
-    class="group doc-row flex h-8 w-full items-center gap-0.5 rounded-field p-0"
+    class="group doc-row flex h-7 w-full items-center gap-0.5 rounded-field p-0"
     :style="active ? { background: 'var(--md-sel, var(--color-base-200))' } : undefined"
   >
     <!-- Active-document accent bar (Phase 4 visual redesign, matching the
@@ -142,7 +142,7 @@ function handleDelete(event: MouseEvent, close: () => void) {
     <template v-else>
       <button
         type="button"
-        class="flex min-w-0 flex-1 items-center rounded-field px-2 py-1.5 text-left"
+        class="flex min-w-0 flex-1 items-center rounded-field px-2 py-1 text-left"
         :class="active ? 'cursor-text' : ''"
         :aria-current="active ? 'true' : undefined"
         :title="showTooltips && active ? 'Click to rename' : undefined"

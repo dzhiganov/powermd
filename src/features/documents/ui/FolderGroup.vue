@@ -95,9 +95,9 @@ const documentCount = computed(() => String(props.documents.length))
          text weight+size (heavier than a document row's own weight, not
          the small uppercase "section label" treatment this replaces), a
          right-aligned document count, then the `⋯` menu — same row height
-         as a document row (`h-8`) for one even rhythm down the whole
+         as a document row (`h-7`) for one even rhythm down the whole
          tree. -->
-    <div class="group folder-row flex h-8 w-full items-center gap-1.5 rounded-field px-1">
+    <div class="group folder-row flex h-7 w-full items-center gap-1.5 rounded-field px-1">
       <button
         type="button"
         class="btn btn-ghost btn-xs btn-square shrink-0"

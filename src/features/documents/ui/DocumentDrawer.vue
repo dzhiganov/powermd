@@ -504,12 +504,14 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
       <!-- `pb-6`, not the symmetric `p-2`: the last row used to end flush
              against the dock control at the bottom of the column. Inside
              the scroll container, so it scrolls with the list. -->
-      <!-- `gap-0.5`, not `gap-1` (user request: "make space between items in
-             menu a bit smaller"). Every row is already a 32px `h-8` block, so
-             most of the visual separation comes from the rows themselves —
-             halving the gap to 2px tightens the list without letting adjacent
-             hover/active fills touch. `FolderGroup.vue`'s own nested child
-             list uses the same value for the same reason. -->
+      <!-- `gap-0.5` (2px). The gap was the first thing tightened, from
+             `gap-1`, and it was the wrong lever on its own: almost all the
+             space between two rows is the ROW, not the gap. The rows were
+             32px — sized for the 14px UI type that has since become 12px —
+             so they came down to 28px (`h-7`, see `DocumentRow.vue`), which
+             is what actually closed the list up: 34px of pitch to 30px.
+             2px of gap is kept rather than going to zero so adjacent
+             hover/active fills stay visibly separate rows. -->
       <ul class="menu min-h-0 w-full flex-1 flex-nowrap gap-0.5 overflow-y-auto p-2 pb-6">
         <!-- Search results: a flat list (not the folder tree below) —
                each match shows its folder context inline, since search
