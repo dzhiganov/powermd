@@ -1,37 +1,34 @@
 // Must match the storage key hardcoded in the anti-flash inline script in
 // index.html — that script runs before any JS module loads and can't
 // import this constant, so keep the two in sync by hand. The stored value
-// is one of THEMES' four keys below ('light' | 'dark' | 'system' |
-// 'schedule') — the inline script resolves 'system' against
-// `prefers-color-scheme` and 'schedule' against the two schedule-time keys
-// (`SCHEDULE_LIGHT_TIME_KEY`/`SCHEDULE_DARK_TIME_KEY`, see
-// `features/settings/model/theme.ts`) itself, the same way
-// `features/settings/model/theme.ts`'s `$resolvedTheme` does after
-// hydration — anything missing/invalid falls back to the 'system'
+// is one of THEMES' three keys below ('light' | 'dark' | 'system') — the
+// inline script resolves 'system' against `prefers-color-scheme` itself,
+// the same way `features/settings/model/theme.ts`'s `$resolvedTheme` does
+// after hydration — anything missing/invalid falls back to the 'system'
 // resolution.
+//
+// That "invalid falls back" branch is load-bearing beyond first visits: a
+// fourth 'schedule' mode used to exist and is still sitting in the storage
+// of every origin that selected it. It is now simply not one of the keys
+// below, so both this app's own read (`isTheme` in
+// `features/settings/model/theme.ts`) and the inline script's read treat it
+// as absent and land on the same 'system' resolution — no migration step,
+// no stale value that nothing can resolve.
 export const THEME_STORAGE_KEY = 'markdown-editor:theme'
 
 export const THEMES = {
   light: 'light',
   dark: 'dark',
   system: 'system',
-  /** A fourth mode alongside the three above, not a separate system next to
-   * them: the user picks two clock times (light starts / dark starts) in
-   * Settings > Appearance, and the resolved theme follows whichever side of
-   * that schedule the current time falls on — see `features/settings/lib/
-   * themeSchedule.ts` for the resolution logic and `$resolvedTheme` in
-   * `features/settings/model/theme.ts` for how it's wired in alongside
-   * 'system's own `prefers-color-scheme` resolution. */
-  schedule: 'schedule',
 } as const
 
 /** The user's persisted *choice*. Stored and exposed by `$theme` — see
  * `features/settings/model/theme.ts`. */
 export type Theme = (typeof THEMES)[keyof typeof THEMES]
 
-/** What's actually applied to `<html data-theme>` — 'system' and 'schedule'
- * are both always resolved away before they reach the DOM (daisyUI/
- * `mermaidTheme.ts` only know 'light'/'dark'). See `$resolvedTheme` in
+/** What's actually applied to `<html data-theme>` — 'system' is always
+ * resolved away before it reaches the DOM (daisyUI/`mermaidTheme.ts` only
+ * know 'light'/'dark'). See `$resolvedTheme` in
  * `features/settings/model/theme.ts`. */
 export type ResolvedTheme = typeof THEMES.light | typeof THEMES.dark
 

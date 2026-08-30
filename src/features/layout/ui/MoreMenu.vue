@@ -89,10 +89,17 @@ function handleAbout(close: () => void): void {
          features they belong to (`settings`, `transfer`) rather than markup
          written here — `layout` composes the menu, it does not own what the
          rows do. -->
-    <template #default="{ close, setFirstItemRef }">
-      <!-- `setFirstItemRef` moves with the first row, whatever it is — this
-           is the element `PopoverMenu` focuses the instant the menu opens. -->
-      <ThemeToggle :ref="setFirstItemRef" menu-item />
+    <template #default="{ close }">
+      <!-- No `:ref="setFirstItemRef"` here, unlike this menu's sibling
+           popovers: the theme control is a segmented switcher whose root is
+           the track holding its three buttons, and a `:ref` on a component
+           resolves to that root — a plain `<div>`, which `.focus()` does
+           nothing to. `useDialogFocusTrap` falls back to the first focusable
+           element inside the panel whenever no first item is supplied (see
+           `shared/lib/useDialog.ts`), and that is exactly the switcher's
+           first segment, so opting out here is what gets focus onto a real
+           button instead of stranding it on the trigger. -->
+      <ThemeToggle menu-item />
       <ImportButton menu-item @picked="close" />
       <DownloadAllItem :close="close" />
 

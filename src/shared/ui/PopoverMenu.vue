@@ -103,15 +103,18 @@ function setTriggerRef(el: Element | ComponentPublicInstance | null): void {
  * can simply not bind it.
  *
  * Unwraps `$el` when the ref lands on a COMPONENT rather than a plain
- * element. `MoreMenu.vue`'s first row is `<ThemeToggle menu-item />`, and a
+ * element. `MoreMenu.vue`'s first row used to be `<ThemeToggle menu-item />`
+ * (it now opts out of this ref entirely — see the comment there), and a
  * `:ref` on a component yields its `ComponentPublicInstance`, not an
  * `HTMLElement` — the old `el instanceof HTMLElement ? el : null` quietly
  * stored `null` for that case, which does not throw or warn anywhere. It
  * just means the panel opens with nothing focused, so the first Tab goes
- * somewhere unrelated and keyboard users lose the menu. Guarded again after
- * the unwrap because `$el` is a comment node for a component whose root is
- * `v-if`'d off, and a fragment root yields the first node of the fragment,
- * which need not be an element either. */
+ * somewhere unrelated and keyboard users lose the menu. Every current
+ * caller binds a plain `<button>`, so the unwrap only guards the next one
+ * that doesn't. Guarded again after the unwrap because `$el` is a comment
+ * node for a component whose root is `v-if`'d off, and a fragment root
+ * yields the first node of the fragment, which need not be an element
+ * either. */
 function setFirstItemRef(el: Element | ComponentPublicInstance | null): void {
   if (el instanceof HTMLElement) {
     firstItemRef.value = el

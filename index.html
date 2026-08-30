@@ -23,10 +23,10 @@
       // Sets data-theme AND data-soft before first paint so the page
       // doesn't flash the default theme / full-contrast surfaces then snap
       // to the stored ones. The stored theme value is the user's *choice*
-      // — 'light', 'dark', 'system', or 'schedule' — must match
-      // THEME_STORAGE_KEY / THEMES in src/shared/config/theme.ts. The
-      // stored soft-contrast value is a plain 'true'/'false' string — must
-      // match SOFT_CONTRAST_STORAGE_KEY in
+      // — 'light', 'dark', or 'system' — must match THEME_STORAGE_KEY /
+      // THEMES in src/shared/config/theme.ts. The stored soft-contrast
+      // value is a plain 'true'/'false' string — must match
+      // SOFT_CONTRAST_STORAGE_KEY in
       // src/features/settings/model/softContrast.ts. ALL kept in sync by
       // hand since this script runs before any JS module (and can't import
       // any constant). 'system' (and anything missing/invalid, e.g. a
@@ -36,19 +36,13 @@
       // reacts live to prefers-color-scheme changing afterwards, but this
       // script only ever runs once, before paint.
       //
-      // 'schedule' resolves against the two stored switch-time strings
-      // (SCHEDULE_LIGHT_TIME_KEY/SCHEDULE_DARK_TIME_KEY in
-      // src/features/settings/model/theme.ts — same "kept in sync by hand"
-      // deal, including their '07:00'/'19:00' fallback defaults) using the
-      // exact same half-open, wrap-aware interval check as
-      // resolveScheduledTheme in src/features/settings/lib/themeSchedule.ts
-      // — duplicated here rather than imported for the same reason as
-      // everything else in this script: it has to run before any JS module
-      // exists to import from. If this ever drifts from that function, the
-      // symptom is a wrong-theme flash right at the light/dark boundary
-      // each day, since the module's own resolution (applied once Effector
-      // hydrates, a moment later) would then correct it visibly instead of
-      // agreeing with what's already painted.
+      // A removed fourth 'schedule' mode is still stored on origins that
+      // selected it. It deliberately gets no branch of its own: it is not
+      // one of the values above, so it takes the same prefers-color-scheme
+      // fallback as a first visit — the same value `isTheme` in
+      // src/features/settings/model/theme.ts resolves it to a moment later,
+      // which is what keeps this from painting one theme and then visibly
+      // correcting itself once Effector hydrates.
       //
       // Wrapped in try/catch because localStorage can throw in private
       // browsing modes.
@@ -57,27 +51,6 @@
         var theme
         if (stored === 'light' || stored === 'dark') {
           theme = stored
-        } else if (stored === 'schedule') {
-          var TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
-          var readTime = function (key, fallback) {
-            var value = localStorage.getItem(key)
-            return value && TIME_RE.test(value) ? value : fallback
-          }
-          var lightTime = readTime('markdown-editor:schedule-light-time', '07:00')
-          var darkTime = readTime('markdown-editor:schedule-dark-time', '19:00')
-          var toMinutes = function (time) {
-            var parts = time.split(':')
-            return Number(parts[0]) * 60 + Number(parts[1])
-          }
-          var lightMinutes = toMinutes(lightTime)
-          var darkMinutes = toMinutes(darkTime)
-          var now = new Date()
-          var nowMinutes = now.getHours() * 60 + now.getMinutes()
-          var inLightWindow =
-            lightMinutes <= darkMinutes
-              ? nowMinutes >= lightMinutes && nowMinutes < darkMinutes
-              : nowMinutes >= lightMinutes || nowMinutes < darkMinutes
-          theme = inLightWindow ? 'light' : 'dark'
         } else {
           theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
         }

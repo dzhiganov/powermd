@@ -41,9 +41,12 @@ test.describe('export actions, inside the More menu', () => {
     await openApp(page)
     await openMoreMenu(page)
 
-    await expect(
-      page.getByRole('menuitem', { name: /Switch to (dark|system|schedule|light) theme/ }),
-    ).toBeVisible()
+    // The theme control is a three-icon segmented switcher, not a labelled
+    // row — each mode is its own button, named only by its `aria-label`
+    // (there is no visible text to match on).
+    await expect(page.getByRole('menuitem', { name: 'Light theme' })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: 'Dark theme' })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: 'System theme' })).toBeVisible()
     await expect(page.getByRole('menuitem', { name: /^Import / })).toBeVisible()
     await expect(page.getByRole('menuitem', { name: 'Settings' })).toBeVisible()
     await expect(page.getByRole('menuitem', { name: 'Keyboard shortcuts' })).toBeVisible()
@@ -64,22 +67,29 @@ test.describe('export actions, inside the More menu', () => {
     await expect(page.getByRole('menu', { name: 'More actions' })).toBeHidden()
   })
 
-  test('the theme row is the one that does NOT close the menu', async ({ page }) => {
+  test('the theme switcher is the one control that does NOT close the menu', async ({ page }) => {
     await openApp(page)
     await page.evaluate(() => localStorage.setItem('markdown-editor:theme', 'light'))
     await page.reload()
     await page.locator('.cm-content').waitFor()
     await openMoreMenu(page)
 
-    const themeRow = page.getByRole('menuitem', {
-      name: /Switch to (dark|system|schedule|light) theme/,
-    })
-    await themeRow.click()
+    const lightSegment = page.getByRole('menuitem', { name: 'Light theme' })
+    const darkSegment = page.getByRole('menuitem', { name: 'Dark theme' })
+    await expect(lightSegment).toHaveAttribute('aria-pressed', 'true')
 
-    // Still open, and the row has re-labelled itself in place — this is what
-    // makes cycling possible without reopening the menu between steps.
+    await darkSegment.click()
+
+    // The picked mode is applied outright — no cycling, so one click on
+    // "Dark theme" from 'light' lands on dark rather than stepping toward it.
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+
+    // Still open, with the active segment moved in place. That is what makes
+    // switching themes while watching the result possible without reopening
+    // the menu between attempts.
     await expect(page.getByRole('menu', { name: 'More actions' })).toBeVisible()
-    await expect(themeRow).toHaveAttribute('aria-label', 'Switch to system theme')
+    await expect(darkSegment).toHaveAttribute('aria-pressed', 'true')
+    await expect(lightSegment).toHaveAttribute('aria-pressed', 'false')
   })
 })
 
@@ -88,16 +98,16 @@ test.describe('more actions menu (PopoverMenu) — shared dismissal behaviour', 
     await openApp(page)
     await openMoreMenu(page)
 
-    // Regression guard. That first row is a COMPONENT
-    // (`<ThemeToggle menu-item />`), and a `:ref` on a component yields a
-    // ComponentPublicInstance rather than an HTMLElement — which used to
-    // leave `firstItemRef` null and focus stranded on the trigger, silently.
-    // Escape then did nothing, because the keydown handler lives on the
-    // panel and no focus was inside it. See `shared/lib/useDialog.ts`.
-    const themeRow = page.getByRole('menuitem', {
-      name: /Switch to (dark|system|schedule|light) theme/,
-    })
-    await expect(themeRow).toBeFocused()
+    // Regression guard, and the first focusable thing in this panel is now
+    // the theme switcher's first SEGMENT ("Light theme"), not a labelled
+    // row. `MoreMenu.vue` deliberately passes no `setFirstItemRef` for it —
+    // the switcher's component root is the track `<div>` holding the three
+    // buttons, and `.focus()` on a plain div does nothing — so this also
+    // covers `useDialogFocusTrap`'s "derive the first focusable element from
+    // the DOM" fallback. Without that fallback, focus stays stranded on the
+    // trigger silently, and Escape then does nothing because the keydown
+    // handler lives on the panel. See `shared/lib/useDialog.ts`.
+    await expect(page.getByRole('menuitem', { name: 'Light theme' })).toBeFocused()
   })
 
   test('Escape closes the menu and returns focus to the trigger', async ({ page }) => {

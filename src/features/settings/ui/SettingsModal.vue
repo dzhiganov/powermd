@@ -62,14 +62,7 @@ import {
   type AutoSyncIntervalMinutes,
 } from '../model/uiPreferences'
 import { $softContrast, softContrastToggled } from '../model/softContrast'
-import {
-  $theme,
-  $scheduleLightTime,
-  $scheduleDarkTime,
-  themeChanged,
-  scheduleLightTimeChanged,
-  scheduleDarkTimeChanged,
-} from '../model/theme'
+import { $theme, themeChanged } from '../model/theme'
 import {
   $resetConfirmOpen,
   resetRequested,
@@ -98,8 +91,6 @@ const scrollSyncEnabled = useUnit($scrollSyncEnabled)
 const autoSyncIntervalMinutes = useUnit($autoSyncIntervalMinutes)
 const softContrast = useUnit($softContrast)
 const theme = useUnit($theme)
-const scheduleLightTime = useUnit($scheduleLightTime)
-const scheduleDarkTime = useUnit($scheduleDarkTime)
 
 const dialogRef = ref<HTMLElement | null>(null)
 const firstControlRef = ref<HTMLElement | null>(null)
@@ -144,11 +135,12 @@ function handleAutoSyncIntervalChange(event: Event) {
 
 // --- Theme mode segmented control ------------------------------------------
 //
-// A direct-pick alternative to `ThemeToggle.vue`'s header cycle button
-// (light -> dark -> system -> schedule -> light, one step per click) — same
-// "join" button-group shape as "Documents panel side" below, and the same
-// reason it exists: reaching 'schedule' by cycling alone can take up to
-// three clicks from 'light', where this is always one.
+// A direct-pick alternative to `ThemeToggle.vue`'s cycle button (light ->
+// dark -> system -> light, one step per click) — same "join" button-group
+// shape as "Documents panel side" below, and the same reason it exists:
+// reaching 'system' by cycling alone can take up to two clicks from
+// 'light', where this is always one. Labelled in words here, unlike the
+// icon-only switcher in the "…" menu: this dialog has the room for it.
 interface ThemeModeOption {
   id: Theme
   label: string
@@ -158,15 +150,7 @@ const THEME_MODE_OPTIONS: ThemeModeOption[] = [
   { id: THEMES.light, label: 'Light' },
   { id: THEMES.dark, label: 'Dark' },
   { id: THEMES.system, label: 'System' },
-  { id: THEMES.schedule, label: 'Schedule' },
 ]
-
-function handleScheduleLightTimeChange(event: Event) {
-  scheduleLightTimeChanged((event.target as HTMLInputElement).value)
-}
-function handleScheduleDarkTimeChange(event: Event) {
-  scheduleDarkTimeChanged((event.target as HTMLInputElement).value)
-}
 
 // --- Category nav ---------------------------------------------------------
 //
@@ -556,8 +540,8 @@ watch(open, (isOpen) => {
             </div>
           </div>
 
-          <!-- Appearance: theme + schedule, reading width, formatting
-               toolbar, tooltips, documents panel side, scroll sync. -->
+          <!-- Appearance: theme, reading width, formatting toolbar,
+               tooltips, documents panel side, scroll sync. -->
           <div v-else-if="activeCategory === 'appearance'" class="flex flex-col gap-4">
             <div class="flex flex-col gap-1">
               <span id="settings-theme-label" class="text-xs text-base-content">Theme</span>
@@ -574,55 +558,6 @@ watch(open, (isOpen) => {
                   {{ option.label }}
                 </button>
               </div>
-            </div>
-
-            <!-- Always visible and interactive, even outside 'schedule' mode
-                 — same "the control stays usable, a caption explains it has
-                 no effect yet" pattern as the focus-dim-level slider and the
-                 word-completion folder exclusion list above, rather than
-                 disabling/hiding it. Picking the two times ahead of time
-                 means they're already right the moment the user switches
-                 the mode above to Schedule. -->
-            <div class="flex flex-col gap-2">
-              <span id="settings-schedule-label" class="text-xs text-base-content"
-                >Theme schedule</span
-              >
-              <div
-                class="flex flex-wrap items-end gap-3"
-                role="group"
-                aria-labelledby="settings-schedule-label"
-              >
-                <label class="flex flex-col gap-1">
-                  <span class="text-xs text-base-content/70">Light starts</span>
-                  <input
-                    type="time"
-                    class="input input-sm settings-time-input"
-                    :value="scheduleLightTime"
-                    aria-label="Light theme start time"
-                    @change="handleScheduleLightTimeChange"
-                  />
-                </label>
-                <label class="flex flex-col gap-1">
-                  <span class="text-xs text-base-content/70">Dark starts</span>
-                  <input
-                    type="time"
-                    class="input input-sm settings-time-input"
-                    :value="scheduleDarkTime"
-                    aria-label="Dark theme start time"
-                    @change="handleScheduleDarkTimeChange"
-                  />
-                </label>
-              </div>
-              <p class="text-xs text-base-content/70">
-                The theme switches automatically at these two times each day — set "Dark starts"
-                earlier than "Light starts" for an overnight dark period that spans midnight.
-                <template v-if="theme !== THEMES.schedule">
-                  The theme is set to "{{
-                    THEME_MODE_OPTIONS.find((option) => option.id === theme)?.label
-                  }}" right now, so this has no visible effect until you switch it to Schedule
-                  above.
-                </template>
-              </p>
             </div>
 
             <label class="flex flex-col gap-1">
@@ -830,8 +765,8 @@ watch(open, (isOpen) => {
         Restores font size, font family, line wrapping, focus mode (including its dim level), word
         completion (including which folders it's turned off in), spell check, autosave delay,
         reading width, tooltips, formatting toolbar, documents panel side, scroll sync, auto-sync
-        interval, theme (including its schedule's light/dark switch times), and soft contrast to
-        their defaults. Your documents, folders, and GitHub connection are not affected.
+        interval, theme, and soft contrast to their defaults. Your documents, folders, and GitHub
+        connection are not affected.
       </p>
       <div class="mt-5 flex justify-end gap-2">
         <button
@@ -1085,42 +1020,5 @@ watch(open, (isOpen) => {
  */
 .settings-folder-list input[type='checkbox'] {
   border-color: color-mix(in srgb, var(--color-base-content) 75%, transparent);
-}
-
-/*
- * The theme schedule's two `<input type="time">` fields (first use of
- * daisyUI's `.input` component in this app) — same problem as the
- * checkbox border immediately above and the same fix: daisyUI's default
- * unchecked/unfocused `.input` border is a low-opacity token, measured
- * (real rendered pixels, canvas-composited over this dialog's own
- * translucent `.settings-panel`, all four theme x soft-contrast
- * combinations) at only 1.61:1-1.93:1 — under the 3:1 non-text floor.
- * Reuses the exact same `color-mix(in srgb, var(--color-base-content) 75%,
- * transparent)` value already verified against this identical backdrop by
- * the checkbox rule above, rather than deriving a second one: re-measured
- * after this change (real rendered pixels, same canvas-compositing method)
- * at every combination — 7.34:1 (light+soft, the tightest) to 9.79:1
- * (dark), all clearing 3:1 with wide margin.
- */
-.settings-time-input {
-  border-color: color-mix(in srgb, var(--color-base-content) 75%, transparent);
-  /* WIDTH, or the AM/PM field renders UNDER the clock icon. Left to size
-   * itself, Chrome gives `input[type="time"]` an intrinsic width of ~84px
-   * — computed from its own inner fields plus the picker indicator, and
-   * WITHOUT accounting for daisyUI's `.input` padding (`0.75rem` each
-   * side, 24px total). Those 24px come out of the fields, so at
-   * `.input-sm`'s 12px type the last glyph of "07:00 AM" ended up sitting
-   * on top of `::-webkit-calendar-picker-indicator`. Note `scrollWidth ===
-   * clientWidth` in that state: nothing overflows, so no overflow-based
-   * check would have caught this — it was only visible in a screenshot.
-   *
-   * 8.5rem (136px) is the intrinsic 84px plus the 24px of padding it
-   * ignores, plus ~28px of slack. The slack matters because the field set
-   * is LOCALE-dependent: a 24-hour locale renders "07:00" with no AM/PM
-   * and needs less, while a locale with wider digit glyphs needs more, and
-   * this is a fixed value rather than something that re-measures per
-   * locale. `min-width`, not `width`, so the field can still grow if a
-   * locale needs more than this. */
-  min-width: 8.5rem;
 }
 </style>

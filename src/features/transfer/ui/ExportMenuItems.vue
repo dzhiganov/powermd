@@ -8,7 +8,7 @@
  * tools row. That row is gone (user request: theme, import and export all
  * moved into the "…" menu), so what is left is only the items, rendered
  * inside `layout/ui/MoreMenu.vue`'s popover alongside import, the theme
- * cycle, and settings.
+ * switcher, and settings.
  *
  * Kept in `transfer` rather than inlined into `MoreMenu.vue` so the export
  * actions still live in the feature that owns them — `layout` gets to
@@ -19,7 +19,8 @@
  * Every handler closes the menu, because every one of these either starts a
  * download, opens the print dialog, or writes the clipboard — all of which
  * are terminal actions that leave nothing to come back to the menu for.
- * (`ThemeToggle.vue`'s row is the deliberate exception; see its comment.)
+ * (`ThemeToggle.vue`'s theme switcher is the deliberate exception; see its
+ * comment.)
  */
 import {
   DocumentIcon,
