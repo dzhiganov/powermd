@@ -53,11 +53,15 @@ function handleAbout(close: () => void): void {
 </script>
 
 <template>
-  <!-- 256px, up from 208px: the export rows ("Styled HTML (.html)", "Copy
-       rendered HTML") are the widest labels in the app's menus, and every
-       `popover-menu-item` is `white-space: nowrap`. This is the width
-       `ExportMenu.vue` already used for the same five rows. -->
-  <PopoverMenu label="More actions" :align="menuAlign" width="256px" :z-index="70">
+  <!-- 296px. Was 256px, which fit while the UI was set in IBM Plex Sans and
+       stopped fitting the moment it became Geist Mono: every glyph in a
+       monospace is as wide as the widest one, so the same strings grew ~5%
+       and "Import (.md, .markdown, .txt)" — the longest label in the app —
+       spilled straight out of the panel. Every `popover-menu-item` is
+       `white-space: nowrap`, so there is no reflow to absorb it; the text
+       simply left the box. Measured after the change: content 269px against
+       a 296px panel. -->
+  <PopoverMenu label="More actions" :align="menuAlign" width="296px" :z-index="70">
     <template #trigger="{ open, toggle, setTriggerRef }">
       <button
         :ref="setTriggerRef"

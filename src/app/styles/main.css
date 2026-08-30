@@ -1,17 +1,26 @@
 @import 'tailwindcss';
 
-/* Self-hosted fonts (Phase 1 visual redesign) — IBM Plex Sans for UI,
- * IBM Plex Mono for the editor. Deliberately NOT a Google Fonts CDN
- * `<link>`: this app is otherwise fully self-contained/offline-capable, and
- * a CDN font adds an external runtime dependency plus a privacy/CSP
- * concern. `@fontsource/*` ships the same files as static assets bundled by
- * Vite, so every request stays same-origin. Only the weights actually used
- * by the new type scale are imported (400/500/600 for Sans — see the
- * `@theme` block below and Settings' font-family stack; 400/500 for Mono —
- * body text plus the `font-weight: 'bold'` heading/strong tokens in
- * `features/editor/lib/theme.ts`'s `daisyHighlightStyle`), not the full
- * variable-axis package, to keep the shipped font payload proportional to
- * what's on screen. */
+/* Self-hosted fonts. Deliberately NOT a Google Fonts CDN `<link>`: this app
+ * is otherwise fully self-contained/offline-capable, and a CDN font adds an
+ * external runtime dependency plus a privacy/CSP concern. `@fontsource/*`
+ * ships the same files as static assets bundled by Vite, so every request
+ * stays same-origin. Only the weights actually on screen are imported, not
+ * the full variable-axis packages, to keep the font payload proportional.
+ *
+ * THREE FAMILIES, THREE JOBS:
+ *   - Geist Mono — the UI. Licensed SIL OFL 1.1 (see
+ *     `node_modules/@fontsource/geist-mono/LICENSE`), which permits
+ *     embedding and commercial use; the conditions are that the licence
+ *     travels with the font files (it does, in the package) and that the
+ *     font is not sold on its own.
+ *   - IBM Plex Sans — the RENDERED DOCUMENT only, via `--font-prose` below.
+ *   - IBM Plex Mono — the editor and code blocks.
+ *
+ * 400/500/600 for Geist Mono covers body, the medium used on active
+ * segmented-control labels, and the semibold on headings/emphasis. */
+@import '@fontsource/geist-mono/400.css';
+@import '@fontsource/geist-mono/500.css';
+@import '@fontsource/geist-mono/600.css';
 @import '@fontsource/ibm-plex-sans/400.css';
 @import '@fontsource/ibm-plex-sans/500.css';
 @import '@fontsource/ibm-plex-sans/600.css';
@@ -33,8 +42,27 @@
  * swap` already avoids invisible text in the meantime).
  */
 @theme {
-  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* `--font-sans` is the UI font, and it is a MONOSPACE — the name comes
+   * from Tailwind's theme key, not from the typeface. It is still the right
+   * key to override: Preflight's `html` rule reads it (via
+   * `--default-font-family`), which is what makes every button, menu, panel
+   * and dialog pick this up without a single component changing.
+   *
+   * The rendered document deliberately does NOT follow it — see
+   * `--font-prose` below. */
+  --font-sans: 'Geist Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* The rendered document, applied to `.markdown-preview` (see further down)
+   * rather than inherited from the body.
+   *
+   * Before this, the preview inherited `--font-sans` — so pointing the UI at
+   * a monospace would have set every rendered paragraph in monospace too.
+   * The preview is the READING view of the user's own writing, not app
+   * chrome: prose set in a monospace is measurably slower to read and is not
+   * what "change the UI font" asks for. Splitting the token is what keeps
+   * the two decisions independent. */
+  --font-prose: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 /* UI base size: 14px, matching the reference design. Set on `body`, not

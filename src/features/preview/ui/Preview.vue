@@ -242,6 +242,13 @@ const previewMaxWidth = 'min(680px, var(--md-reading-width, 75ch))'
    * `editorPreferences.ts` (`DEFAULT_FONT_SIZE`), so the two panes start in
    * visual agreement even before that module's effect has run. */
   font-size: var(--md-editor-font-size, 14.5px);
+  /* The rendered document keeps a proportional face while the UI around it
+   * is monospace (`--font-sans`, main.css). Set here rather than inherited,
+   * because inheriting is exactly what would drag the prose along with any
+   * future change to the UI font. `code`/`pre` are unaffected — Tailwind
+   * Typography gives them `--font-mono` explicitly. */
+  font-family: var(--font-prose);
+
   --tw-prose-body: var(--color-base-content);
   --tw-prose-headings: var(--color-base-content);
   --tw-prose-lead: var(--color-base-content);
