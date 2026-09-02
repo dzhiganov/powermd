@@ -15,6 +15,10 @@ import {
   $showTooltips,
   $drawerSide,
   drawerSideChanged,
+  $sidebarWidth,
+  sidebarWidthChanged,
+  SIDEBAR_WIDTH_MIN,
+  SIDEBAR_WIDTH_MAX,
 } from '@/features/settings'
 
 import Toolbar from './Toolbar.vue'
@@ -38,6 +42,9 @@ const mobileTab = useUnit($mobileTab)
 // the drawer's single mounting site, and passed down as props.
 const showTooltips = useUnit($showTooltips)
 const drawerSide = useUnit($drawerSide)
+// Read here and threaded into `DocumentDrawer` as props, the same way
+// `drawerSide` is — that feature never imports `settings` itself.
+const sidebarWidth = useUnit($sidebarWidth)
 // Needed here (not just inside `DocumentDrawer.vue`/`DrawerToggleButton.vue`
 // themselves) to compute `shellStyle` below — the shell's own padding has
 // to know whether the panel is open, same as the panel's own transform
@@ -147,7 +154,11 @@ const centered = true
     <DocumentDrawer
       :show-tooltips="showTooltips"
       :side="drawerSide"
+      :width="sidebarWidth"
+      :width-min="SIDEBAR_WIDTH_MIN"
+      :width-max="SIDEBAR_WIDTH_MAX"
       @dock-changed="drawerSideChanged"
+      @width-changed="sidebarWidthChanged"
     >
       <!-- One control, not four. The theme cycle, import, and export used to
            sit here as separate buttons; all three are rows inside this menu

@@ -190,7 +190,7 @@ const documentCount = computed(() => String(props.documents.length))
     <!-- `gap-0.5` matches the parent list in `DocumentDrawer.vue` (see its
          own comment) — a folder's children must not sit further apart than
          the root-level rows around them. -->
-    <ul v-show="!collapsed" class="ml-4 flex flex-col gap-0.5 pl-3">
+    <ul v-show="!collapsed" class="ml-4 flex flex-col gap-0 pl-3">
       <li v-if="documents.length === 0" class="px-3 py-1 text-xs text-base-content/50">Empty</li>
       <li v-for="doc in documents" :key="doc.id">
         <DocumentRow

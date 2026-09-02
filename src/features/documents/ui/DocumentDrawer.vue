@@ -51,9 +51,20 @@ import HighlightedText from './HighlightedText.vue'
 // each other's internals (see ARCHITECTURE.md / eslint boundaries). The
 // single mounting site, `AppShell.vue` (in the `layout` feature), already
 // imports `settings` directly and threads both values down.
-withDefaults(defineProps<{ showTooltips?: boolean; side?: 'left' | 'right' }>(), {
-  side: 'right',
-})
+const props = withDefaults(
+  defineProps<{
+    showTooltips?: boolean
+    side?: 'left' | 'right'
+    /** Current panel width, and the bounds the resize handle reports to
+     * assistive tech. Threaded down from `AppShell.vue` rather than read
+     * from `settings` here, for the same reason `side` is (see the note
+     * above): `documents` never imports that feature. */
+    width: number
+    widthMin: number
+    widthMax: number
+  }>(),
+  { showTooltips: false, side: 'right' },
+)
 
 // Dock-left/right is a `settings`-owned preference (`$drawerSide` /
 // `drawerSideChanged`) — `documents` never imports `settings` directly (see
@@ -62,7 +73,10 @@ withDefaults(defineProps<{ showTooltips?: boolean; side?: 'left' | 'right' }>(),
 // modal's Left/Right buttons already expose, just also reachable from the
 // sidebar itself) only emits the intent; `AppShell.vue` (already importing
 // both features) wires it to the real event.
-const emit = defineEmits<{ 'dock-changed': [side: 'left' | 'right'] }>()
+const emit = defineEmits<{
+  'dock-changed': [side: 'left' | 'right']
+  'width-changed': [width: number]
+}>()
 
 const documents = useUnit($documentList)
 const activeId = useUnit($activeId)
@@ -119,6 +133,55 @@ onUnmounted(searchFocusSubscription.unsubscribe)
 // produce. `isMac()` (the same helper `formatShortcut` itself is built on)
 // is reused directly instead of adding a second platform helper.
 const acrossDocumentsShortcutLabel = isMac() ? '⇧⌘F' : 'Ctrl+Shift+F'
+
+// --- Resizing the panel --------------------------------------------------
+//
+// The width is a `settings`-owned persisted preference (`$sidebarWidth`),
+// applied as `--md-sidebar-width` on `<html>` by that model — this component
+// only reports the new number. Same shape as the dock-side control below:
+// `documents` never writes `settings`' storage itself.
+//
+// Pointer capture, not window listeners: it keeps every subsequent move and
+// the release bound to this element even when the pointer outruns a 4px
+// strip, which it always does. It also cannot leak a listener if the element
+// unmounts mid-drag, which is the failure mode the window-listener version
+// of this has in most codebases.
+
+function startResize(event: PointerEvent): void {
+  const handle = event.currentTarget as HTMLElement
+  handle.setPointerCapture(event.pointerId)
+  const startX = event.clientX
+  const startWidth = props.width
+  // Dragging LEFT widens a right-docked panel and narrows a left-docked one,
+  // so the delta's sign flips with the dock side.
+  const direction = props.side === 'right' ? -1 : 1
+
+  const onMove = (move: PointerEvent) => {
+    emit('width-changed', startWidth + (move.clientX - startX) * direction)
+  }
+  const onUp = () => {
+    handle.removeEventListener('pointermove', onMove)
+    handle.removeEventListener('pointerup', onUp)
+    handle.removeEventListener('pointercancel', onUp)
+  }
+  handle.addEventListener('pointermove', onMove)
+  handle.addEventListener('pointerup', onUp)
+  handle.addEventListener('pointercancel', onUp)
+  event.preventDefault()
+}
+
+const RESIZE_STEP = 16
+
+function handleResizeKey(event: KeyboardEvent): void {
+  const grow = props.side === 'right' ? 'ArrowLeft' : 'ArrowRight'
+  const shrink = props.side === 'right' ? 'ArrowRight' : 'ArrowLeft'
+  if (event.key === grow) emit('width-changed', props.width + RESIZE_STEP)
+  else if (event.key === shrink) emit('width-changed', props.width - RESIZE_STEP)
+  else if (event.key === 'Home') emit('width-changed', props.widthMin)
+  else if (event.key === 'End') emit('width-changed', props.widthMax)
+  else return
+  event.preventDefault()
+}
 
 // Folders sort alphabetically (case-insensitive) — flat, no manual
 // reordering (out of scope; moving is a per-document menu action, not
@@ -323,6 +386,28 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
       :inert="!open"
       aria-label="Documents"
     >
+      <!-- Resize handle, on whichever edge faces the panes — the outer edge
+           is the window, and dragging that would mean nothing. A `separator`
+           with `aria-valuenow` rather than a bare div, so it is a real
+           control: arrow keys resize it in 16px steps and Home/End jump to
+           the bounds, which is the only way to reach this at all without a
+           pointer.
+           4px wide but visually invisible until hovered: a permanently
+           drawn rule down the panel edge would be one more line in a panel
+           the user has repeatedly asked to have lines removed from. -->
+      <div
+        class="drawer-resize"
+        :class="side === 'right' ? 'left-0' : 'right-0'"
+        role="separator"
+        aria-orientation="vertical"
+        :aria-label="'Documents panel width'"
+        :aria-valuenow="width"
+        :aria-valuemin="widthMin"
+        :aria-valuemax="widthMax"
+        tabindex="0"
+        @pointerdown="startResize"
+        @keydown="handleResizeKey"
+      />
       <!-- No heading text and no close button — the drawer is opened and
            closed from the floating toggle (and, on mobile, the backdrop),
            not from a control in here (see `DrawerToggleButton.vue`, now
@@ -512,7 +597,7 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
              is what actually closed the list up: 34px of pitch to 30px.
              2px of gap is kept rather than going to zero so adjacent
              hover/active fills stay visibly separate rows. -->
-      <ul class="menu min-h-0 w-full flex-1 flex-nowrap gap-0.5 overflow-y-auto p-2 pb-6">
+      <ul class="menu min-h-0 w-full flex-1 flex-nowrap gap-0 overflow-y-auto p-2 pb-6">
         <!-- Search results: a flat list (not the folder tree below) —
                each match shows its folder context inline, since search
                deliberately crosses folder boundaries rather than staying
@@ -782,4 +867,30 @@ const { trapFocus: trapFolderDialogFocus } = useDialogFocusTrap(
    (`.new-menu`/`.new-menu-item`) — it's now `PopoverMenu`'s shared
    `.popover-menu-panel`/`.popover-menu-item` (`@/shared/ui/PopoverMenu.vue`),
    the same styling every other popover in the app uses. */
+
+/* Resize handle. A 4px strip down the panel's inner edge, invisible until
+ * you touch it — a permanently drawn rule there would be one more line in a
+ * panel this user has repeatedly asked to have lines removed from, and the
+ * `col-resize` cursor already announces it on approach.
+ *
+ * `z-index` above the list so it stays grabbable over a scrolled row, and
+ * `touch-action: none` so a drag on a touch screen resizes instead of
+ * scrolling the list underneath. */
+.drawer-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 60;
+  width: 4px;
+  cursor: col-resize;
+  touch-action: none;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.drawer-resize:hover,
+.drawer-resize:focus-visible {
+  background: var(--md-accent);
+  outline: none;
+}
 </style>

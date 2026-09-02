@@ -100,6 +100,65 @@ sample({
   target: persistFx,
 })
 
+// --- Documents panel width ---------------------------------------------
+//
+// Dragged from the panel's inner edge (`DocumentDrawer.vue`) and persisted,
+// so a width chosen once survives every reload.
+//
+// The bounds are not decoration. Below ~180px a row is mostly accent bar and
+// "…" button with no room left for a name; past ~560px the panel starts
+// eating the pane it exists to navigate. Clamped on READ as well as on
+// write, so a hand-edited or corrupted storage value can never leave the app
+// with an unusable panel and no way to drag it back.
+
+export const SIDEBAR_WIDTH_MIN = 180
+export const SIDEBAR_WIDTH_MAX = 560
+const DEFAULT_SIDEBAR_WIDTH = 320
+const SIDEBAR_WIDTH_KEY = 'markdown-editor:sidebar-width'
+
+function clampWidth(width: number): number {
+  return Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, Math.round(width)))
+}
+
+function readSidebarWidth(): number {
+  const stored = Number(readStorage(SIDEBAR_WIDTH_KEY))
+  return Number.isFinite(stored) && stored > 0 ? clampWidth(stored) : DEFAULT_SIDEBAR_WIDTH
+}
+
+export const sidebarWidthChanged = createEvent<number>()
+export const $sidebarWidth = createStore<number>(readSidebarWidth())
+  .on(sidebarWidthChanged, (_, width) => clampWidth(width))
+  .on(defaultsRestored, () => DEFAULT_SIDEBAR_WIDTH)
+
+sample({
+  clock: $sidebarWidth,
+  fn: (width) => ({ key: SIDEBAR_WIDTH_KEY, value: String(width) }),
+  target: persistFx,
+})
+
+/**
+ * Writes the width to `<html>` as `--md-sidebar-width` — the token main.css
+ * already declares, and which the whole open/close system derives from: the
+ * panel's own width, the shell padding that makes room for it, AND
+ * `--md-toggle-open-x`, the `calc()` deciding how far the toggle button
+ * travels. Feeding that one token is what stops a resize from desynchronising
+ * the button from the panel it rides on — setting a width on the panel
+ * element alone would leave the `calc()` reading a stale 320px, and the
+ * button would stop landing on the panel's edge.
+ *
+ * An inline style on `<html>` outranks the `:root` rule in main.css, so the
+ * value declared there stays the default for a browser that has never stored
+ * one.
+ */
+const applySidebarWidthFx = createEffect((width: number) => {
+  document.documentElement.style.setProperty('--md-sidebar-width', `${width}px`)
+})
+
+sample({ clock: $sidebarWidth, target: applySidebarWidthFx })
+// The stored value has to reach the DOM at startup, not only on the next
+// change — `sample` above fires on updates only.
+applySidebarWidthFx($sidebarWidth.getState())
+
 // --- Formatting toolbar ------------------------------------------------
 //
 // Disabled by default (per direct user feedback — the strip was always on
