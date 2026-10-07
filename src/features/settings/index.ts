@@ -17,6 +17,8 @@ export {
   $wordCompletionEnabled,
   $wordCompletionExcludedFolderIds,
   $focusModeEnabled,
+  $scrollAheadEnabled,
+  $scrollAheadLines,
   editorFontSizeChanged,
   editorFontFamilyChanged,
   lineWrapToggled,
@@ -27,6 +29,10 @@ export {
   wordCompletionToggled,
   wordCompletionFolderExclusionToggled,
   focusModeToggled,
+  scrollAheadToggled,
+  scrollAheadLinesChanged,
+  SCROLL_AHEAD_LINES_MIN,
+  SCROLL_AHEAD_LINES_MAX,
   SPELLCHECK_LANGUAGES,
 } from './model/editorPreferences'
 export type { EditorFontFamily, SpellCheckLanguage } from './model/editorPreferences'

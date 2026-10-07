@@ -18,7 +18,8 @@ export const $resetConfirmOpen = createStore(false)
  * `softContrast.ts`'s `$softContrast`, `editorPreferences.ts`'s font
  * size/family/line wrap/focus mode (both the on/off toggle and its dim
  * level)/word completion (both the on/off toggle and its per-folder
- * exclusion list)/spell check/autosave/reading width,
+ * exclusion list)/scroll ahead (both the on/off toggle and its lines
+ * value)/spell check/autosave/reading width,
  * `uiPreferences.ts`'s tooltips/drawer side/formatting toolbar/scroll
  * sync/auto-sync interval — adds its own
  * `.on(defaultsRestored, () => DEFAULT)` reducer

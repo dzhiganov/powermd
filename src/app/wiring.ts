@@ -21,6 +21,7 @@ import {
   activeWikiLinkDocumentIdChanged,
   wordCompletionChanged,
   focusModeChanged,
+  scrollAheadChanged,
 } from '@/features/editor'
 import {
   sourceReceived,
@@ -74,6 +75,8 @@ import {
   $wordCompletionEnabled as $wordCompletionPreference,
   $wordCompletionExcludedFolderIds,
   $focusModeEnabled as $focusModePreference,
+  $scrollAheadEnabled as $scrollAheadEnabledPreference,
+  $scrollAheadLines as $scrollAheadLinesPreference,
   documentFoldersChanged,
   $autoSyncIntervalMinutes,
   helpOpened,
@@ -371,6 +374,22 @@ sample({ clock: $wordCompletionActive, target: wordCompletionChanged })
 // exception to resolve).
 focusModeChanged($focusModePreference.getState())
 sample({ clock: $focusModePreference, target: focusModeChanged })
+
+// Scroll ahead while typing: a real CodeMirror extension too (a scroll
+// handler plus a state field — see `features/editor/lib/scrollAhead.ts`), so
+// the editor feature keeps its own live mirror and `useCodeMirror.ts`
+// reconfigures its Compartment on a change. `combine`d into one `{ enabled,
+// lines }` payload rather than mirrored as two separate events, for the same
+// reason `$spellCheckSettings` below is: the extension needs both halves
+// together to rebuild itself, and a `combine`d store only skips a re-emit
+// when the computed pair is genuinely unchanged.
+const $scrollAhead = combine(
+  $scrollAheadEnabledPreference,
+  $scrollAheadLinesPreference,
+  (enabled, lines) => ({ enabled, lines }),
+)
+scrollAheadChanged($scrollAhead.getState())
+sample({ clock: $scrollAhead, target: scrollAheadChanged })
 
 // `settings`' Editor category renders the per-folder exclusion list above
 // against real folder names/ids — same one-kick-then-sample mirror shape as

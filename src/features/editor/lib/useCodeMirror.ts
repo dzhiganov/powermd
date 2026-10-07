@@ -18,6 +18,7 @@ import { indentListItem, outdentListItem } from './listIndent'
 import { focusModeExtension } from './focusMode'
 import { codeFenceCompletion } from './codeFence'
 import { codeSpellcheckOff } from './codeSpellcheck'
+import { buildScrollAheadExtension } from './scrollAhead'
 import { $wikiLinkDocuments, $activeWikiLinkDocumentId } from '../model/editorEvents'
 
 /**
@@ -170,6 +171,17 @@ function buildContentAttributes(spellcheck: SpellcheckOptions): Record<string, s
   return attrs
 }
 
+/** Shape shared by `initialScrollAhead`/`setScrollAhead` below — kept as
+ * one object (not a separate boolean and number) since the extension needs
+ * both halves together to build itself, the same way `SpellcheckOptions`
+ * above needs its own pair in one reconfigure. */
+export interface ScrollAheadOptions {
+  enabled: boolean
+  /** Rendered lines of room to keep below the cursor while typing — see
+   * `lib/scrollAhead.ts`. Ignored while `enabled` is false. */
+  lines: number
+}
+
 interface UseCodeMirrorOptions {
   /** Initial document text, read once when the view is created. */
   doc: string
@@ -195,6 +207,12 @@ interface UseCodeMirrorOptions {
    * through `setFocusMode` instead, which reconfigures the `Compartment` in
    * place — see `lib/focusMode.ts` for the feature itself. */
   initialFocusModeEnabled: boolean
+  /** Initial scroll-ahead state, read once when the view is created (and
+   * again on every `loadDocument` rebuild — see the `currentScrollAhead`
+   * closure variable below). Later changes go through `setScrollAhead`
+   * instead, which reconfigures the `Compartment` in place — see
+   * `lib/scrollAhead.ts` for the feature itself. */
+  initialScrollAhead: ScrollAheadOptions
   /** Called with the full document string whenever the user edits it. */
   onChange: (value: string) => void
   /** Called once, synchronously, right after the `EditorView` is created.
@@ -255,6 +273,16 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
   const focusModeCompartment = new Compartment()
   let currentFocusModeEnabled = options.initialFocusModeEnabled
 
+  // Same reasoning again: scroll ahead while typing (`lib/scrollAhead.ts`)
+  // registers a `scrollHandler` and a `StateField`, so both the on/off
+  // toggle AND a change to how many lines of room to keep have to
+  // reconfigure the Compartment in place — never a `view.setState` rebuild,
+  // so undo history and cursor survive a change exactly like every
+  // preference above. `currentScrollAhead` carries the live value across
+  // every `createState` call the same way the others do.
+  const scrollAheadCompartment = new Compartment()
+  let currentScrollAhead = options.initialScrollAhead
+
   // Builds a fresh state for `doc`. Reused for the initial mount and for
   // every document load, so both go through exactly the same extension set.
   function createState(doc: string): EditorState {
@@ -293,6 +321,15 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
         jumpFlashField,
         completionCompartment.of(buildCompletionExtension(currentWordCompletionEnabled)),
         focusModeCompartment.of(currentFocusModeEnabled ? focusModeExtension : []),
+        // Keeps a few lines of room below the line being typed instead of
+        // letting it sit flush against the bottom edge — see
+        // `lib/scrollAhead.ts`. Position in this array doesn't matter: it
+        // contributes a `scrollHandler` and a `StateField`, neither of which
+        // competes with anything else here (nothing else in this project
+        // registers a scroll handler at all).
+        scrollAheadCompartment.of(
+          currentScrollAhead.enabled ? buildScrollAheadExtension(currentScrollAhead.lines) : [],
+        ),
         // Outside the compartment above (which only carries the
         // TOGGLABLE word-completion source) — Tab must accept a wiki-link
         // completion too, and wiki-link completion is unconditionally
@@ -504,6 +541,27 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
   }
 
   /**
+   * Applies a scroll-ahead change (on/off, or a different number of lines)
+   * to the *live* view via `scrollAheadCompartment.reconfigure` — same shape
+   * as `setFocusMode` above: a plain `dispatch` with only an `effects`
+   * entry, no document change and no `setState`, so undo history, cursor,
+   * and scroll are all untouched. Rebuilds the whole extension rather than
+   * something narrower because `lines` is closed over inside it (see
+   * `buildScrollAheadExtension`'s own doc comment for why that's cheaper
+   * than a facet here).
+   */
+  function setScrollAhead(scrollAhead: ScrollAheadOptions) {
+    currentScrollAhead = scrollAhead
+    const current = view.value
+    if (!current) return
+    current.dispatch({
+      effects: scrollAheadCompartment.reconfigure(
+        scrollAhead.enabled ? buildScrollAheadExtension(scrollAhead.lines) : [],
+      ),
+    })
+  }
+
+  /**
    * Forces the browser to re-run its spellchecker over text already on
    * screen, by toggling `contentEditable` off and back on — a widely-used
    * nudge that makes the browser treat the element as freshly initialised
@@ -565,6 +623,7 @@ export function useCodeMirror(container: Ref<HTMLElement | null>, options: UseCo
     setSpellcheck,
     setWordCompletion,
     setFocusMode,
+    setScrollAhead,
     requestMeasure,
   }
 }

@@ -12,6 +12,7 @@ import {
   $spellcheckSettings,
   $wordCompletionEnabled,
   $focusModeEnabled,
+  $scrollAhead,
 } from '../model/editorEvents'
 
 defineProps<{
@@ -29,6 +30,7 @@ const {
   setSpellcheck,
   setWordCompletion,
   setFocusMode,
+  setScrollAhead,
   requestMeasure,
 } = useCodeMirror(container, {
   // Read once, synchronously, at mount. If the restored/seeded document has
@@ -48,6 +50,8 @@ const {
   initialWordCompletionEnabled: $wordCompletionEnabled.getState(),
   // Same one-shot read again, for the focus-mode on/off preference.
   initialFocusModeEnabled: $focusModeEnabled.getState(),
+  // Same one-shot read again, for the scroll-ahead on/off + lines pair.
+  initialScrollAhead: $scrollAhead.getState(),
   onChange: (value) => contentChanged(value),
   onViewReady: (view) => {
     // Wraps the raw `EditorView` into the narrow `EditorScrollHandle` shape
@@ -118,6 +122,15 @@ onUnmounted(wordCompletionSubscription.unsubscribe)
 // the toggle live via the Compartment reconfigure.
 const focusModeSubscription = $focusModeEnabled.watch((enabled) => setFocusMode(enabled))
 onUnmounted(focusModeSubscription.unsubscribe)
+
+// Settings feature owns the persisted scroll-ahead preferences too (both the
+// on/off toggle and how many lines of room to keep); wiring.ts combines them
+// into this feature's own `$scrollAhead` (see its doc comment in
+// `model/editorEvents.ts`). Same `.watch`-fires-immediately-then-on-every-
+// later-change shape as `focusModeSubscription` above, applying the change
+// live via the Compartment reconfigure.
+const scrollAheadSubscription = $scrollAhead.watch((scrollAhead) => setScrollAhead(scrollAhead))
+onUnmounted(scrollAheadSubscription.unsubscribe)
 </script>
 
 <template>

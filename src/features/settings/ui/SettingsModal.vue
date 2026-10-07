@@ -18,6 +18,8 @@ import {
   $wordCompletionExcludedFolderIds,
   $focusModeEnabled,
   $focusDimLevel,
+  $scrollAheadEnabled,
+  $scrollAheadLines,
   editorFontSizeChanged,
   editorFontFamilyChanged,
   lineWrapToggled,
@@ -29,6 +31,8 @@ import {
   wordCompletionFolderExclusionToggled,
   focusModeToggled,
   focusDimLevelChanged,
+  scrollAheadToggled,
+  scrollAheadLinesChanged,
   SPELLCHECK_LANGUAGES,
   FONT_SIZE_MIN,
   FONT_SIZE_MAX,
@@ -38,6 +42,8 @@ import {
   READING_WIDTH_MAX,
   FOCUS_DIM_LEVEL_MIN,
   FOCUS_DIM_LEVEL_MAX,
+  SCROLL_AHEAD_LINES_MIN,
+  SCROLL_AHEAD_LINES_MAX,
   type SpellCheckLanguage,
 } from '../model/editorPreferences'
 import { $documentFolders } from '../model/folderMirror'
@@ -83,6 +89,8 @@ const wordCompletionEnabled = useUnit($wordCompletionEnabled)
 const wordCompletionExcludedFolderIds = useUnit($wordCompletionExcludedFolderIds)
 const focusModeEnabled = useUnit($focusModeEnabled)
 const focusDimLevel = useUnit($focusDimLevel)
+const scrollAheadEnabled = useUnit($scrollAheadEnabled)
+const scrollAheadLines = useUnit($scrollAheadLines)
 const documentFolders = useUnit($documentFolders)
 const showTooltips = useUnit($showTooltips)
 const drawerSide = useUnit($drawerSide)
@@ -123,6 +131,9 @@ function handleReadingWidthInput(event: Event) {
 }
 function handleFocusDimLevelInput(event: Event) {
   focusDimLevelChanged(Number((event.target as HTMLInputElement).value))
+}
+function handleScrollAheadLinesInput(event: Event) {
+  scrollAheadLinesChanged(Number((event.target as HTMLInputElement).value))
 }
 function handleSpellCheckLanguageChange(event: Event) {
   spellCheckLanguageChanged((event.target as HTMLSelectElement).value as SpellCheckLanguage)
@@ -416,6 +427,50 @@ watch(open, (isOpen) => {
                 <template v-if="!focusModeEnabled">
                   Focus mode is off right now, so this has no visible effect until you turn it back
                   on.
+                </template>
+              </p>
+            </div>
+
+            <!-- Scroll ahead while typing: toggle plus its own amount
+                 slider, the same two-control shape as "Focus mode" above
+                 (and the slider stays interactive while the toggle is off
+                 for the same reason — a value picked ahead of time sticks,
+                 and the caption says plainly that it does nothing yet). -->
+            <div class="flex flex-col gap-1">
+              <label class="flex items-center justify-between">
+                <span class="text-xs text-base-content">Scroll ahead while typing</span>
+                <input
+                  type="checkbox"
+                  class="toggle toggle-sm"
+                  :checked="scrollAheadEnabled"
+                  aria-label="Scroll ahead while typing"
+                  @change="scrollAheadToggled()"
+                />
+              </label>
+              <p class="text-xs text-base-content/70">
+                When the line you're typing reaches the bottom of the editor, scrolls down smoothly
+                so there's still room below it.
+              </p>
+
+              <label class="flex flex-col gap-1 pt-1">
+                <span class="text-xs text-base-content"
+                  >Room below the cursor — {{ scrollAheadLines }}
+                  {{ scrollAheadLines === 1 ? 'line' : 'lines' }}</span
+                >
+                <input
+                  type="range"
+                  class="range range-sm"
+                  :min="SCROLL_AHEAD_LINES_MIN"
+                  :max="SCROLL_AHEAD_LINES_MAX"
+                  :value="scrollAheadLines"
+                  aria-label="Room below the cursor"
+                  @input="handleScrollAheadLinesInput"
+                />
+              </label>
+              <p class="text-xs text-base-content/70">
+                How much room to keep, in lines of text.
+                <template v-if="!scrollAheadEnabled">
+                  Scrolling ahead is off right now, so this has no effect until you turn it back on.
                 </template>
               </p>
             </div>

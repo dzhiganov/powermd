@@ -91,6 +91,27 @@ export const $focusModeEnabled = createStore<boolean>(false).on(
 )
 
 /**
+ * The editor feature's own mirror of `features/settings`' persisted
+ * scroll-ahead preferences (`lib/scrollAhead.ts` — keeps a few lines of
+ * room below the line being typed instead of letting it sit flush against
+ * the bottom edge) — same "settings owns the preference, the acting feature
+ * keeps its own mirror" shape as `$lineWrapEnabled` above. Bundled into one
+ * event/store (like `$spellcheckSettings` below, rather than two separate
+ * mirrors) since `Editor.vue`'s `setScrollAhead` always needs both halves
+ * together to rebuild the extension in one reconfigure.
+ *
+ * Defaults match `features/settings/model/editorPreferences.ts`' own
+ * defaults (on, 3 lines), so this renders correctly before `wiring.ts` has
+ * applied the real persisted values, which it does synchronously before
+ * this module's defaults could ever paint.
+ */
+export const scrollAheadChanged = createEvent<{ enabled: boolean; lines: number }>()
+export const $scrollAhead = createStore<{ enabled: boolean; lines: number }>({
+  enabled: true,
+  lines: 3,
+}).on(scrollAheadChanged, (_, scrollAhead) => scrollAhead)
+
+/**
  * Fired whenever `features/settings`' persisted editor font size or font
  * family preference changes (`wiring.ts` mirrors it in — same
  * "settings owns the preference, the acting feature keeps its own mirror"

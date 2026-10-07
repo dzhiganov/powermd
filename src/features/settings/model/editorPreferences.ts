@@ -13,6 +13,8 @@ const WORD_COMPLETION_ENABLED_KEY = 'markdown-editor:word-completion-enabled'
 const WORD_COMPLETION_EXCLUDED_FOLDERS_KEY = 'markdown-editor:word-completion-excluded-folders'
 const FOCUS_MODE_ENABLED_KEY = 'markdown-editor:focus-mode-enabled'
 const FOCUS_DIM_LEVEL_KEY = 'markdown-editor:focus-dim-level'
+const SCROLL_AHEAD_ENABLED_KEY = 'markdown-editor:scroll-ahead-enabled'
+const SCROLL_AHEAD_LINES_KEY = 'markdown-editor:scroll-ahead-lines'
 const AUTOSAVE_MS_KEY = 'markdown-editor:autosave-ms'
 const READING_WIDTH_KEY = 'markdown-editor:reading-width'
 const SPELLCHECK_ENABLED_KEY = 'markdown-editor:spellcheck-enabled'
@@ -182,6 +184,44 @@ const DEFAULT_FOCUS_MODE_ENABLED = false
 export const FOCUS_DIM_LEVEL_MIN = 10
 export const FOCUS_DIM_LEVEL_MAX = 100
 const DEFAULT_FOCUS_DIM_LEVEL = 65
+
+/**
+ * Scroll ahead while typing (`features/editor/lib/scrollAhead.ts`): once the
+ * line being typed reaches the bottom of the editor, scroll down smoothly so
+ * there is still room below it.
+ *
+ * ON by default — the one preference in this file that both defaults to on
+ * AND changes behaviour rather than appearance, which is worth justifying
+ * next to `DEFAULT_WORD_COMPLETION_ENABLED`/`DEFAULT_FOCUS_MODE_ENABLED`
+ * just above, both of which default to off on the principle that a user
+ * should opt into a surprise. There is no surprise to opt into here. The
+ * alternative is not "nothing happens" but CodeMirror's own minimum
+ * scroll-into-view, which pins the line you are writing to the very bottom
+ * edge of the pane — and in this app that edge is where the floating status
+ * bar and the bottom edge-fade sit, so the line being typed ends up the one
+ * line that is partly covered. Off is the setting for someone who wants
+ * exactly that, not the neutral starting point.
+ *
+ * SCROLL_AHEAD_LINES_MIN/MAX frame the dial as "lines of room below the
+ * cursor", measured in rendered lines rather than pixels so it keeps
+ * meaning the same thing across the 8-20px font-size range above. 1 is the
+ * smallest value that still reads as a nudge; 10 is around a third of a
+ * 600px pane at the default font size, past which the cursor would be
+ * parked near the middle of the screen — a typewriter-scrolling editor,
+ * which is a different feature than this one.
+ *
+ * DEFAULT_SCROLL_AHEAD_LINES = 3: roughly a paragraph of room, which is
+ * what was asked for, and 85px measured at the default type scale (three
+ * 26.81px lines plus CodeMirror's own 5px `cursorScrollMargin`) — enough to
+ * clear the 32px status bar and the 48px bottom fade together
+ * (`--md-chrome-bottom`/`--md-edge-fade-bottom` in `app/styles/main.css`),
+ * which is what makes the default read as breathing room rather than a
+ * technicality.
+ */
+const DEFAULT_SCROLL_AHEAD_ENABLED = true
+export const SCROLL_AHEAD_LINES_MIN = 1
+export const SCROLL_AHEAD_LINES_MAX = 10
+const DEFAULT_SCROLL_AHEAD_LINES = 3
 
 export const AUTOSAVE_MS_MIN = 200
 export const AUTOSAVE_MS_MAX = 3000
@@ -442,6 +482,49 @@ export const $focusDimLevel = createStore<number>(
 sample({
   clock: $focusDimLevel,
   fn: (level) => ({ key: FOCUS_DIM_LEVEL_KEY, value: String(level) }),
+  target: persistFx,
+})
+
+// --- Scroll ahead while typing ---------------------------------------------
+//
+// Two preferences, applied together: whether to keep room below the cursor
+// at all, and how much. Both reach the editor through ONE mirror
+// (`scrollAheadChanged` in `features/editor/model/editorEvents.ts`, combined
+// in `app/wiring.ts`) because the extension needs both halves to build
+// itself — same bundling as spell check's enabled/language pair below. The
+// lines value is stored and persisted regardless of whether the toggle is
+// on, exactly like the focus-dim level above.
+
+export const scrollAheadToggled = createEvent()
+export const $scrollAheadEnabled = createStore<boolean>(
+  readBoolean(SCROLL_AHEAD_ENABLED_KEY, DEFAULT_SCROLL_AHEAD_ENABLED),
+)
+  .on(scrollAheadToggled, (enabled) => !enabled)
+  .on(defaultsRestored, () => DEFAULT_SCROLL_AHEAD_ENABLED)
+
+sample({
+  clock: $scrollAheadEnabled,
+  fn: (enabled) => ({ key: SCROLL_AHEAD_ENABLED_KEY, value: String(enabled) }),
+  target: persistFx,
+})
+
+export const scrollAheadLinesChanged = createEvent<number>()
+export const $scrollAheadLines = createStore<number>(
+  readNumber(
+    SCROLL_AHEAD_LINES_KEY,
+    DEFAULT_SCROLL_AHEAD_LINES,
+    SCROLL_AHEAD_LINES_MIN,
+    SCROLL_AHEAD_LINES_MAX,
+  ),
+)
+  .on(scrollAheadLinesChanged, (_, lines) =>
+    clamp(lines, SCROLL_AHEAD_LINES_MIN, SCROLL_AHEAD_LINES_MAX),
+  )
+  .on(defaultsRestored, () => DEFAULT_SCROLL_AHEAD_LINES)
+
+sample({
+  clock: $scrollAheadLines,
+  fn: (lines) => ({ key: SCROLL_AHEAD_LINES_KEY, value: String(lines) }),
   target: persistFx,
 })
 
