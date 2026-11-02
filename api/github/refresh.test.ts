@@ -74,6 +74,25 @@ describe('POST /api/github/refresh', () => {
 
     const response = await handler(postRequest({ refreshToken: 'ghr_expired' }))
     expect(response.status).toBe(502)
+    expect(((await response.json()) as { error: string }).error).toBe('github_grant_rejected')
+  })
+
+  it('reports GitHub being down or unreachable as unavailable, not as a rejected grant', async () => {
+    vi.stubEnv('GITHUB_APP_CLIENT_ID', 'id')
+    vi.stubEnv('GITHUB_APP_CLIENT_SECRET', 'secret')
+    const outages = [
+      vi.fn(async () => {
+        throw new TypeError('fetch failed')
+      }),
+      vi.fn(async () => new Response('<html>Unicorn!</html>', { status: 503 })),
+      vi.fn(async () => new Response('not json', { status: 200 })),
+      vi.fn(async () => new Response(JSON.stringify({ message: 'slow down' }), { status: 429 })),
+    ]
+    for (const fetchMock of outages) {
+      vi.stubGlobal('fetch', fetchMock)
+      const response = await handler(postRequest({ refreshToken: 'ghr_good' }))
+      expect(((await response.json()) as { error: string }).error).toBe('github_unavailable')
+    }
   })
 
   it('never echoes the refresh token or client secret in an error body', async () => {

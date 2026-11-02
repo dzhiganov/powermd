@@ -69,6 +69,8 @@ function errorMessageFrom(body: unknown): string {
   return 'GitHub sign-in failed.'
 }
 
+const REQUEST_TIMEOUT_MS = 20_000
+
 async function postJson<T>(path: string, body: Record<string, string>): Promise<T> {
   let response: Response
   try {
@@ -77,6 +79,9 @@ async function postJson<T>(path: string, body: Record<string, string>): Promise<
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       cache: 'no-store',
+      // A hung refresh would otherwise hold the cross-tab refresh lock (see
+      // `model/connection.ts`) for as long as the browser lets it hang.
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
   } catch {
     throw new GitHubAppUnavailableError(
@@ -92,12 +97,10 @@ async function postJson<T>(path: string, body: Record<string, string>): Promise<
   }
 
   if (!response.ok) {
-    // GitHub turning the grant down comes back as `github_token_exchange_failed`
-    // (see `api/_lib/http.ts`), and a malformed request as a 4xx. Any other
-    // server error says nothing about whether the credential is still good.
-    const rejected =
-      response.status < 500 || errorCodeFrom(parsed) === 'github_token_exchange_failed'
-    throw rejected
+    // Only GitHub turning the grant down (`github_grant_rejected`, see
+    // `api/_lib/http.ts`) says the credential is bad. Everything else — an
+    // outage, a timeout, a 429, a 408 — says nothing about it.
+    throw errorCodeFrom(parsed) === 'github_grant_rejected'
       ? new GitHubAppAuthError(errorMessageFrom(parsed))
       : new GitHubAppUnavailableError(errorMessageFrom(parsed))
   }
