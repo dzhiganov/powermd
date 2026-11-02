@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const PORT = 5183
+// `E2E_PORT` lets a second checkout run its own suite next to one already
+// using 5183.
+const PORT = Number(process.env.E2E_PORT ?? 5183)
 const BASE_URL = `http://localhost:${PORT}`
 
 /**
@@ -46,9 +48,14 @@ export default defineConfig({
   // server already up, that spawn never happens and this suite never
   // starts, owns, or stops that process.
   webServer: {
-    command: 'npx vite --port 5183 --strictPort',
+    command: `npx vite --port ${PORT} --strictPort`,
     url: BASE_URL,
     reuseExistingServer: true,
     timeout: 30_000,
+    // `e2e/github-sync.spec.ts` drives "Sign in with GitHub", which only
+    // renders when a GitHub App client id is configured. Any value works:
+    // every GitHub and `/api/github/*` request in that spec is mocked. A dev
+    // server started by hand needs the same variable.
+    env: { VITE_GITHUB_APP_CLIENT_ID: 'Iv-e2e-client', VITE_GITHUB_APP_SLUG: 'powermd-e2e' },
   },
 })
