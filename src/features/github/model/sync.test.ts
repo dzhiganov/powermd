@@ -423,3 +423,58 @@ describe('lastPushedCommitSha persistence', () => {
     expect(getStoredLastPushedCommit('alice', 'notes', 'main')).toBeNull()
   })
 })
+
+describe('a remembered commit the branch has moved past', () => {
+  it('is forgotten on rejection, so the retry builds on the real tip instead of failing forever', async () => {
+    const api = await import('../lib/api')
+    // The branch tip moved past the commit this client remembers — someone
+    // edited a file on github.com, or another device pushed.
+    vi.mocked(api.getBranchRef).mockResolvedValue({ sha: 'tip-from-elsewhere' })
+    vi.mocked(api.getCommit).mockResolvedValue({ treeSha: 'tree-1' })
+    vi.mocked(api.createBlob).mockResolvedValue({ sha: 'blob-1' })
+    vi.mocked(api.createTree).mockResolvedValue({ sha: 'tree-2' })
+    vi.mocked(api.createCommit).mockImplementation(async (_t, _o, _r, _m, _tree, parents) => ({
+      sha: `commit-on-${parents[0]}`,
+    }))
+    // GitHub only accepts a commit whose parent is the real tip.
+    vi.mocked(api.updateRef).mockImplementation(async (_t, _o, _r, _b, sha) => {
+      if (sha !== 'commit-on-tip-from-elsewhere') {
+        throw new api.GitHubRefConflictError('Update is not a fast forward')
+      }
+    })
+
+    const { storeToken } = await import('../lib/token')
+    const { storeLastPushedCommit, getStoredLastPushedCommit } =
+      await import('../lib/lastPushedCommit')
+    const { syncConnected } = await import('./connection')
+    const { documentsSnapshotChanged } = await import('./snapshot')
+    const { syncRequested, $syncError } = await import('./sync')
+
+    storeToken('tok')
+    syncConnected(CONNECTION)
+    await wait(5)
+    storeLastPushedCommit('alice', 'notes', 'main', 'old-commit')
+    documentsSnapshotChanged([
+      {
+        id: 'doc-1',
+        title: 'Doc',
+        content: 'hello',
+        folderId: null,
+        origin: { ...CONNECTION, path: 'doc.md', syncedHash: null },
+      },
+    ])
+
+    syncRequested()
+    await wait(150)
+
+    expect($syncError.getState()).toBeNull()
+    expect(api.updateRef).toHaveBeenLastCalledWith(
+      'tok',
+      'alice',
+      'notes',
+      'main',
+      'commit-on-tip-from-elsewhere',
+    )
+    expect(getStoredLastPushedCommit('alice', 'notes', 'main')).toBe('commit-on-tip-from-elsewhere')
+  })
+})
