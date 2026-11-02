@@ -5,7 +5,7 @@
  * see `tsconfig.api.json`.
  */
 import { MissingEnvError } from './env'
-import { GitHubTokenExchangeError } from './githubToken'
+import { GitHubGrantRejectedError, GitHubTokenExchangeError } from './githubToken'
 import { GitHubRevokeError } from './githubRevoke'
 
 /** A request that fails validation before ever reaching GitHub — bad JSON,
@@ -78,8 +78,14 @@ export function errorResponse(error: unknown): Response {
       message: 'Server is misconfigured. Contact the app owner.',
     })
   }
+  // Two distinct codes on purpose: the client signs the user out on
+  // `github_grant_rejected` only, and keeps the refresh token through
+  // `github_unavailable` (an outage, a timeout, an unreadable answer).
+  if (error instanceof GitHubGrantRejectedError) {
+    return jsonResponse(502, { error: 'github_grant_rejected', message: error.message })
+  }
   if (error instanceof GitHubTokenExchangeError) {
-    return jsonResponse(502, { error: 'github_token_exchange_failed', message: error.message })
+    return jsonResponse(502, { error: 'github_unavailable', message: error.message })
   }
   if (error instanceof GitHubRevokeError) {
     return jsonResponse(502, { error: 'github_revoke_failed', message: error.message })

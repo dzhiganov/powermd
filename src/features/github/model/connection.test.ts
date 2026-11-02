@@ -330,22 +330,26 @@ describe('initGithub with a stored token that expired since the last visit', () 
 })
 
 describe('postJson error classification', () => {
-  it('treats GitHub rejecting the grant as a rejection, and a server failure as unavailable', async () => {
+  it('treats only GitHub rejecting the grant as a rejection; outages, 429 and 408 as unavailable', async () => {
     const actual = await vi.importActual<typeof import('../lib/appApi')>('../lib/appApi')
     const respond = (status: number, body: unknown) =>
       vi.fn(async () => new Response(JSON.stringify(body), { status }))
 
-    vi.stubGlobal(
-      'fetch',
-      respond(502, { error: 'github_token_exchange_failed', message: 'expired' }),
-    )
+    vi.stubGlobal('fetch', respond(502, { error: 'github_grant_rejected', message: 'expired' }))
     const rejected = await actual.refreshAppToken('ghr').catch((error: unknown) => error)
     expect(rejected).toBeInstanceOf(actual.GitHubAppAuthError)
     expect(rejected).not.toBeInstanceOf(actual.GitHubAppUnavailableError)
 
-    vi.stubGlobal('fetch', respond(500, { error: 'internal_error', message: 'boom' }))
-    const unavailable = await actual.refreshAppToken('ghr').catch((error: unknown) => error)
-    expect(unavailable).toBeInstanceOf(actual.GitHubAppUnavailableError)
+    for (const [status, code] of [
+      [502, 'github_unavailable'],
+      [500, 'internal_error'],
+      [429, 'rate_limited'],
+      [408, 'timeout'],
+    ] as const) {
+      vi.stubGlobal('fetch', respond(status, { error: code, message: 'boom' }))
+      const unavailable = await actual.refreshAppToken('ghr').catch((error: unknown) => error)
+      expect(unavailable, `${status} ${code}`).toBeInstanceOf(actual.GitHubAppUnavailableError)
+    }
   })
 })
 

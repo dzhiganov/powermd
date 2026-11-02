@@ -44,6 +44,27 @@ export class GitHubTokenExchangeError extends Error {
   }
 }
 
+/** GitHub looked at the grant and turned it down: the code or refresh token
+ * is wrong, expired or already used. The only exchange failure that means the
+ * user has to sign in again — every other one (GitHub unreachable, slow, or
+ * answering with something unreadable) leaves the grant as good as it was,
+ * and the client keeps its refresh token for the next attempt. */
+export class GitHubGrantRejectedError extends GitHubTokenExchangeError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'GitHubGrantRejectedError'
+  }
+}
+
+/** OAuth error codes GitHub's token endpoint uses for a grant that is no
+ * good. Anything else (e.g. `incorrect_client_credentials`, a server
+ * misconfiguration) is not the user's credential's fault. */
+const GRANT_REJECTED_ERRORS = new Set(['bad_refresh_token', 'bad_verification_code'])
+
+// A hung GitHub must not hold the client's refresh lock (or this function)
+// open indefinitely.
+const UPSTREAM_TIMEOUT_MS = 10_000
+
 /** GitHub's raw token-endpoint response shape — only the fields this app
  * reads. `expires_in`/`refresh_token`/`refresh_token_expires_in` are present
  * only when the App has token expiration enabled; `error`/
@@ -80,11 +101,13 @@ export function normalizeTokenResponse(body: unknown, nowMs: number): Normalized
   }
   if (body.error !== undefined) {
     const description = body.error_description
-    throw new GitHubTokenExchangeError(
+    const message =
       description !== undefined && description !== ''
         ? description
-        : `GitHub rejected the request: ${body.error}`,
-    )
+        : `GitHub rejected the request: ${body.error}`
+    throw GRANT_REJECTED_ERRORS.has(body.error)
+      ? new GitHubGrantRejectedError(message)
+      : new GitHubTokenExchangeError(message)
   }
   if (typeof body.access_token !== 'string' || body.access_token === '') {
     throw new GitHubTokenExchangeError('GitHub did not return an access token.')
@@ -133,9 +156,13 @@ export async function exchangeWithGitHub(params: ExchangeParams): Promise<Normal
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     })
   } catch {
     throw new GitHubTokenExchangeError('Could not reach GitHub.')
+  }
+  if (response.status >= 500 || response.status === 429) {
+    throw new GitHubTokenExchangeError(`GitHub is unavailable (status ${response.status}).`)
   }
 
   let parsed: unknown
