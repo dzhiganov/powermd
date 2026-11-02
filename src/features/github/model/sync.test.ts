@@ -1004,3 +1004,41 @@ describe('two tabs resuming the same import', () => {
     expect(api.getTree).not.toHaveBeenCalled()
   })
 })
+
+describe('a truncated tree listing', () => {
+  it('holds a first push back rather than risk overwriting a file it cannot see', async () => {
+    const api = await import('../lib/api')
+    vi.mocked(api.getBranchRef).mockResolvedValue({ sha: 'tip' })
+    vi.mocked(api.getCommit).mockResolvedValue({ treeSha: 'tree-1' })
+    vi.mocked(api.getTree).mockResolvedValue({ entries: [], truncated: false })
+    const { storeToken } = await import('../lib/token')
+    const { syncConnected } = await import('./connection')
+    const { documentsSnapshotChanged } = await import('./snapshot')
+    const { syncRequested, $syncError } = await import('./sync')
+
+    storeToken('tok')
+    syncConnected(CONNECTION)
+    await wait(10)
+    vi.mocked(api.getTree).mockResolvedValue({ entries: [], truncated: true })
+    documentsSnapshotChanged([
+      {
+        id: 'doc-1',
+        title: 'Fresh',
+        content: 'fresh note',
+        folderId: null,
+        origin: {
+          ...CONNECTION,
+          path: 'fresh.md',
+          syncedHash: null,
+          placedAs: { title: 'Fresh', folderId: null },
+        },
+      },
+    ])
+    syncRequested()
+    await wait(50)
+
+    expect(api.createBlob).not.toHaveBeenCalled()
+    expect(api.createCommit).not.toHaveBeenCalled()
+    expect($syncError.getState()).toBeNull()
+  })
+})

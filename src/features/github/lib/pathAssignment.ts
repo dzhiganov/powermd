@@ -250,7 +250,8 @@ export function planPathMoves(
    * a path a file already occupies — a file no local document owns (its
    * document was deleted here, or it was added on github.com), which the
    * push would otherwise overwrite. A truncated listing cannot confirm what
-   * a rename would remove, so renames wait. */
+   * a rename would remove, so renames wait (and `model/sync.ts` holds first
+   * pushes back too). */
   remote: RemoteTree | null = null,
 ): PlannedMove[] {
   const prefix = connection.subfolder === '' ? '' : `${connection.subfolder}/`
