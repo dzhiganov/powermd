@@ -43,7 +43,11 @@ vi.mock('../lib/api', async (importOriginal) => {
 
 vi.mock('../lib/backoff', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/backoff')>()
-  return { ...actual, computeBackoffDelayMs: vi.fn(() => 30) }
+  return {
+    ...actual,
+    computeBackoffDelayMs: vi.fn(() => 30),
+    importRetryDelayMs: vi.fn(() => 40),
+  }
 })
 
 function createFakeStorage() {
@@ -853,10 +857,11 @@ describe('a first-connect import that did not finish', () => {
     expect(api.createBlob).not.toHaveBeenCalled()
 
     vi.mocked(api.getTree).mockResolvedValue({ entries: [], truncated: false })
-    syncRequested()
-    await wait(80)
-    expect(isImportDone(CONNECTION)).toBe(true)
-    expect(api.createBlob).toHaveBeenCalledWith('tok', 'alice', 'notes', 'fresh note')
+    // The (mocked, 40ms) backoff passes and the import is tried again by itself.
+    await vi.waitFor(() => expect(isImportDone(CONNECTION)).toBe(true))
+    await vi.waitFor(() =>
+      expect(api.createBlob).toHaveBeenCalledWith('tok', 'alice', 'notes', 'fresh note'),
+    )
   })
 
   it('is resumed on the next start', async () => {
@@ -912,5 +917,61 @@ describe('a first-connect import that did not finish', () => {
     expect(api.getTree).not.toHaveBeenCalledWith('tok', 'alice', 'notes', 'main')
     expect(isImportDone(CONNECTION)).toBe(true)
     expect(api.createBlob).toHaveBeenCalledWith('tok', 'alice', 'notes', 'fresh note')
+  })
+})
+
+describe('an import that keeps failing', () => {
+  it('skips a file it cannot read instead of failing, and reports it', async () => {
+    const api = await import('../lib/api')
+    vi.mocked(api.getTree).mockResolvedValue({
+      entries: [
+        { path: 'huge.md', type: 'blob', sha: 'a' },
+        { path: 'ok.md', type: 'blob', sha: 'b' },
+      ],
+      truncated: false,
+    })
+    vi.mocked(api.getFileContent).mockImplementation(async (_t, _o, _r, path) => {
+      if (path === 'huge.md') throw new api.GitHubTooLargeError('too large')
+      return { content: 'ok', sha: 'b', sizeBytes: 2 }
+    })
+    const { storeToken } = await import('../lib/token')
+    const { syncConnected } = await import('./connection')
+    const { importCompleted, $importSkipped, $importDone } = await import('./import')
+    await import('./sync')
+    const imported = vi.fn()
+    importCompleted.watch(imported)
+
+    storeToken('tok')
+    syncConnected(CONNECTION)
+    await wait(30)
+
+    expect($importDone.getState()).toBe(true)
+    expect($importSkipped.getState()).toEqual(['huge.md'])
+    const [batch] = imported.mock.lastCall as [{ origin: { path: string } }[]]
+    expect(batch.map((doc) => doc.origin.path)).toEqual(['ok.md'])
+  })
+
+  it('waits before listing the tree again, instead of on every sync', async () => {
+    const api = await import('../lib/api')
+    const backoff = await import('../lib/backoff')
+    vi.mocked(backoff.importRetryDelayMs).mockReturnValueOnce(60_000)
+    vi.mocked(api.getTree).mockRejectedValue(new api.GitHubNetworkError('offline'))
+    const { storeToken } = await import('../lib/token')
+    const { tokenSubmitted, syncConnected } = await import('./connection')
+    const { documentsSnapshotChanged } = await import('./snapshot')
+    const { syncRequested } = await import('./sync')
+
+    storeToken('tok')
+    tokenSubmitted('tok')
+    documentsSnapshotChanged([])
+    await wait(5)
+    syncConnected(CONNECTION)
+    await wait(10)
+    syncRequested()
+    await wait(10)
+    syncRequested()
+    await wait(10)
+
+    expect(api.getTree).toHaveBeenCalledTimes(1)
   })
 })

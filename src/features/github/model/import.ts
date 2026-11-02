@@ -3,7 +3,8 @@ import { createEffect, createEvent, createStore, sample } from 'effector'
 import { toastRequested } from '@/shared/lib/toast'
 import type { GitHubOrigin } from '@/features/documents'
 
-import { getTree, getFileContent } from '../lib/api'
+import { getTree, getFileContent, GitHubAuthError } from '../lib/api'
+import { importRetryDelayMs } from '../lib/backoff'
 import { sha256Hex } from '../lib/hash'
 import type { SyncConfig } from '../lib/config'
 import { clearImportDone, isImportDone, storeImportDone } from '../lib/importState'
@@ -64,6 +65,11 @@ interface ImportResult {
    * file listing. Surfaced as a toast (see below) rather than silently
    * importing a partial set with no indication anything was missed. */
   truncated: boolean
+  /** Files that could not be read (too large, rate limited, …). Skipped
+   * rather than failing the whole import: one bad file must not hold every
+   * new document back forever. They stay on GitHub untouched — the push
+   * never writes over a file it has not read (`planPathMoves`). */
+  skipped: string[]
 }
 
 // The whole body runs inside `callWithToken` (`./connection.ts`) — a 401 on
@@ -104,20 +110,21 @@ const importFx = createEffect(({ config, docs }: ImportParams): Promise<ImportRe
     const toImport = markdownEntries.filter((entry) => !alreadyLinkedPaths.has(entry.path))
 
     const imported: BulkImportDoc[] = []
+    const skipped: string[] = []
     for (const entry of toImport) {
       // Sequential, not `Promise.all` — a repo with hundreds of markdown
       // files would otherwise fire hundreds of concurrent requests at once
-      // and blow through the rate limit immediately; a plain
-      // `getFileContent` failure here (network, too-large, a mid-import
-      // rate limit) fails the whole import and is surfaced as one
-      // actionable error rather than a partial, silently-incomplete import.
-      const fetched = await getFileContent(
-        token,
-        config.owner,
-        config.repo,
-        entry.path,
-        config.branch,
-      )
+      // and blow through the rate limit immediately. A file that cannot be
+      // read is skipped and reported (see `ImportResult.skipped`); only an
+      // expired token aborts, so `callWithToken` can refresh and retry.
+      let fetched
+      try {
+        fetched = await getFileContent(token, config.owner, config.repo, entry.path, config.branch)
+      } catch (error) {
+        if (error instanceof GitHubAuthError) throw error
+        skipped.push(entry.path)
+        continue
+      }
       const content = fetched.content
       const relPath = entry.path.slice(prefix.length)
       const slashIndex = relPath.lastIndexOf('/')
@@ -137,7 +144,7 @@ const importFx = createEffect(({ config, docs }: ImportParams): Promise<ImportRe
         },
       })
     }
-    return { imported, truncated }
+    return { imported, truncated, skipped }
   })
 })
 
@@ -155,6 +162,22 @@ sample({
   filter: (result) => result.truncated,
   fn: (): { text: string; tone: 'warning' } => ({
     text: 'This repository is large — the first-connect import may have missed some files past GitHub’s listing limit.',
+    tone: 'warning',
+  }),
+  target: toastRequested,
+})
+
+/** Files the last import could not read — shown in the sync panel, and
+ * once as a toast. */
+export const $importSkipped = createStore<string[]>([])
+  .on(importFx.doneData, (_, result) => result.skipped)
+  .reset(syncConnected, disconnectRequested)
+
+sample({
+  clock: importFx.doneData,
+  filter: (result) => result.skipped.length > 0,
+  fn: ({ skipped }): { text: string; tone: 'warning' } => ({
+    text: `Could not import ${skipped.length === 1 ? 'one file' : `${skipped.length} files`} from GitHub (${skipped.join(', ')}). ${skipped.length === 1 ? 'It stays' : 'They stay'} on GitHub untouched.`,
     tone: 'warning',
   }),
   target: toastRequested,
@@ -246,11 +269,40 @@ export const importResumeRequested = createEvent()
 
 const $snapshotLoaded = createStore(false).on(documentsSnapshotChanged, () => true)
 
+// Back off between retries of an import that keeps failing (the tree can't
+// be listed: GitHub down, the repository gone), rather than listing it again
+// on every sync. `retryAt` is 0 when nothing is being waited for.
+const importRetryWaitFx = createEffect(
+  (at: number): Promise<void> =>
+    new Promise((resolve) => {
+      setTimeout(resolve, Math.max(0, at - Date.now()))
+    }),
+)
+const $importBackoff = createStore({ failures: 0, retryAt: 0 })
+  .on(importFx.fail, ({ failures }) => ({
+    failures: failures + 1,
+    retryAt: Date.now() + importRetryDelayMs(failures + 1),
+  }))
+  // The wait for the latest failure is over. Cleared here rather than
+  // compared with the clock: a timer can fire a millisecond early.
+  .on(importRetryWaitFx.done, (state, { params }) =>
+    state.retryAt === params ? { ...state, retryAt: 0 } : state,
+  )
+  .reset(importFx.done, syncConnected, disconnectRequested)
+const $importRetryAt = $importBackoff.map((state) => state.retryAt)
+
+// Try again by itself once the wait is over, not only on the next sync.
+sample({
+  clock: $importRetryAt,
+  filter: (at) => at > 0,
+  target: importRetryWaitFx,
+})
+
 // Resume an import that never finished: once a token works and the local
 // documents are loaded (importing against an empty list would duplicate
 // every file already linked to one), and again on every sync attempt.
 sample({
-  clock: [importResumeRequested, $connectionStatus, $snapshotLoaded],
+  clock: [importResumeRequested, $connectionStatus, $snapshotLoaded, importRetryWaitFx.done],
   source: {
     config: $syncConnection,
     docs: $documentsSnapshot,
@@ -259,11 +311,13 @@ sample({
     loaded: $snapshotLoaded,
     status: $connectionStatus,
     legacy: $legacyConnection,
+    retryAt: $importRetryAt,
   },
-  filter: ({ config, docs, done, pending, loaded, status, legacy }) =>
+  filter: ({ config, docs, done, pending, loaded, status, legacy, retryAt }) =>
     config !== null &&
     !done &&
     !pending &&
+    retryAt === 0 &&
     loaded &&
     status === 'connected' &&
     !(legacy && hasPushedDocument(docs, config)),

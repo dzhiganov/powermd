@@ -48,12 +48,13 @@ import {
   $importDone,
   $importPending,
   $importError,
+  $importSkipped,
 } from './import'
 
 // Re-exported so callers (the sync status UI, `$syncStatus` below) can get
 // every piece of "is GitHub sync busy / in an error state right now" from
 // this one module, without also having to import `./import` directly.
-export { $importPending, $importError }
+export { $importPending, $importError, $importSkipped }
 
 /**
  * The automatic one-way sync engine: the app is always the source of truth
