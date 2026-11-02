@@ -5,9 +5,11 @@
  * `assignPaths` gives a document or folder its first path. A document is
  * created as "Untitled" and gets that path at once, so its file name has to
  * be able to follow a later rename: `planPathMoves` works out which synced
- * documents no longer sit where their title and folder say they should, and
- * `model/sync.ts` moves each of them — the new path and the removal of the
- * old one in the same commit, so a rename never leaves a duplicate behind.
+ * documents were renamed or moved to another folder since their path was
+ * named (`GitHubOrigin.placedAs`), and `model/sync.ts` moves each of them —
+ * the new path and the removal of the old one in the same commit, so a
+ * rename never leaves a duplicate behind. A path with no such record (synced
+ * by an older version) is never moved.
  * Deleting a document locally still never deletes anything on GitHub.
  * Folders keep the directory they were first given; renaming a folder does
  * not move its files.
@@ -176,8 +178,18 @@ export interface PlannedMove {
   removeOld: boolean
 }
 
+export interface Placement {
+  title: string
+  folderId: string | null
+}
+
 export interface MoveDoc extends AssignmentDoc {
-  origin: (NonNullable<AssignmentDoc['origin']> & { syncedHash: string | null }) | null
+  origin:
+    | (NonNullable<AssignmentDoc['origin']> & {
+        syncedHash: string | null
+        placedAs?: Placement | null
+      })
+    | null
 }
 
 function stemOf(filename: string): string {
@@ -203,16 +215,21 @@ function pathFitsTitle(path: string, dirPrefix: string, title: string): boolean 
 /**
  * Which documents synced under `connection` should move, and where to.
  *
- * A document moves when its path no longer fits its title (it was renamed —
- * typically away from "Untitled") or no longer sits in its folder's
- * directory (it was moved to another folder). It also moves when another
- * document holds the same path — a local document assigned `notes.md` before
- * the first-connect import found an existing `notes.md` on GitHub. The
- * document that has actually been pushed to the path keeps it.
+ * A document moves when it was renamed (typically away from "Untitled") or
+ * moved to another folder since its path was named — `placedAs` differs from
+ * its title and folder — and its path no longer fits the new title. A path
+ * with no `placedAs` (synced by an older version) stays where it is,
+ * whatever its name: no file is ever moved that nobody renamed. A document
+ * also moves when another document holds the same path — a local document
+ * assigned `notes.md` before the first-connect import found an existing
+ * `notes.md` on GitHub. The document that has actually been pushed to the
+ * path keeps it.
  *
  * Paths outside the connection's subfolder are left alone (synced under an
  * earlier subfolder of the same branch), as are documents in a folder that
- * has no directory yet (`assignPaths` gives it one first). Deterministic:
+ * has no directory yet (`assignPaths` gives it one first) or that this tab
+ * does not know (another tab created it; moving to the root and removing the
+ * old file would be wrong). Deterministic:
  * documents are processed in `id` order, and a new path is never one any
  * document currently holds, so a file is never removed and written in the
  * same commit.
@@ -250,14 +267,17 @@ export function planPathMoves(
     let dirPrefix = prefix
     if (doc.folderId !== null) {
       const folder = folders.find((candidate) => candidate.id === doc.folderId)
-      if (folder !== undefined) {
-        if (folder.syncDirPath === null) continue
-        dirPrefix = `${prefix}${folder.syncDirPath}/`
-      }
+      if (folder === undefined || folder.syncDirPath === null) continue
+      dirPrefix = `${prefix}${folder.syncDirPath}/`
     }
 
     const ownsPath = ownerByPath.get(path) === doc
-    if (ownsPath && pathFitsTitle(path, dirPrefix, doc.title)) continue
+    if (ownsPath) {
+      const placedAs = doc.origin?.placedAs ?? null
+      if (placedAs === null) continue
+      if (placedAs.title === doc.title && placedAs.folderId === doc.folderId) continue
+      if (pathFitsTitle(path, dirPrefix, doc.title)) continue
+    }
 
     moves.push({
       id: doc.id,

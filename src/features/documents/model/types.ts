@@ -30,6 +30,17 @@ export interface GitHubOrigin {
   branch: string
   path: string
   syncedHash: string | null
+  /** The title and folder `path` was named after. A document whose title or
+   * folder has changed since gets its file moved by the next push. Absent on
+   * an origin written by an older version; the sync engine records the
+   * current title and folder the first time it sees one, so only renames
+   * made from then on move anything. */
+  placedAs?: GitHubPlacement | null
+}
+
+export interface GitHubPlacement {
+  title: string
+  folderId: string | null
 }
 
 /** A single markdown document owned by the documents feature. `content` is

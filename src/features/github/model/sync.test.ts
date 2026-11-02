@@ -587,6 +587,7 @@ describe('a renamed document', () => {
           ...CONNECTION,
           path: 'untitled-3.md',
           syncedHash: await sha256Hex('# Architecture'),
+          placedAs: { title: 'Untitled', folderId: null },
         },
       },
     ])
@@ -704,5 +705,45 @@ describe('content equal to the remembered commit but not to the branch tip', () 
 
     expect(api.createCommit).toHaveBeenCalled()
     expect(api.updateRef).toHaveBeenCalled()
+  })
+})
+
+describe('a document synced by an older version', () => {
+  it('keeps its path: its current title and folder are recorded, nothing is moved', async () => {
+    const api = await import('../lib/api')
+    const { sha256Hex } = await import('../lib/hash')
+    const { storeToken } = await import('../lib/token')
+    const { syncConnected } = await import('./connection')
+    const { documentsSnapshotChanged } = await import('./snapshot')
+    const { syncRequested, originsAssigned } = await import('./sync')
+    const assigned = vi.fn()
+    originsAssigned.watch(assigned)
+
+    storeToken('tok')
+    syncConnected(CONNECTION)
+    await wait(5)
+    // Named "Architecture" long ago, pushed to untitled-3.md, no placement record.
+    documentsSnapshotChanged([
+      {
+        id: 'doc-1',
+        title: 'Architecture',
+        content: '# Architecture',
+        folderId: null,
+        origin: {
+          ...CONNECTION,
+          path: 'untitled-3.md',
+          syncedHash: await sha256Hex('# Architecture'),
+        },
+      },
+    ])
+    syncRequested()
+    await wait(50)
+
+    expect(api.createTree).not.toHaveBeenCalled()
+    const [[recorded]] = assigned.mock.calls as [
+      [{ origin: { path: string; placedAs: unknown } }[]],
+    ]
+    expect(recorded[0].origin.path).toBe('untitled-3.md')
+    expect(recorded[0].origin.placedAs).toEqual({ title: 'Architecture', folderId: null })
   })
 })

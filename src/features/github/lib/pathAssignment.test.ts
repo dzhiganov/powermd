@@ -4,14 +4,22 @@ import { assignPaths, planPathMoves, type MoveDoc } from './pathAssignment'
 
 const CONNECTION = { owner: 'alice', repo: 'notes', branch: 'main', subfolder: '' }
 
+/** A synced document whose path was named after `placedTitle` (by default
+ * the title it still has) at the root. */
 function doc(
   id: string,
   title: string,
   path: string,
   syncedHash: string | null = 'hash',
   folderId: string | null = null,
+  placedTitle = 'Untitled',
 ): MoveDoc {
-  return { id, title, folderId, origin: { ...CONNECTION, path, syncedHash } }
+  return {
+    id,
+    title,
+    folderId,
+    origin: { ...CONNECTION, path, syncedHash, placedAs: { title: placedTitle, folderId: null } },
+  }
 }
 
 describe('assignPaths', () => {
@@ -36,6 +44,29 @@ describe('planPathMoves', () => {
     expect(planPathMoves(CONNECTION, [], [doc('a', 'Ideas', 'untitled.md', null)])).toEqual([
       { id: 'a', path: 'ideas.md', removeOld: false },
     ])
+  })
+
+  it('never moves a path synced by an older version, however it is named', () => {
+    const legacy = (id: string, title: string, path: string): MoveDoc => ({
+      id,
+      title,
+      folderId: null,
+      origin: { ...CONNECTION, path, syncedHash: 'hash' },
+    })
+    expect(
+      planPathMoves(
+        CONNECTION,
+        [],
+        [legacy('a', 'Architecture', 'untitled-3.md'), legacy('b', 'Ideas', 'drafts/custom.md')],
+      ),
+    ).toEqual([])
+  })
+
+  it('does not move a document whose folder this tab does not know', () => {
+    expect(
+      // Renamed, and filed in a folder another tab just created.
+      planPathMoves(CONNECTION, [], [doc('a', 'Roadmap', 'plan.md', 'h', 'folder-from-other-tab')]),
+    ).toEqual([])
   })
 
   it('leaves paths that still fit the title alone', () => {
@@ -95,6 +126,12 @@ describe('planPathMoves', () => {
 
   it('is stable: once moved, a document stays put', () => {
     const [move] = planPathMoves(CONNECTION, [], [doc('a', 'Architecture', 'untitled-3.md')])
-    expect(planPathMoves(CONNECTION, [], [doc('a', 'Architecture', move.path)])).toEqual([])
+    expect(
+      planPathMoves(
+        CONNECTION,
+        [],
+        [doc('a', 'Architecture', move.path, 'h', null, 'Architecture')],
+      ),
+    ).toEqual([])
   })
 })

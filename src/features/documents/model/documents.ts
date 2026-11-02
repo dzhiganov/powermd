@@ -394,6 +394,7 @@ function coerceOrigin(value: unknown): GitHubOrigin | null {
     branch: raw.branch as string,
     path: raw.path as string,
     syncedHash: raw.syncedHash as string | null,
+    placedAs: db.normalizePlacement(raw.placedAs),
   }
 }
 

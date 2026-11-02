@@ -96,7 +96,45 @@ export const syncRequested = createEvent()
 
 interface AssignmentOutcome {
   folderDirs: { id: string; dirPath: string }[]
-  docPaths: { id: string; path: string }[]
+  /** New paths, plus `placedAs` recorded for origins that lack it. */
+  origins: { id: string; origin: GitHubOrigin }[]
+}
+
+function computeAssignment(
+  connection: SyncConfig,
+  docs: SyncDocInput[],
+  folders: SyncFolderInput[],
+): AssignmentOutcome {
+  const { folderDirs, docPaths } = assignPaths(connection, folders, docs)
+  const byId = new Map(docs.map((doc) => [doc.id, doc]))
+  const origins: { id: string; origin: GitHubOrigin }[] = docPaths.map(({ id, path }) => {
+    const doc = byId.get(id) as SyncDocInput
+    return {
+      id,
+      origin: {
+        owner: connection.owner,
+        repo: connection.repo,
+        branch: connection.branch,
+        path,
+        syncedHash: null,
+        placedAs: { title: doc.title, folderId: doc.folderId },
+      },
+    }
+  })
+  // An origin written by an older version has no record of the title and
+  // folder its path was named after. Recording the current ones — rather
+  // than treating the path as stale — is what keeps every untouched file
+  // where it is; only a rename made from now on moves anything.
+  for (const doc of docs) {
+    if (!originMatchesConnection(doc.origin, connection)) continue
+    const origin = doc.origin as GitHubOrigin
+    if (origin.placedAs != null) continue
+    origins.push({
+      id: doc.id,
+      origin: { ...origin, placedAs: { title: doc.title, folderId: doc.folderId } },
+    })
+  }
+  return { folderDirs, origins }
 }
 
 const assignmentComputed = createEvent<AssignmentOutcome>()
@@ -104,10 +142,10 @@ const assignmentComputed = createEvent<AssignmentOutcome>()
 sample({
   clock: [documentsSnapshotChanged, foldersSnapshotChanged, syncConnected],
   source: { docs: $documentsSnapshot, folders: $foldersSnapshot, connection: $syncConnection },
-  fn: ({ docs, folders, connection }): AssignmentOutcome => {
-    if (connection === null) return { folderDirs: [], docPaths: [] }
-    return assignPaths(connection, folders, docs)
-  },
+  fn: ({ docs, folders, connection }): AssignmentOutcome =>
+    connection === null
+      ? { folderDirs: [], origins: [] }
+      : computeAssignment(connection, docs, folders),
   target: assignmentComputed,
 })
 
@@ -123,27 +161,14 @@ sample({
 })
 
 /** Output: newly-assigned document sync paths (freshly assigned, so
- * `syncedHash` starts `null` — the next push picks them up as dirty) —
- * `src/app/wiring.ts` samples this into `@/features/documents`'
- * `documentGithubOriginsApplied`. */
+ * `syncedHash` starts `null` — the next push picks them up as dirty), and
+ * `placedAs` recorded on older origins — `src/app/wiring.ts` samples this
+ * into `@/features/documents`' `documentGithubOriginsApplied`. */
 export const originsAssigned = createEvent<{ id: string; origin: GitHubOrigin }[]>()
 sample({
   clock: assignmentComputed,
-  source: $syncConnection,
-  filter: (connection, outcome) => connection !== null && outcome.docPaths.length > 0,
-  fn: (connection, outcome): { id: string; origin: GitHubOrigin }[] => {
-    const c = connection as SyncConfig
-    return outcome.docPaths.map((entry) => ({
-      id: entry.id,
-      origin: {
-        owner: c.owner,
-        repo: c.repo,
-        branch: c.branch,
-        path: entry.path,
-        syncedHash: null,
-      },
-    }))
-  },
+  filter: (outcome) => outcome.origins.length > 0,
+  fn: (outcome) => outcome.origins,
   target: originsAssigned,
 })
 
@@ -181,7 +206,14 @@ interface DirtyDoc {
 }
 
 function toSyncedOrigin({ doc, hash, path }: DirtyDoc): { id: string; origin: GitHubOrigin } {
-  return { id: doc.id, origin: { ...(doc.origin as GitHubOrigin), path, syncedHash: hash } }
+  const origin = doc.origin as GitHubOrigin
+  // A move records the title and folder the new path was named after. A
+  // document that did not move keeps its old record: its move may only have
+  // been deferred (its folder unknown in this tab, say), and overwriting the
+  // record would lose it.
+  const placedAs =
+    path === origin.path ? origin.placedAs : { title: doc.title, folderId: doc.folderId }
+  return { id: doc.id, origin: { ...origin, path, syncedHash: hash, placedAs } }
 }
 
 // The full repo path, not just the file name: `untitled.md` alone does not

@@ -1,4 +1,4 @@
-import type { Folder, GitHubOrigin, MarkdownDocument } from '../model/types'
+import type { Folder, GitHubOrigin, GitHubPlacement, MarkdownDocument } from '../model/types'
 
 /**
  * Thin promise wrapper over raw IndexedDB. Chosen over the `idb` package on
@@ -422,7 +422,19 @@ function normalizeOrigin(value: unknown): GitHubOrigin | null {
     branch: raw.branch as string,
     path: raw.path as string,
     syncedHash: raw.syncedHash as string | null,
+    placedAs: normalizePlacement(raw.placedAs),
   }
+}
+
+/** `GitHubOrigin.placedAs`, or `null` when absent or malformed — which the
+ * sync engine treats like an origin from an older version (re-recorded,
+ * never a reason to move a file). */
+export function normalizePlacement(value: unknown): GitHubPlacement | null {
+  if (typeof value !== 'object' || value === null) return null
+  const raw = value as Record<string, unknown>
+  if (typeof raw.title !== 'string') return null
+  if (raw.folderId !== null && typeof raw.folderId !== 'string') return null
+  return { title: raw.title, folderId: raw.folderId }
 }
 
 /** Normalizes one raw `getAll()` entry into a well-formed `MarkdownDocument`,
