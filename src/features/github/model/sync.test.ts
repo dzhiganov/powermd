@@ -520,3 +520,32 @@ describe('content GitHub already has', () => {
     expect(payload[0].origin.syncedHash).not.toBeNull()
   })
 })
+
+describe('a blank document that was never pushed', () => {
+  it('is not pushed as an empty file', async () => {
+    const api = await import('../lib/api')
+    const { storeToken } = await import('../lib/token')
+    const { syncConnected } = await import('./connection')
+    const { documentsSnapshotChanged } = await import('./snapshot')
+    const { syncRequested } = await import('./sync')
+
+    storeToken('tok')
+    syncConnected(CONNECTION)
+    await wait(5)
+    documentsSnapshotChanged([
+      {
+        id: 'doc-1',
+        title: 'Untitled',
+        content: '',
+        folderId: null,
+        origin: { ...CONNECTION, path: 'untitled.md', syncedHash: null },
+      },
+    ])
+
+    syncRequested()
+    await wait(50)
+
+    expect(api.getBranchRef).not.toHaveBeenCalled()
+    expect(api.createBlob).not.toHaveBeenCalled()
+  })
+})
