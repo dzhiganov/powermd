@@ -400,6 +400,7 @@ async function pushBatch(
     remote = { paths: new Set(entries.map((entry) => entry.path)), truncated }
   }
   const dirty = plan(remote)
+  if (dirty.length === 0) return []
 
   const blobs = await Promise.all(
     dirty.map(async ({ doc, path }) => ({
@@ -558,6 +559,9 @@ const runSyncFx = createEffect(
           // real content instead.
           if (syncedHash === null && doc.content.trim() === '') return false
           if (syncedHash === null && !importDone) return false
+          // A truncated listing cannot show whether a file is already at
+          // this path, so a first push could overwrite one: hold it back.
+          if (syncedHash === null && remote?.truncated === true) return false
           return syncedHash !== hash || path !== (doc.origin as GitHubOrigin).path
         })
     }
