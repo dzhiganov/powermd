@@ -105,7 +105,23 @@ export const syncConnected = createEvent<SyncConfig>()
 
 // --- Effects: token ----------------------------------------------------------
 
-const validateTokenFx = createEffect((token: string) => validateToken(token))
+/** Resolves with the token that actually validated — which, for a token
+ * restored from storage, may be a refreshed replacement rather than the one
+ * passed in. */
+const validateTokenFx = createEffect(
+  async (token: string): Promise<{ login: string; token: string }> => {
+    // A token restored from storage (`initGithub`) has often just expired
+    // since the last visit — GitHub App user tokens last 8 hours. Validating
+    // it through `callWithToken` refreshes it, rather than reporting the
+    // connection as broken every morning while the refresh token is still
+    // good. A freshly entered token is checked as-is: there is nothing to
+    // refresh it with yet.
+    if (token === getStoredToken()) {
+      return callWithToken(async (active) => ({ ...(await validateToken(active)), token: active }))
+    }
+    return { ...(await validateToken(token)), token }
+  },
+)
 const storeTokenFx = createEffect((token: string) => storeToken(token))
 const clearTokenFx = createEffect(() => clearStoredToken())
 
@@ -127,7 +143,9 @@ sample({ clock: reauthRequired, target: clearCredentialOnReauthFx })
 export const $connectionStatus = createStore<ConnectionStatus>('disconnected')
   .on(validateTokenFx, () => 'connecting')
   .on(validateTokenFx.done, () => 'connected')
-  .on(validateTokenFx.fail, () => 'error')
+  .on(validateTokenFx.fail, (_, { error }) =>
+    error instanceof GitHubReauthRequiredError ? 'reauth-required' : 'error',
+  )
   .on(disconnectRequested, () => 'disconnected')
   .on(reauthRequired, () => 'reauth-required')
 
@@ -149,7 +167,7 @@ export const $connectionErrorMessage = createStore<string | null>(null)
  * Updated from the validated token's params (transient), not from a stored
  * raw value. */
 export const $maskedToken = createStore<string | null>(null)
-  .on(validateTokenFx.done, (_, { params }) => maskToken(params))
+  .on(validateTokenFx.done, (_, { result }) => maskToken(result.token))
   .on([disconnectRequested, reauthRequired], () => null)
 
 function describeConnectionError(error: unknown): string {
@@ -171,7 +189,7 @@ sample({
 
 // Persist the token only after it validates — never store an unverified or
 // rejected token.
-sample({ clock: validateTokenFx.done, fn: ({ params }) => params, target: storeTokenFx })
+sample({ clock: validateTokenFx.done, fn: ({ result }) => result.token, target: storeTokenFx })
 
 // --- Disconnect: revoke on GitHub's side, then clear locally ---------------
 //
@@ -396,6 +414,15 @@ export function initGithub(): void {
   if (stored !== null) {
     tokenSubmitted(stored)
   }
+}
+
+// Opened offline (an installed app, a train), the startup check above fails
+// with a network error and leaves the panel asking to sign in again, though
+// the stored credential is fine. Check again once the network is back.
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    if ($connectionStatus.getState() === 'error') initGithub()
+  })
 }
 
 // --- Auth retry (refresh-on-401) --------------------------------------------

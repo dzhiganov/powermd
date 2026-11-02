@@ -278,6 +278,57 @@ describe('a token another tab already refreshed', () => {
   })
 })
 
+describe('initGithub with a stored token that expired since the last visit', () => {
+  it('refreshes it and connects, instead of reporting the connection as broken', async () => {
+    const { initGithub, $connectionStatus, $authenticatedLogin, $maskedToken } =
+      await import('./connection')
+    const { storeToken, getStoredToken } = await import('../lib/token')
+    const { storeAppAuthMeta } = await import('../lib/appAuth')
+    const { refreshAppToken } = await import('../lib/appApi')
+
+    storeToken('expired-token')
+    storeAppAuthMeta({ refreshToken: 'ghr_old', expiresAt: null, refreshTokenExpiresAt: null })
+    vi.mocked(refreshAppToken).mockResolvedValueOnce({
+      accessToken: 'fresh-token-abcd',
+      tokenType: 'bearer',
+      expiresAt: null,
+      refreshToken: 'ghr_new',
+      refreshTokenExpiresAt: null,
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const auth = (init.headers as Record<string, string>).Authorization
+        return auth === 'Bearer fresh-token-abcd'
+          ? new Response(JSON.stringify({ login: 'alice' }), { status: 200 })
+          : new Response(JSON.stringify({ message: 'Bad credentials' }), { status: 401 })
+      }),
+    )
+
+    initGithub()
+    await vi.waitFor(() => expect($connectionStatus.getState()).toBe('connected'))
+    expect($authenticatedLogin.getState()).toBe('alice')
+    expect($maskedToken.getState()).toBe('…abcd')
+    // The refreshed token is what stays stored — not the expired one.
+    await vi.waitFor(() => expect(getStoredToken()).toBe('fresh-token-abcd'))
+  })
+
+  it('shows "sign in again" when the stored token cannot be refreshed', async () => {
+    const { initGithub, $connectionStatus } = await import('./connection')
+    const { storeToken } = await import('../lib/token')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () => new Response(JSON.stringify({ message: 'Bad credentials' }), { status: 401 }),
+      ),
+    )
+
+    storeToken('revoked-pat')
+    initGithub()
+    await vi.waitFor(() => expect($connectionStatus.getState()).toBe('reauth-required'))
+  })
+})
+
 describe('postJson error classification', () => {
   it('treats GitHub rejecting the grant as a rejection, and a server failure as unavailable', async () => {
     const actual = await vi.importActual<typeof import('../lib/appApi')>('../lib/appApi')
