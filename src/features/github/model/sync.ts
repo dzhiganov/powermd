@@ -17,7 +17,7 @@ import {
   GitHubRefConflictError,
 } from '../lib/api'
 import { sha256Hex } from '../lib/hash'
-import { assignPaths, planPathMoves } from '../lib/pathAssignment'
+import { assignPaths, planPathMoves, type RemoteTree } from '../lib/pathAssignment'
 import { decideSyncSchedule } from '../lib/schedule'
 import { computeBackoffDelayMs, MAX_PUSH_ATTEMPTS } from '../lib/backoff'
 import {
@@ -308,10 +308,24 @@ function sameConnectionTarget(a: SyncConfig, b: SyncConfig | null): boolean {
  *
  * A repository with no commits is handled first and separately: see the
  * bootstrap branch below, which is also what makes this recursive. */
+/** Works out what to push, given the branch's files (`null` when they were
+ * not fetched). See `runSyncFx`. */
+type SyncPlan = (remote: RemoteTree | null) => DirtyDoc[]
+
+/** Whether `plan` names a path that must be checked against the branch
+ * first: a document's first push or a move could land on a file that is
+ * already there. */
+function needsRemoteTree(plan: SyncPlan): boolean {
+  return plan(null).some(({ doc, path }) => {
+    const origin = doc.origin as GitHubOrigin
+    return origin.syncedHash === null || path !== origin.path
+  })
+}
+
 async function pushBatch(
   token: string,
   connection: SyncConfig,
-  dirty: DirtyDoc[],
+  plan: SyncPlan,
   attempt = 1,
 ): Promise<{ id: string; origin: GitHubOrigin }[]> {
   const { owner, repo, branch } = connection
@@ -326,7 +340,8 @@ async function pushBatch(
     // which point the ref exists and the normal batched path takes over for
     // whatever is left.
     // Nothing exists yet, so there is nothing for a move to remove.
-    const [first, ...rest] = dirty.map((entry) => ({ ...entry, removePath: null }))
+    const empty: RemoteTree = { paths: new Set(), truncated: false }
+    const [first] = plan(empty).map((entry) => ({ ...entry, removePath: null }))
     await createFileViaContents(
       token,
       owner,
@@ -337,7 +352,15 @@ async function pushBatch(
       commitMessageFor([first]),
     )
     const bootstrapped = toSyncedOrigin(first)
-    if (rest.length === 0) return [bootstrapped]
+    // The rest go through the normal path against the tree just created. The
+    // file just written is this document's own, not a clash for anyone.
+    const rest: SyncPlan = (remote) =>
+      plan(
+        remote === null
+          ? null
+          : { ...remote, paths: new Set([...remote.paths].filter((path) => path !== first.path)) },
+      ).filter((entry) => entry.doc.id !== first.doc.id)
+    if (rest(null).length === 0) return [bootstrapped]
     return [bootstrapped, ...(await pushBatch(token, connection, rest, attempt))]
   }
 
@@ -364,6 +387,13 @@ async function pushBatch(
     baseTreeSha = (await getCommit(token, owner, repo, ref.sha)).treeSha
   }
 
+  let remote: RemoteTree | null = null
+  if (needsRemoteTree(plan)) {
+    const { entries, truncated } = await getTree(token, owner, repo, baseTreeSha)
+    remote = { paths: new Set(entries.map((entry) => entry.path)), truncated }
+  }
+  const dirty = plan(remote)
+
   const blobs = await Promise.all(
     dirty.map(async ({ doc, path }) => ({
       path,
@@ -372,14 +402,13 @@ async function pushBatch(
   )
   // A move removes the document's old file — only if it is still there:
   // GitHub rejects the whole tree over a removal of a path that does not
-  // exist (someone already deleted or moved it on github.com).
-  const removePaths = dirty.flatMap(({ removePath }) => (removePath === null ? [] : [removePath]))
-  let removals: { path: string; sha: null }[] = []
-  if (removePaths.length > 0) {
-    const { entries } = await getTree(token, owner, repo, baseTreeSha)
-    const existing = new Set(entries.map((entry) => entry.path))
-    removals = removePaths.filter((path) => existing.has(path)).map((path) => ({ path, sha: null }))
-  }
+  // exist (someone already deleted or moved it on github.com). Any move
+  // fetched the tree above.
+  const removals = dirty.flatMap(({ removePath }) =>
+    removePath !== null && remote?.paths.has(removePath) === true
+      ? [{ path: removePath, sha: null }]
+      : [],
+  )
   const tree = await createTree(token, owner, repo, baseTreeSha, [...blobs, ...removals])
   // GitHub already has exactly this content — another tab of this app pushed
   // it first, or an earlier push landed but its response was lost. A commit
@@ -433,7 +462,7 @@ async function pushBatch(
       if (!sameConnectionTarget(connection, $syncConnection.getState())) {
         throw new SyncAbortedError()
       }
-      return pushBatch(token, connection, dirty, attempt + 1)
+      return pushBatch(token, connection, plan, attempt + 1)
     }
     // A non-fast-forward that survives every retry is either a genuine
     // concurrent writer or propagation lag that never resolved within the
@@ -490,36 +519,42 @@ const runSyncFx = createEffect(
     // filters out nothing; it only matters for the same-tick gap right
     // after a brand-new document is created or a connection first forms.
     const eligible = docs.filter((doc) => originMatchesConnection(doc.origin, connection))
-    const moves = new Map(
-      planPathMoves(connection, folders, eligible).map((move) => [move.id, move]),
+    const hashes = new Map(
+      await Promise.all(
+        eligible.map(async (doc) => [doc.id, await sha256Hex(doc.content)] as const),
+      ),
     )
-    const withHashes = await Promise.all(
-      eligible.map(async (doc): Promise<DirtyDoc> => {
-        const origin = doc.origin as GitHubOrigin
-        const move = moves.get(doc.id)
-        return {
-          doc,
-          hash: await sha256Hex(doc.content),
-          path: move?.path ?? origin.path,
-          removePath: move?.removeOld === true ? origin.path : null,
-        }
-      }),
-    )
-    const dirty = withHashes.filter(({ doc, hash, path }) => {
-      const { syncedHash } = doc.origin as GitHubOrigin
-      // A blank document that has never been pushed is a brand-new
-      // "Untitled" one nobody has written in yet — pushing it would only
-      // leave an empty file behind on GitHub. It goes up with its first real
-      // content instead.
-      if (syncedHash === null && doc.content.trim() === '') return false
-      return syncedHash !== hash || path !== (doc.origin as GitHubOrigin).path
-    })
+    const plan: SyncPlan = (remote) => {
+      const moves = new Map(
+        planPathMoves(connection, folders, eligible, remote).map((move) => [move.id, move]),
+      )
+      return eligible
+        .map((doc): DirtyDoc => {
+          const origin = doc.origin as GitHubOrigin
+          const move = moves.get(doc.id)
+          return {
+            doc,
+            hash: hashes.get(doc.id) as string,
+            path: move?.path ?? origin.path,
+            removePath: move?.removeOld === true ? origin.path : null,
+          }
+        })
+        .filter(({ doc, hash, path }) => {
+          const { syncedHash } = doc.origin as GitHubOrigin
+          // A blank document that has never been pushed is a brand-new
+          // "Untitled" one nobody has written in yet — pushing it would only
+          // leave an empty file behind on GitHub. It goes up with its first
+          // real content instead.
+          if (syncedHash === null && doc.content.trim() === '') return false
+          return syncedHash !== hash || path !== (doc.origin as GitHubOrigin).path
+        })
+    }
 
-    if (dirty.length === 0) return []
+    if (plan(null).length === 0) return []
     // `callWithToken` (`./connection.ts`) gives the whole batch one
     // refresh-and-retry on a 401 before giving up — same contract as every
     // other network-calling effect in this feature.
-    return callWithToken((token) => pushBatch(token, connection, dirty))
+    return callWithToken((token) => pushBatch(token, connection, plan))
   },
 )
 

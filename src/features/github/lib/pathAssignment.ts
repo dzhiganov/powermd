@@ -178,6 +178,13 @@ export interface PlannedMove {
   removeOld: boolean
 }
 
+/** What the branch holds, when known: every file path in the base tree, and
+ * whether GitHub cut that listing short. */
+export interface RemoteTree {
+  paths: Set<string>
+  truncated: boolean
+}
+
 export interface Placement {
   title: string
   folderId: string | null
@@ -238,6 +245,13 @@ export function planPathMoves(
   connection: AssignmentConnection,
   folders: AssignmentFolder[],
   docs: MoveDoc[],
+  /** The branch's files, or `null` when not fetched. When given, no new path
+   * is ever one of them, and a document that has never been pushed moves off
+   * a path a file already occupies — a file no local document owns (its
+   * document was deleted here, or it was added on github.com), which the
+   * push would otherwise overwrite. A truncated listing cannot confirm what
+   * a rename would remove, so renames wait. */
+  remote: RemoteTree | null = null,
 ): PlannedMove[] {
   const prefix = connection.subfolder === '' ? '' : `${connection.subfolder}/`
   const synced = docs
@@ -258,7 +272,7 @@ export function planPathMoves(
     }
   }
 
-  const used = new Set(synced.map(pathOf))
+  const used = new Set([...synced.map(pathOf), ...(remote?.paths ?? [])])
   const moves: PlannedMove[] = []
   for (const doc of synced) {
     const path = pathOf(doc)
@@ -272,17 +286,20 @@ export function planPathMoves(
     }
 
     const ownsPath = ownerByPath.get(path) === doc
-    if (ownsPath) {
+    const neverPushed = doc.origin?.syncedHash === null
+    const occupiedRemotely = neverPushed && remote !== null && remote.paths.has(path)
+    if (ownsPath && !occupiedRemotely) {
       const placedAs = doc.origin?.placedAs ?? null
       if (placedAs === null) continue
       if (placedAs.title === doc.title && placedAs.folderId === doc.folderId) continue
       if (pathFitsTitle(path, dirPrefix, doc.title)) continue
+      if (remote?.truncated === true && !neverPushed) continue
     }
 
     moves.push({
       id: doc.id,
       path: dedupe(`${dirPrefix}${slugify(doc.title)}.md`, used),
-      removeOld: ownsPath && doc.origin?.syncedHash !== null,
+      removeOld: ownsPath && !neverPushed,
     })
   }
   return moves
