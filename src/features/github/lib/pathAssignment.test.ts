@@ -134,4 +134,51 @@ describe('planPathMoves', () => {
       ),
     ).toEqual([])
   })
+
+  describe('against the files on the branch', () => {
+    const remote = (...paths: string[]) => ({ paths: new Set(paths), truncated: false })
+
+    it('never renames onto a file no local document owns', () => {
+      // "Todo" was deleted locally; its todo.md stays on GitHub.
+      expect(
+        planPathMoves(
+          CONNECTION,
+          [],
+          [doc('a', 'Todo', 'untitled.md')],
+          remote('untitled.md', 'todo.md'),
+        ),
+      ).toEqual([{ id: 'a', path: 'todo-2.md', removeOld: true }])
+    })
+
+    it('moves a never-pushed document off a file that is already there', () => {
+      expect(
+        planPathMoves(
+          CONNECTION,
+          [],
+          [doc('a', 'Todo', 'todo.md', null, null, 'Todo')],
+          remote('todo.md'),
+        ),
+      ).toEqual([{ id: 'a', path: 'todo-2.md', removeOld: false }])
+    })
+
+    it('leaves a pushed document on its own file', () => {
+      expect(
+        planPathMoves(
+          CONNECTION,
+          [],
+          [doc('a', 'Todo', 'todo.md', 'h', null, 'Todo')],
+          remote('todo.md'),
+        ),
+      ).toEqual([])
+    })
+
+    it('holds a rename back while the listing is truncated', () => {
+      expect(
+        planPathMoves(CONNECTION, [], [doc('a', 'Todo', 'untitled.md')], {
+          paths: new Set(['untitled.md']),
+          truncated: true,
+        }),
+      ).toEqual([])
+    })
+  })
 })

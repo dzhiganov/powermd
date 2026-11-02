@@ -747,3 +747,61 @@ describe('a document synced by an older version', () => {
     expect(recorded[0].origin.placedAs).toEqual({ title: 'Architecture', folderId: null })
   })
 })
+
+describe('a file on GitHub that no local document owns', () => {
+  async function pushOver(origin: { path: string; syncedHash: string | null }, title: string) {
+    const api = await import('../lib/api')
+    vi.mocked(api.getBranchRef).mockResolvedValue({ sha: 'tip' })
+    vi.mocked(api.getCommit).mockResolvedValue({ treeSha: 'tree-1' })
+    vi.mocked(api.createBlob).mockResolvedValue({ sha: 'blob-1' })
+    vi.mocked(api.createTree).mockResolvedValue({ sha: 'tree-2' })
+    vi.mocked(api.createCommit).mockResolvedValue({ sha: 'commit-1' })
+    vi.mocked(api.updateRef).mockResolvedValue(undefined)
+
+    const { storeToken } = await import('../lib/token')
+    const { syncConnected } = await import('./connection')
+    const { documentsSnapshotChanged } = await import('./snapshot')
+    const { syncRequested } = await import('./sync')
+
+    // Nothing for the first-connect import to do.
+    vi.mocked(api.getTree).mockResolvedValue({ entries: [], truncated: false })
+    storeToken('tok')
+    syncConnected(CONNECTION)
+    await wait(5)
+    // todo.md is on GitHub; the local "Todo" that wrote it was deleted.
+    vi.mocked(api.getTree).mockResolvedValue({
+      entries: [
+        { path: 'todo.md', type: 'blob', sha: 'theirs' },
+        { path: 'untitled.md', type: 'blob', sha: 'mine' },
+      ],
+      truncated: false,
+    })
+    documentsSnapshotChanged([
+      {
+        id: 'doc-1',
+        title,
+        content: 'new list',
+        folderId: null,
+        origin: { ...CONNECTION, ...origin, placedAs: { title: 'Untitled', folderId: null } },
+      },
+    ])
+    syncRequested()
+    await wait(50)
+    return api
+  }
+
+  it('is not overwritten by a rename onto its name', async () => {
+    const api = await pushOver({ path: 'untitled.md', syncedHash: 'old-hash' }, 'Todo')
+    expect(api.createTree).toHaveBeenCalledWith('tok', 'alice', 'notes', 'tree-1', [
+      { path: 'todo-2.md', sha: 'blob-1' },
+      { path: 'untitled.md', sha: null },
+    ])
+  })
+
+  it('is not overwritten by a new document assigned its name', async () => {
+    const api = await pushOver({ path: 'todo.md', syncedHash: null }, 'Todo')
+    expect(api.createTree).toHaveBeenCalledWith('tok', 'alice', 'notes', 'tree-1', [
+      { path: 'todo-2.md', sha: 'blob-1' },
+    ])
+  })
+})
