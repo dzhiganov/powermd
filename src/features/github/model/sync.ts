@@ -42,7 +42,13 @@ import {
   type SyncDocInput,
   type SyncFolderInput,
 } from './snapshot'
-import { importCompleted, $importPending, $importError } from './import'
+import {
+  importCompleted,
+  importResumeRequested,
+  $importDone,
+  $importPending,
+  $importError,
+} from './import'
 
 // Re-exported so callers (the sync status UI, `$syncStatus` below) can get
 // every piece of "is GitHub sync busy / in an error state right now" from
@@ -503,6 +509,9 @@ interface RunSyncParams {
   connection: SyncConfig
   docs: SyncDocInput[]
   folders: SyncFolderInput[]
+  /** See `$importDone`: until the first-connect import has finished, a file
+   * the import has not read yet could be overwritten. */
+  importDone: boolean
 }
 
 const runSyncFx = createEffect(
@@ -510,6 +519,7 @@ const runSyncFx = createEffect(
     connection,
     docs,
     folders,
+    importDone,
   }: RunSyncParams): Promise<{ id: string; origin: GitHubOrigin }[]> => {
     // Only documents that already carry a valid origin *for this
     // connection* are push candidates — anything still missing one is
@@ -546,6 +556,7 @@ const runSyncFx = createEffect(
           // leave an empty file behind on GitHub. It goes up with its first
           // real content instead.
           if (syncedHash === null && doc.content.trim() === '') return false
+          if (syncedHash === null && !importDone) return false
           return syncedHash !== hash || path !== (doc.origin as GitHubOrigin).path
         })
     }
@@ -709,6 +720,10 @@ sample({
   target: syncQueued,
 })
 
+// An import that failed or was cut short is retried with every sync attempt
+// (`importResumeRequested` no-ops when nothing is owed).
+sample({ clock: syncQueued, target: importResumeRequested })
+
 // --- Trigger gating: never overlap a run, never hammer while rate-limited --
 //
 // If a trigger arrives while a push is already in flight, it's remembered
@@ -760,6 +775,7 @@ sample({
     connection: $syncConnection,
     docs: $documentsSnapshot,
     folders: $foldersSnapshot,
+    importDone: $importDone,
     pending: runSyncFx.pending,
     rateLimitedUntil: $rateLimitedUntil,
     connectionStatus: $connectionStatus,
@@ -767,10 +783,11 @@ sample({
   },
   filter: ({ connection, pending, rateLimitedUntil, connectionStatus, importPending }) =>
     !pending && canRunNow(connection, rateLimitedUntil, connectionStatus, importPending),
-  fn: ({ connection, docs, folders }): RunSyncParams => ({
+  fn: ({ connection, docs, folders, importDone }): RunSyncParams => ({
     connection: connection as SyncConfig,
     docs,
     folders,
+    importDone,
   }),
   target: runSyncFx,
 })
@@ -783,6 +800,7 @@ sample({
     connection: $syncConnection,
     docs: $documentsSnapshot,
     folders: $foldersSnapshot,
+    importDone: $importDone,
     queued: $rerunQueued,
     rateLimitedUntil: $rateLimitedUntil,
     connectionStatus: $connectionStatus,
@@ -790,10 +808,11 @@ sample({
   },
   filter: ({ connection, queued, rateLimitedUntil, connectionStatus, importPending }) =>
     queued && canRunNow(connection, rateLimitedUntil, connectionStatus, importPending),
-  fn: ({ connection, docs, folders }): RunSyncParams => ({
+  fn: ({ connection, docs, folders, importDone }): RunSyncParams => ({
     connection: connection as SyncConfig,
     docs,
     folders,
+    importDone,
   }),
   target: runSyncFx,
 })

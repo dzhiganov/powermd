@@ -6,8 +6,15 @@ import type { GitHubOrigin } from '@/features/documents'
 import { getTree, getFileContent } from '../lib/api'
 import { sha256Hex } from '../lib/hash'
 import type { SyncConfig } from '../lib/config'
-import { callWithToken, syncConnected } from './connection'
-import { $documentsSnapshot } from './snapshot'
+import { clearImportDone, isImportDone, storeImportDone } from '../lib/importState'
+import {
+  $connectionStatus,
+  $syncConnection,
+  callWithToken,
+  disconnectRequested,
+  syncConnected,
+} from './connection'
+import { $documentsSnapshot, documentsSnapshotChanged } from './snapshot'
 
 /**
  * First-connect import: the moment a repo connection is finalized (see
@@ -170,14 +177,96 @@ sample({
   target: toastRequested,
 })
 
-// Fires exactly once per fresh "Connect" — `syncConnected` only ever fires
-// from the wizard's explicit `connectSubmitted`, never from `$syncConnection`
-// being seeded off persisted storage on an ordinary reload (see
-// `connection.ts`'s doc comment on `$syncConnection`) — so an ordinary
-// reload with an already-configured connection never re-runs this.
+// Runs on every fresh "Connect" — `syncConnected` only ever fires from the
+// wizard's explicit `connectSubmitted`, never from `$syncConnection` being
+// seeded off persisted storage on an ordinary reload (see `connection.ts`'s
+// doc comment on `$syncConnection`). An import that did not finish is resumed
+// further down instead.
 sample({
   clock: syncConnected,
   source: $documentsSnapshot,
   fn: (docs, config): ImportParams => ({ config, docs }),
+  target: importFx,
+})
+
+// --- Finished, or still owed -------------------------------------------------
+
+/** Whether the import has finished for the active connection — persisted
+ * (`lib/importState.ts`). `model/sync.ts` pushes no never-pushed document
+ * until it is true. */
+export const $importDone = createStore(isImportDone($syncConnection.getState()))
+  .on(importFx.done, () => true)
+  .on(syncConnected, () => false)
+  .reset(disconnectRequested)
+
+const storeImportDoneFx = createEffect((config: SyncConfig) => storeImportDone(config))
+const clearImportDoneFx = createEffect(() => clearImportDone())
+sample({ clock: importFx.done, fn: ({ params }) => params.config, target: storeImportDoneFx })
+sample({ clock: [syncConnected, disconnectRequested], target: clearImportDoneFx })
+
+function hasPushedDocument(docs: { origin: GitHubOrigin | null }[], config: SyncConfig): boolean {
+  return docs.some(
+    ({ origin }) =>
+      origin !== null &&
+      origin.syncedHash !== null &&
+      origin.owner === config.owner &&
+      origin.repo === config.repo &&
+      origin.branch === config.branch,
+  )
+}
+
+/**
+ * A connection made by a version that did not record the import has no
+ * flag, though its import ran long ago. If this browser has pushed to it,
+ * that is the case: marking it done, rather than importing again, keeps
+ * every file whose document was deleted here from coming back as a new
+ * document. Only for the connection restored at startup — a fresh connect
+ * always imports.
+ */
+const $legacyConnection = createStore(
+  $syncConnection.getState() !== null && !$importDone.getState(),
+).reset(syncConnected, disconnectRequested)
+
+const legacyImportRecognized = createEvent<SyncConfig>()
+sample({
+  clock: documentsSnapshotChanged,
+  source: { legacy: $legacyConnection, config: $syncConnection, done: $importDone },
+  filter: ({ legacy, config, done }, docs) =>
+    legacy && config !== null && !done && hasPushedDocument(docs, config),
+  fn: ({ config }) => config as SyncConfig,
+  target: legacyImportRecognized,
+})
+$importDone.on(legacyImportRecognized, () => true)
+sample({ clock: legacyImportRecognized, target: storeImportDoneFx })
+
+/** Asks for an import that is still owed to be run again — fired by
+ * `model/sync.ts` on every sync attempt, so a failed import is retried
+ * whenever a sync would run. */
+export const importResumeRequested = createEvent()
+
+const $snapshotLoaded = createStore(false).on(documentsSnapshotChanged, () => true)
+
+// Resume an import that never finished: once a token works and the local
+// documents are loaded (importing against an empty list would duplicate
+// every file already linked to one), and again on every sync attempt.
+sample({
+  clock: [importResumeRequested, $connectionStatus, $snapshotLoaded],
+  source: {
+    config: $syncConnection,
+    docs: $documentsSnapshot,
+    done: $importDone,
+    pending: importFx.pending,
+    loaded: $snapshotLoaded,
+    status: $connectionStatus,
+    legacy: $legacyConnection,
+  },
+  filter: ({ config, docs, done, pending, loaded, status, legacy }) =>
+    config !== null &&
+    !done &&
+    !pending &&
+    loaded &&
+    status === 'connected' &&
+    !(legacy && hasPushedDocument(docs, config)),
+  fn: ({ config, docs }): ImportParams => ({ config: config as SyncConfig, docs }),
   target: importFx,
 })
