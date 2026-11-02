@@ -13,13 +13,10 @@
  * as "not yet assigned" rather than silently reused against the new target.
  *
  * `path` is repo-root-relative (already includes the configured sync
- * subfolder, if any) and is FIXED forever once assigned — see
- * `features/github/lib/pathAssignment.ts`'s doc comment for the full
- * reasoning: local deletion never deletes remotely, so a file can never be
- * *moved* on GitHub (a move is delete+create there), which means renaming or
- * refoldering a document locally must never change the path it already owns
- * — doing so would leave the old path behind as an orphaned duplicate on
- * every rename.
+ * subfolder, if any): where the document's file is on GitHub. Renaming or
+ * refoldering a document moves the file in the next push — the new path
+ * written and the old one removed in the same commit — and only then does
+ * `path` change; see `features/github/lib/pathAssignment.ts`.
  *
  * `syncedHash` is the SHA-256 hex of the UTF-8 content last successfully
  * pushed to `path` — `null` until the first successful push. Comparing the
