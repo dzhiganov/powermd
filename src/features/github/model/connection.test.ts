@@ -16,16 +16,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * next.
  */
 
-vi.mock('../lib/appApi', () => ({
-  refreshAppToken: vi.fn(),
-  revokeAppToken: vi.fn(),
-  GitHubAppAuthError: class GitHubAppAuthError extends Error {
-    constructor(message: string) {
-      super(message)
-      this.name = 'GitHubAppAuthError'
-    }
-  },
-}))
+vi.mock('../lib/appApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/appApi')>()
+  return {
+    ...actual,
+    refreshAppToken: vi.fn(),
+    revokeAppToken: vi.fn(),
+  }
+})
 
 function createFakeStorage() {
   const store = new Map<string, string>()
@@ -192,6 +190,80 @@ describe('callWithToken', () => {
 
     await expect(callWithToken(operation)).rejects.toBeInstanceOf(GitHubReauthRequiredError)
     expect(operation).toHaveBeenCalledTimes(1) // never retried — the refresh itself never succeeded
+  })
+})
+
+describe('callWithToken keeps a good credential on failures that are not about it', () => {
+  it('keeps the refresh token when the sign-in server cannot be reached', async () => {
+    const { callWithToken, $connectionStatus } = await import('./connection')
+    const { storeToken, getStoredToken } = await import('../lib/token')
+    const { storeAppAuthMeta, getStoredAppAuthMeta } = await import('../lib/appAuth')
+    const { GitHubAuthError } = await import('../lib/api')
+    const { refreshAppToken, GitHubAppUnavailableError } = await import('../lib/appApi')
+
+    storeToken('expired-token')
+    storeAppAuthMeta({ refreshToken: 'ghr_old', expiresAt: null, refreshTokenExpiresAt: null })
+    vi.mocked(refreshAppToken).mockRejectedValueOnce(
+      new GitHubAppUnavailableError('Could not reach the sign-in server.'),
+    )
+
+    const operation = vi.fn(async () => {
+      throw new GitHubAuthError('token expired')
+    })
+
+    await expect(callWithToken(operation)).rejects.toThrow('Could not reach the sign-in server.')
+    expect($connectionStatus.getState()).not.toBe('reauth-required')
+    expect(getStoredToken()).toBe('expired-token')
+    expect(getStoredAppAuthMeta()?.refreshToken).toBe('ghr_old')
+  })
+
+  it('keeps the fresh token when the retried operation fails for another reason', async () => {
+    const { callWithToken, $connectionStatus } = await import('./connection')
+    const { storeToken, getStoredToken } = await import('../lib/token')
+    const { storeAppAuthMeta } = await import('../lib/appAuth')
+    const { GitHubAuthError, GitHubRefConflictError } = await import('../lib/api')
+    const { refreshAppToken } = await import('../lib/appApi')
+
+    storeToken('expired-token')
+    storeAppAuthMeta({ refreshToken: 'ghr_old', expiresAt: null, refreshTokenExpiresAt: null })
+    vi.mocked(refreshAppToken).mockResolvedValueOnce({
+      accessToken: 'fresh-token',
+      tokenType: 'bearer',
+      expiresAt: null,
+      refreshToken: 'ghr_new',
+      refreshTokenExpiresAt: null,
+    })
+
+    let attempt = 0
+    const operation = vi.fn(async () => {
+      attempt += 1
+      if (attempt === 1) throw new GitHubAuthError('token expired')
+      throw new GitHubRefConflictError('Update is not a fast forward')
+    })
+
+    await expect(callWithToken(operation)).rejects.toBeInstanceOf(GitHubRefConflictError)
+    expect($connectionStatus.getState()).not.toBe('reauth-required')
+    expect(getStoredToken()).toBe('fresh-token')
+  })
+})
+
+describe('postJson error classification', () => {
+  it('treats GitHub rejecting the grant as a rejection, and a server failure as unavailable', async () => {
+    const actual = await vi.importActual<typeof import('../lib/appApi')>('../lib/appApi')
+    const respond = (status: number, body: unknown) =>
+      vi.fn(async () => new Response(JSON.stringify(body), { status }))
+
+    vi.stubGlobal(
+      'fetch',
+      respond(502, { error: 'github_token_exchange_failed', message: 'expired' }),
+    )
+    const rejected = await actual.refreshAppToken('ghr').catch((error: unknown) => error)
+    expect(rejected).toBeInstanceOf(actual.GitHubAppAuthError)
+    expect(rejected).not.toBeInstanceOf(actual.GitHubAppUnavailableError)
+
+    vi.stubGlobal('fetch', respond(500, { error: 'internal_error', message: 'boom' }))
+    const unavailable = await actual.refreshAppToken('ghr').catch((error: unknown) => error)
+    expect(unavailable).toBeInstanceOf(actual.GitHubAppUnavailableError)
   })
 })
 

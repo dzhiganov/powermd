@@ -37,8 +37,28 @@ export class GitHubAppAuthError extends Error {
   }
 }
 
+/** The sign-in server could not be reached or failed on its own side —
+ * nothing was decided about the credential. A refresh that fails this way
+ * must keep the stored refresh token (see `model/connection.ts`'s
+ * `performRefresh`): it is still valid, and throwing it away would force a
+ * fresh sign-in over a network blip. A subclass, so every caller that only
+ * shows `GitHubAppAuthError`'s message keeps working unchanged. */
+export class GitHubAppUnavailableError extends GitHubAppAuthError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'GitHubAppUnavailableError'
+  }
+}
+
 interface RawErrorBody {
+  error?: string
   message?: string
+}
+
+function errorCodeFrom(body: unknown): string | null {
+  if (typeof body !== 'object' || body === null) return null
+  const code = (body as RawErrorBody).error
+  return typeof code === 'string' ? code : null
 }
 
 function errorMessageFrom(body: unknown): string {
@@ -59,7 +79,7 @@ async function postJson<T>(path: string, body: Record<string, string>): Promise<
       cache: 'no-store',
     })
   } catch {
-    throw new GitHubAppAuthError(
+    throw new GitHubAppUnavailableError(
       'Could not reach the sign-in server. Check your connection and try again.',
     )
   }
@@ -68,11 +88,18 @@ async function postJson<T>(path: string, body: Record<string, string>): Promise<
   try {
     parsed = await response.json()
   } catch {
-    throw new GitHubAppAuthError('The sign-in server returned an unreadable response.')
+    throw new GitHubAppUnavailableError('The sign-in server returned an unreadable response.')
   }
 
   if (!response.ok) {
-    throw new GitHubAppAuthError(errorMessageFrom(parsed))
+    // GitHub turning the grant down comes back as `github_token_exchange_failed`
+    // (see `api/_lib/http.ts`), and a malformed request as a 4xx. Any other
+    // server error says nothing about whether the credential is still good.
+    const rejected =
+      response.status < 500 || errorCodeFrom(parsed) === 'github_token_exchange_failed'
+    throw rejected
+      ? new GitHubAppAuthError(errorMessageFrom(parsed))
+      : new GitHubAppUnavailableError(errorMessageFrom(parsed))
   }
   return parsed as T
 }
