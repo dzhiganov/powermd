@@ -438,9 +438,15 @@ const runSyncFx = createEffect(
     const withHashes = await Promise.all(
       eligible.map(async (doc) => ({ doc, hash: await sha256Hex(doc.content) })),
     )
-    const dirty = withHashes.filter(
-      ({ doc, hash }) => (doc.origin as GitHubOrigin).syncedHash !== hash,
-    )
+    const dirty = withHashes.filter(({ doc, hash }) => {
+      const { syncedHash } = doc.origin as GitHubOrigin
+      // A blank document that has never been pushed is a brand-new
+      // "Untitled" one nobody has written in yet — pushing it would only
+      // leave an empty file behind on GitHub. It goes up with its first real
+      // content instead.
+      if (syncedHash === null && doc.content.trim() === '') return false
+      return syncedHash !== hash
+    })
 
     if (dirty.length === 0) return []
     // `callWithToken` (`./connection.ts`) gives the whole batch one
