@@ -39,6 +39,7 @@ import {
   $syncError,
   $importError,
   $importPending,
+  $importSkipped,
   $lastSyncAt,
   $rateLimitedUntil,
   syncRequested,
@@ -81,6 +82,7 @@ const syncStatus = useUnit($syncStatus)
 const syncError = useUnit($syncError)
 const importError = useUnit($importError)
 const importPending = useUnit($importPending)
+const importSkipped = useUnit($importSkipped)
 const lastSyncAt = useUnit($lastSyncAt)
 const rateLimitedUntil = useUnit($rateLimitedUntil)
 
@@ -457,6 +459,9 @@ const lastSyncLabel = computed(() => {
 
       <p v-if="syncErrorMessage !== null" class="text-xs" :style="errorInk" role="alert">
         {{ syncErrorMessage }}
+      </p>
+      <p v-if="importSkipped.length > 0" class="text-xs text-base-content/70">
+        Not imported (could not be read): {{ importSkipped.join(', ') }}
       </p>
       <p v-if="rateLimitMessage !== null" class="text-xs" :style="errorInk" role="alert">
         {{ rateLimitMessage }}

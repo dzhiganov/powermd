@@ -59,3 +59,16 @@ export function computeBackoffDelayMs(attempt: number, random: () => number = Ma
   const nominal = Math.min(BACKOFF_BASE_DELAY_MS * 2 ** (attempt - 1), BACKOFF_MAX_DELAY_MS)
   return nominal + random() * nominal * BACKOFF_JITTER_FACTOR
 }
+
+/** First wait before a failed first-connect import is tried again. */
+export const IMPORT_RETRY_BASE_MS = 30_000
+/** The longest wait between import retries. */
+export const IMPORT_RETRY_MAX_MS = 30 * 60_000
+
+/** How long to wait before retrying a first-connect import that has failed
+ * `failures` times in a row: 30s, 1m, 2m, … capped at 30 minutes. An import
+ * that keeps failing (GitHub down, the repository gone) must not list the
+ * tree again on every sync. */
+export function importRetryDelayMs(failures: number): number {
+  return Math.min(IMPORT_RETRY_BASE_MS * 2 ** Math.max(0, failures - 1), IMPORT_RETRY_MAX_MS)
+}

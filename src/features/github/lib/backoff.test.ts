@@ -6,6 +6,7 @@ import {
   BACKOFF_MAX_DELAY_MS,
   MAX_PUSH_ATTEMPTS,
   computeBackoffDelayMs,
+  importRetryDelayMs,
 } from './backoff'
 
 /** `random` fixed at `0` isolates the nominal (pre-jitter) delay — the floor
@@ -69,5 +70,14 @@ describe('computeBackoffDelayMs', () => {
       totalWithMaxJitter += computeBackoffDelayMs(attempt, () => 1)
     }
     expect(totalWithMaxJitter).toBeGreaterThan(totalMs)
+  })
+})
+
+describe('importRetryDelayMs', () => {
+  it('doubles from 30s and caps at 30 minutes', () => {
+    expect(importRetryDelayMs(1)).toBe(30_000)
+    expect(importRetryDelayMs(2)).toBe(60_000)
+    expect(importRetryDelayMs(3)).toBe(120_000)
+    expect(importRetryDelayMs(20)).toBe(30 * 60_000)
   })
 })
