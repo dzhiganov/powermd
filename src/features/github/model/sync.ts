@@ -11,12 +11,13 @@ import {
   createTree,
   createCommit,
   createFileViaContents,
+  getTree,
   updateRef,
   GitHubRateLimitError,
   GitHubRefConflictError,
 } from '../lib/api'
 import { sha256Hex } from '../lib/hash'
-import { assignPaths } from '../lib/pathAssignment'
+import { assignPaths, planPathMoves } from '../lib/pathAssignment'
 import { decideSyncSchedule } from '../lib/schedule'
 import { computeBackoffDelayMs, MAX_PUSH_ATTEMPTS } from '../lib/backoff'
 import {
@@ -39,6 +40,7 @@ import {
   documentsSnapshotChanged,
   foldersSnapshotChanged,
   type SyncDocInput,
+  type SyncFolderInput,
 } from './snapshot'
 import { importCompleted, $importPending, $importError } from './import'
 
@@ -75,10 +77,11 @@ export { $importPending, $importError }
  *    the wiring around it. Also available on demand via `syncRequested`
  *    ("Sync now"), which bypasses the interval entirely.
  *
- * Local deletion is never reflected here — there is no "delete" branch in
- * this module at all, deliberately: a document removed locally simply stops
- * appearing in future `$documentsSnapshot` values, and since nothing here
- * ever builds a tree deletion entry, its file on GitHub is left untouched.
+ * Local deletion is never reflected here, deliberately: a document removed
+ * locally simply stops appearing in future `$documentsSnapshot` values, and
+ * its file on GitHub is left untouched. The only file this module ever
+ * removes is a renamed or re-foldered document's own previous file, in the
+ * same commit that writes it under its new name (`planPathMoves`).
  */
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error'
@@ -166,19 +169,27 @@ function originMatchesConnection(origin: GitHubOrigin | null, connection: SyncCo
   )
 }
 
-function basename(path: string): string {
-  const index = path.lastIndexOf('/')
-  return index === -1 ? path : path.slice(index + 1)
-}
-
 interface DirtyDoc {
   doc: SyncDocInput
   hash: string
+  /** Where the content goes — the document's current path, or a new one
+   * when it was renamed or moved (see `planPathMoves`). */
+  path: string
+  /** The document's own file to remove in the same commit when it moves,
+   * else `null`. */
+  removePath: string | null
 }
 
+function toSyncedOrigin({ doc, hash, path }: DirtyDoc): { id: string; origin: GitHubOrigin } {
+  return { id: doc.id, origin: { ...(doc.origin as GitHubOrigin), path, syncedHash: hash } }
+}
+
+// The full repo path, not just the file name: `untitled.md` alone does not
+// say which of several directories' `untitled.md` changed.
 function commitMessageFor(dirty: DirtyDoc[]): string {
   if (dirty.length === 1) {
-    return `Sync ${basename((dirty[0].doc.origin as GitHubOrigin).path)}`
+    const [{ path, removePath }] = dirty
+    return removePath === null ? `Sync ${path}` : `Rename ${removePath} to ${path}`
   }
   return `Sync ${dirty.length} documents`
 }
@@ -282,18 +293,18 @@ async function pushBatch(
     // which does work against an empty repository — and then recurse, at
     // which point the ref exists and the normal batched path takes over for
     // whatever is left.
-    const [first, ...rest] = dirty
-    const firstOrigin = first.doc.origin as GitHubOrigin
+    // Nothing exists yet, so there is nothing for a move to remove.
+    const [first, ...rest] = dirty.map((entry) => ({ ...entry, removePath: null }))
     await createFileViaContents(
       token,
       owner,
       repo,
       branch,
-      firstOrigin.path,
+      first.path,
       first.doc.content,
       commitMessageFor([first]),
     )
-    const bootstrapped = { id: first.doc.id, origin: { ...firstOrigin, syncedHash: first.hash } }
+    const bootstrapped = toSyncedOrigin(first)
     if (rest.length === 0) return [bootstrapped]
     return [bootstrapped, ...(await pushBatch(token, connection, rest, attempt))]
   }
@@ -322,20 +333,27 @@ async function pushBatch(
   }
 
   const blobs = await Promise.all(
-    dirty.map(async ({ doc }) => ({
-      path: (doc.origin as GitHubOrigin).path,
+    dirty.map(async ({ doc, path }) => ({
+      path,
       sha: (await createBlob(token, owner, repo, doc.content)).sha,
     })),
   )
-  const tree = await createTree(token, owner, repo, baseTreeSha, blobs)
+  // A move removes the document's old file — only if it is still there:
+  // GitHub rejects the whole tree over a removal of a path that does not
+  // exist (someone already deleted or moved it on github.com).
+  const removePaths = dirty.flatMap(({ removePath }) => (removePath === null ? [] : [removePath]))
+  let removals: { path: string; sha: null }[] = []
+  if (removePaths.length > 0) {
+    const { entries } = await getTree(token, owner, repo, baseTreeSha)
+    const existing = new Set(entries.map((entry) => entry.path))
+    removals = removePaths.filter((path) => existing.has(path)).map((path) => ({ path, sha: null }))
+  }
+  const tree = await createTree(token, owner, repo, baseTreeSha, [...blobs, ...removals])
   // GitHub already has exactly this content — another tab of this app pushed
   // it first, or an earlier push landed but its response was lost. A commit
   // here would change nothing and only add an empty entry to the history.
   if (tree.sha === baseTreeSha) {
-    return dirty.map(({ doc, hash }) => ({
-      id: doc.id,
-      origin: { ...(doc.origin as GitHubOrigin), syncedHash: hash },
-    }))
+    return dirty.map(toSyncedOrigin)
   }
   const commit = await createCommit(token, owner, repo, commitMessageFor(dirty), tree.sha, [
     baseSha,
@@ -414,19 +432,21 @@ async function pushBatch(
     throw error
   }
 
-  return dirty.map(({ doc, hash }) => ({
-    id: doc.id,
-    origin: { ...(doc.origin as GitHubOrigin), syncedHash: hash },
-  }))
+  return dirty.map(toSyncedOrigin)
 }
 
 interface RunSyncParams {
   connection: SyncConfig
   docs: SyncDocInput[]
+  folders: SyncFolderInput[]
 }
 
 const runSyncFx = createEffect(
-  async ({ connection, docs }: RunSyncParams): Promise<{ id: string; origin: GitHubOrigin }[]> => {
+  async ({
+    connection,
+    docs,
+    folders,
+  }: RunSyncParams): Promise<{ id: string; origin: GitHubOrigin }[]> => {
     // Only documents that already carry a valid origin *for this
     // connection* are push candidates — anything still missing one is
     // picked up by the very next sync cycle once Phase 1 (which runs
@@ -435,17 +455,29 @@ const runSyncFx = createEffect(
     // filters out nothing; it only matters for the same-tick gap right
     // after a brand-new document is created or a connection first forms.
     const eligible = docs.filter((doc) => originMatchesConnection(doc.origin, connection))
-    const withHashes = await Promise.all(
-      eligible.map(async (doc) => ({ doc, hash: await sha256Hex(doc.content) })),
+    const moves = new Map(
+      planPathMoves(connection, folders, eligible).map((move) => [move.id, move]),
     )
-    const dirty = withHashes.filter(({ doc, hash }) => {
+    const withHashes = await Promise.all(
+      eligible.map(async (doc): Promise<DirtyDoc> => {
+        const origin = doc.origin as GitHubOrigin
+        const move = moves.get(doc.id)
+        return {
+          doc,
+          hash: await sha256Hex(doc.content),
+          path: move?.path ?? origin.path,
+          removePath: move?.removeOld === true ? origin.path : null,
+        }
+      }),
+    )
+    const dirty = withHashes.filter(({ doc, hash, path }) => {
       const { syncedHash } = doc.origin as GitHubOrigin
       // A blank document that has never been pushed is a brand-new
       // "Untitled" one nobody has written in yet — pushing it would only
       // leave an empty file behind on GitHub. It goes up with its first real
       // content instead.
       if (syncedHash === null && doc.content.trim() === '') return false
-      return syncedHash !== hash
+      return syncedHash !== hash || path !== (doc.origin as GitHubOrigin).path
     })
 
     if (dirty.length === 0) return []
@@ -652,13 +684,18 @@ sample({
   source: {
     connection: $syncConnection,
     docs: $documentsSnapshot,
+    folders: $foldersSnapshot,
     pending: runSyncFx.pending,
     rateLimitedUntil: $rateLimitedUntil,
     connectionStatus: $connectionStatus,
   },
   filter: ({ connection, pending, rateLimitedUntil, connectionStatus }) =>
     !pending && canRunNow(connection, rateLimitedUntil, connectionStatus),
-  fn: ({ connection, docs }): RunSyncParams => ({ connection: connection as SyncConfig, docs }),
+  fn: ({ connection, docs, folders }): RunSyncParams => ({
+    connection: connection as SyncConfig,
+    docs,
+    folders,
+  }),
   target: runSyncFx,
 })
 
@@ -669,13 +706,18 @@ sample({
   source: {
     connection: $syncConnection,
     docs: $documentsSnapshot,
+    folders: $foldersSnapshot,
     queued: $rerunQueued,
     rateLimitedUntil: $rateLimitedUntil,
     connectionStatus: $connectionStatus,
   },
   filter: ({ connection, queued, rateLimitedUntil, connectionStatus }) =>
     queued && canRunNow(connection, rateLimitedUntil, connectionStatus),
-  fn: ({ connection, docs }): RunSyncParams => ({ connection: connection as SyncConfig, docs }),
+  fn: ({ connection, docs, folders }): RunSyncParams => ({
+    connection: connection as SyncConfig,
+    docs,
+    folders,
+  }),
   target: runSyncFx,
 })
 

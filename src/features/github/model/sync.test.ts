@@ -549,3 +549,75 @@ describe('a blank document that was never pushed', () => {
     expect(api.createBlob).not.toHaveBeenCalled()
   })
 })
+
+describe('a renamed document', () => {
+  async function pushRenamed(remoteHasOldFile: boolean) {
+    const api = await import('../lib/api')
+    vi.mocked(api.getBranchRef).mockResolvedValue({ sha: 'tip' })
+    vi.mocked(api.getCommit).mockResolvedValue({ treeSha: 'tree-1' })
+    vi.mocked(api.createBlob).mockResolvedValue({ sha: 'blob-1' })
+    vi.mocked(api.createTree).mockResolvedValue({ sha: 'tree-2' })
+    vi.mocked(api.createCommit).mockResolvedValue({ sha: 'commit-1' })
+    vi.mocked(api.updateRef).mockResolvedValue(undefined)
+
+    const { sha256Hex } = await import('../lib/hash')
+    const { storeToken } = await import('../lib/token')
+    const { syncConnected } = await import('./connection')
+    const { documentsSnapshotChanged } = await import('./snapshot')
+    const { syncRequested, pushCompleted } = await import('./sync')
+    const completed = vi.fn()
+    pushCompleted.watch(completed)
+
+    storeToken('tok')
+    syncConnected(CONNECTION)
+    await wait(5)
+    vi.mocked(api.getTree).mockResolvedValue({
+      entries: remoteHasOldFile ? [{ path: 'untitled-3.md', type: 'blob', sha: 'old' }] : [],
+      truncated: false,
+    })
+    // Pushed as "Untitled" earlier, renamed since, content unchanged.
+    documentsSnapshotChanged([
+      {
+        id: 'doc-1',
+        title: 'Architecture',
+        content: '# Architecture',
+        folderId: null,
+        origin: {
+          ...CONNECTION,
+          path: 'untitled-3.md',
+          syncedHash: await sha256Hex('# Architecture'),
+        },
+      },
+    ])
+    syncRequested()
+    await wait(50)
+    return { api, completed }
+  }
+
+  it('is moved: written under its new name and its old file removed, in one commit', async () => {
+    const { api, completed } = await pushRenamed(true)
+
+    expect(api.createTree).toHaveBeenCalledWith('tok', 'alice', 'notes', 'tree-1', [
+      { path: 'architecture.md', sha: 'blob-1' },
+      { path: 'untitled-3.md', sha: null },
+    ])
+    expect(api.createCommit).toHaveBeenCalledWith(
+      'tok',
+      'alice',
+      'notes',
+      'Rename untitled-3.md to architecture.md',
+      'tree-2',
+      ['tip'],
+    )
+    const payload = completed.mock.lastCall?.[0] as { origin: { path: string } }[]
+    expect(payload[0].origin.path).toBe('architecture.md')
+  })
+
+  it('does not try to remove an old file that is already gone from GitHub', async () => {
+    const { api } = await pushRenamed(false)
+
+    expect(api.createTree).toHaveBeenCalledWith('tok', 'alice', 'notes', 'tree-1', [
+      { path: 'architecture.md', sha: 'blob-1' },
+    ])
+  })
+})

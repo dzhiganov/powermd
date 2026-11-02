@@ -80,8 +80,9 @@ interval.
 
 It is **one-way**: this app writes to GitHub and never reads back. Editing a
 file on GitHub won't change it here, and a later push may overwrite it.
-Deleting a document locally leaves the file on GitHub untouched. It never
-force-pushes.
+Renaming a document, or moving it to another folder, moves its file on
+GitHub in the next push. Deleting a document locally leaves the file on GitHub
+untouched. It never force-pushes.
 
 ---
 

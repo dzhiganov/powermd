@@ -656,7 +656,8 @@ export async function createBlob(
 
 export interface TreeEntryInput {
   path: string
-  sha: string
+  /** `null` removes `path` from the base tree. */
+  sha: string | null
 }
 
 interface RawGitTree {
@@ -667,7 +668,8 @@ interface RawGitTree {
  * Creates a new tree containing exactly the given (changed) blob entries,
  * layered on top of `baseTreeSha` via `base_tree` — every path from the base
  * tree that isn't mentioned in `entries` is carried over unchanged, and
- * every path that IS mentioned is added or overwritten. `baseTreeSha: null`
+ * every path that IS mentioned is added or overwritten (or removed, for an
+ * entry whose `sha` is `null`). `baseTreeSha: null`
  * builds a tree from scratch (the empty-repo initial-commit case — there is
  * no base to layer on).
  */
@@ -680,7 +682,7 @@ export async function createTree(
 ): Promise<{ sha: string }> {
   const body: {
     base_tree?: string
-    tree: { path: string; mode: string; type: string; sha: string }[]
+    tree: { path: string; mode: string; type: string; sha: string | null }[]
   } = {
     tree: entries.map((entry) => ({
       path: entry.path,

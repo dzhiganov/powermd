@@ -2,15 +2,15 @@
  * Deterministic, pure, network-free assignment of GitHub sync paths to
  * documents and sync directories to folders.
  *
- * This is the load-bearing piece of the "stable paths" design: because local
- * deletion never deletes remotely (see `model/sync.ts`'s doc comment), a
- * document's synced file can never be *moved* on GitHub — a move there is a
- * delete-plus-create, and deletes never happen. So the very first path ever
- * assigned to a document has to be the path it keeps forever; renaming or
- * refoldering a document locally must never cause a re-assignment, or the
- * old path is silently orphaned as a duplicate every time. This module is
- * only ever asked to assign a path to a document/folder that doesn't already
- * have one for the active connection — see `model/sync.ts`'s call site.
+ * `assignPaths` gives a document or folder its first path. A document is
+ * created as "Untitled" and gets that path at once, so its file name has to
+ * be able to follow a later rename: `planPathMoves` works out which synced
+ * documents no longer sit where their title and folder say they should, and
+ * `model/sync.ts` moves each of them — the new path and the removal of the
+ * old one in the same commit, so a rename never leaves a duplicate behind.
+ * Deleting a document locally still never deletes anything on GitHub.
+ * Folders keep the directory they were first given; renaming a folder does
+ * not move its files.
  */
 import { slugify } from './slug'
 
@@ -164,4 +164,106 @@ export function assignPaths(
   }
 
   return { folderDirs, docPaths }
+}
+
+export interface PlannedMove {
+  id: string
+  /** Where the document should live now. */
+  path: string
+  /** Whether the file at the document's current path is its own and should
+   * be removed by the move. False when another document owns that path (two
+   * documents claimed one file), so the move must leave it alone. */
+  removeOld: boolean
+}
+
+export interface MoveDoc extends AssignmentDoc {
+  origin: (NonNullable<AssignmentDoc['origin']> & { syncedHash: string | null }) | null
+}
+
+function stemOf(filename: string): string {
+  const index = filename.lastIndexOf('.')
+  return index <= 0 ? filename : filename.slice(0, index)
+}
+
+/** Whether `path` is a fine name for a document titled `title` in
+ * `dirPrefix`: the title itself (an imported file keeps its own name, e.g.
+ * `My Notes.md`), or the slug the title would be assigned, possibly with a
+ * `-N` suffix from deduplication. */
+function pathFitsTitle(path: string, dirPrefix: string, title: string): boolean {
+  if (!path.startsWith(dirPrefix)) return false
+  const filename = path.slice(dirPrefix.length)
+  if (filename.includes('/')) return false
+  const stem = stemOf(filename)
+  if (stem === title.trim()) return true
+  const slug = slugify(title)
+  // A slug holds only `[a-z0-9-]`, so it is safe inside a RegExp as-is.
+  return stem === slug || new RegExp(`^${slug}-\\d+$`).test(stem)
+}
+
+/**
+ * Which documents synced under `connection` should move, and where to.
+ *
+ * A document moves when its path no longer fits its title (it was renamed —
+ * typically away from "Untitled") or no longer sits in its folder's
+ * directory (it was moved to another folder). It also moves when another
+ * document holds the same path — a local document assigned `notes.md` before
+ * the first-connect import found an existing `notes.md` on GitHub. The
+ * document that has actually been pushed to the path keeps it.
+ *
+ * Paths outside the connection's subfolder are left alone (synced under an
+ * earlier subfolder of the same branch), as are documents in a folder that
+ * has no directory yet (`assignPaths` gives it one first). Deterministic:
+ * documents are processed in `id` order, and a new path is never one any
+ * document currently holds, so a file is never removed and written in the
+ * same commit.
+ */
+export function planPathMoves(
+  connection: AssignmentConnection,
+  folders: AssignmentFolder[],
+  docs: MoveDoc[],
+): PlannedMove[] {
+  const prefix = connection.subfolder === '' ? '' : `${connection.subfolder}/`
+  const synced = docs
+    .filter((doc) => originMatchesConnection(doc.origin, connection))
+    .sort((a, b) => a.id.localeCompare(b.id))
+  const pathOf = (doc: MoveDoc) => (doc.origin as NonNullable<MoveDoc['origin']>).path
+
+  // One owner per path: the first document (in `id` order) that has been
+  // pushed there, else simply the first document claiming it.
+  const ownerByPath = new Map<string, MoveDoc>()
+  for (const doc of synced) {
+    const current = ownerByPath.get(pathOf(doc))
+    if (
+      current === undefined ||
+      (current.origin?.syncedHash === null && doc.origin?.syncedHash !== null)
+    ) {
+      ownerByPath.set(pathOf(doc), doc)
+    }
+  }
+
+  const used = new Set(synced.map(pathOf))
+  const moves: PlannedMove[] = []
+  for (const doc of synced) {
+    const path = pathOf(doc)
+    if (!path.startsWith(prefix)) continue
+
+    let dirPrefix = prefix
+    if (doc.folderId !== null) {
+      const folder = folders.find((candidate) => candidate.id === doc.folderId)
+      if (folder !== undefined) {
+        if (folder.syncDirPath === null) continue
+        dirPrefix = `${prefix}${folder.syncDirPath}/`
+      }
+    }
+
+    const ownsPath = ownerByPath.get(path) === doc
+    if (ownsPath && pathFitsTitle(path, dirPrefix, doc.title)) continue
+
+    moves.push({
+      id: doc.id,
+      path: dedupe(`${dirPrefix}${slugify(doc.title)}.md`, used),
+      removeOld: ownsPath && doc.origin?.syncedHash !== null,
+    })
+  }
+  return moves
 }
