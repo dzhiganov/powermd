@@ -56,6 +56,8 @@ export interface BulkImportDoc {
 interface ImportParams {
   config: SyncConfig
   docs: { origin: GitHubOrigin | null }[]
+  /** Resuming an import that did not finish, rather than a fresh connect. */
+  resume: boolean
 }
 
 interface ImportResult {
@@ -77,7 +79,31 @@ interface ImportResult {
 // fetch) aborts the sequence, gets one refresh-and-retry of the WHOLE
 // import against a fresh token, and re-lists the tree from scratch rather
 // than trying to resume mid-file-list.
-const importFx = createEffect(({ config, docs }: ImportParams): Promise<ImportResult> => {
+//
+// Run under a Web Lock: two tabs resuming the same unfinished import at once
+// would each create a copy of every file. The second tab waits, then finds
+// the import finished and does nothing.
+const IMPORT_LOCK_NAME = 'markdown-editor:github-import'
+
+function withImportLock<T>(task: () => Promise<T>): Promise<T> {
+  if (typeof navigator === 'undefined' || navigator.locks === undefined) return task()
+  return navigator.locks.request(IMPORT_LOCK_NAME, task)
+}
+
+const importFx = createEffect(({ config, docs, resume }: ImportParams): Promise<ImportResult> =>
+  withImportLock(async () => {
+    if (resume && isImportDone(config)) return { imported: [], truncated: false, skipped: [] }
+    const result = await runImport(config, docs)
+    // Recorded before the lock is released, so a tab waiting on it sees it.
+    storeImportDone(config)
+    return result
+  }),
+)
+
+function runImport(
+  config: SyncConfig,
+  docs: { origin: GitHubOrigin | null }[],
+): Promise<ImportResult> {
   return callWithToken(async (token) => {
     const { entries, truncated } = await getTree(token, config.owner, config.repo, config.branch)
     const prefix = config.subfolder === '' ? '' : `${config.subfolder}/`
@@ -146,7 +172,7 @@ const importFx = createEffect(({ config, docs }: ImportParams): Promise<ImportRe
     }
     return { imported, truncated, skipped }
   })
-})
+}
 
 /** Output: the batch of documents to create — `src/app/wiring.ts` samples
  * this into `@/features/documents`' `documentsBulkImported`. */
@@ -208,7 +234,7 @@ sample({
 sample({
   clock: syncConnected,
   source: $documentsSnapshot,
-  fn: (docs, config): ImportParams => ({ config, docs }),
+  fn: (docs, config): ImportParams => ({ config, docs, resume: false }),
   target: importFx,
 })
 
@@ -321,6 +347,6 @@ sample({
     loaded &&
     status === 'connected' &&
     !(legacy && hasPushedDocument(docs, config)),
-  fn: ({ config, docs }): ImportParams => ({ config: config as SyncConfig, docs }),
+  fn: ({ config, docs }): ImportParams => ({ config: config as SyncConfig, docs, resume: true }),
   target: importFx,
 })

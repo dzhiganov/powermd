@@ -975,3 +975,32 @@ describe('an import that keeps failing', () => {
     expect(api.getTree).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('two tabs resuming the same import', () => {
+  it('runs it once: the tab that waited for the lock finds it finished', async () => {
+    const api = await import('../lib/api')
+    vi.mocked(api.getTree).mockResolvedValue({ entries: [], truncated: false })
+    const { storeToken } = await import('../lib/token')
+    const { storeConfig } = await import('../lib/config')
+    const { storeImportDone } = await import('../lib/importState')
+    storeToken('tok')
+    storeConfig(CONNECTION)
+    // The other tab holds the lock and finishes the import meanwhile.
+    const request = vi.fn(async (_name: string, task: () => Promise<unknown>) => {
+      storeImportDone(CONNECTION)
+      return task()
+    })
+    vi.stubGlobal('navigator', { locks: { request } })
+
+    const { tokenSubmitted } = await import('./connection')
+    const { documentsSnapshotChanged } = await import('./snapshot')
+    await import('./sync')
+
+    tokenSubmitted('tok')
+    documentsSnapshotChanged([])
+    await wait(30)
+
+    expect(request).toHaveBeenCalledWith('markdown-editor:github-import', expect.any(Function))
+    expect(api.getTree).not.toHaveBeenCalled()
+  })
+})
