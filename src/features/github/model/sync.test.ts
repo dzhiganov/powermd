@@ -37,6 +37,7 @@ vi.mock('../lib/api', async (importOriginal) => {
     // these tests stay focused on the push/retry path.
     getTree: vi.fn(async () => ({ entries: [], truncated: false })),
     getFileContent: vi.fn(),
+    validateToken: vi.fn(async () => ({ login: 'alice' })),
   }
 })
 
@@ -803,5 +804,113 @@ describe('a file on GitHub that no local document owns', () => {
     expect(api.createTree).toHaveBeenCalledWith('tok', 'alice', 'notes', 'tree-1', [
       { path: 'todo-2.md', sha: 'blob-1' },
     ])
+  })
+})
+
+describe('a first-connect import that did not finish', () => {
+  const NEW_DOC = {
+    id: 'new',
+    title: 'Fresh',
+    content: 'fresh note',
+    folderId: null,
+    origin: {
+      ...CONNECTION,
+      path: 'fresh.md',
+      syncedHash: null,
+      placedAs: { title: 'Fresh', folderId: null },
+    },
+  }
+
+  function mockPush(api: typeof import('../lib/api')) {
+    vi.mocked(api.getBranchRef).mockResolvedValue({ sha: 'tip' })
+    vi.mocked(api.getCommit).mockResolvedValue({ treeSha: 'tree-1' })
+    vi.mocked(api.createBlob).mockResolvedValue({ sha: 'blob-1' })
+    vi.mocked(api.createTree).mockResolvedValue({ sha: 'tree-2' })
+    vi.mocked(api.createCommit).mockResolvedValue({ sha: 'commit-1' })
+    vi.mocked(api.updateRef).mockResolvedValue(undefined)
+  }
+
+  it('blocks first pushes after a failed import, and is retried by the next sync', async () => {
+    const api = await import('../lib/api')
+    mockPush(api)
+    vi.mocked(api.getTree).mockRejectedValue(new api.GitHubNetworkError('offline'))
+
+    const { storeToken } = await import('../lib/token')
+    const { tokenSubmitted, syncConnected } = await import('./connection')
+    const { documentsSnapshotChanged } = await import('./snapshot')
+    const { syncRequested } = await import('./sync')
+    const { isImportDone } = await import('../lib/importState')
+
+    storeToken('tok')
+    tokenSubmitted('tok')
+    await wait(5)
+    syncConnected(CONNECTION)
+    await wait(10)
+    documentsSnapshotChanged([NEW_DOC])
+    syncRequested()
+    await wait(50)
+    // The import failed: fresh.md might overwrite a file it never read.
+    expect(api.createBlob).not.toHaveBeenCalled()
+
+    vi.mocked(api.getTree).mockResolvedValue({ entries: [], truncated: false })
+    syncRequested()
+    await wait(80)
+    expect(isImportDone(CONNECTION)).toBe(true)
+    expect(api.createBlob).toHaveBeenCalledWith('tok', 'alice', 'notes', 'fresh note')
+  })
+
+  it('is resumed on the next start', async () => {
+    const api = await import('../lib/api')
+    mockPush(api)
+    vi.mocked(api.getTree).mockResolvedValue({ entries: [], truncated: false })
+    const { storeToken } = await import('../lib/token')
+    const { storeConfig } = await import('../lib/config')
+    // A connection whose import was cut short by a reload: no flag stored.
+    storeToken('tok')
+    storeConfig(CONNECTION)
+
+    const { tokenSubmitted } = await import('./connection')
+    const { documentsSnapshotChanged } = await import('./snapshot')
+    await import('./sync')
+    const { isImportDone } = await import('../lib/importState')
+
+    tokenSubmitted('tok')
+    documentsSnapshotChanged([NEW_DOC])
+    await wait(50)
+
+    expect(api.getTree).toHaveBeenCalled()
+    expect(isImportDone(CONNECTION)).toBe(true)
+  })
+
+  it('is not re-run for a connection an older version already synced to', async () => {
+    const api = await import('../lib/api')
+    mockPush(api)
+    const { storeToken } = await import('../lib/token')
+    const { storeConfig } = await import('../lib/config')
+    storeToken('tok')
+    storeConfig(CONNECTION)
+
+    const { tokenSubmitted } = await import('./connection')
+    const { documentsSnapshotChanged } = await import('./snapshot')
+    const { syncRequested } = await import('./sync')
+    const { isImportDone } = await import('../lib/importState')
+
+    tokenSubmitted('tok')
+    documentsSnapshotChanged([
+      {
+        ...NEW_DOC,
+        id: 'old',
+        origin: { ...CONNECTION, path: 'old.md', syncedHash: 'pushed-long-ago' },
+      },
+      NEW_DOC,
+    ])
+    await wait(20)
+    syncRequested()
+    await wait(50)
+
+    // Re-importing would bring back every file whose document was deleted here.
+    expect(api.getTree).not.toHaveBeenCalledWith('tok', 'alice', 'notes', 'main')
+    expect(isImportDone(CONNECTION)).toBe(true)
+    expect(api.createBlob).toHaveBeenCalledWith('tok', 'alice', 'notes', 'fresh note')
   })
 })
