@@ -328,6 +328,15 @@ async function pushBatch(
     })),
   )
   const tree = await createTree(token, owner, repo, baseTreeSha, blobs)
+  // GitHub already has exactly this content — another tab of this app pushed
+  // it first, or an earlier push landed but its response was lost. A commit
+  // here would change nothing and only add an empty entry to the history.
+  if (tree.sha === baseTreeSha) {
+    return dirty.map(({ doc, hash }) => ({
+      id: doc.id,
+      origin: { ...(doc.origin as GitHubOrigin), syncedHash: hash },
+    }))
+  }
   const commit = await createCommit(token, owner, repo, commitMessageFor(dirty), tree.sha, [
     baseSha,
   ])

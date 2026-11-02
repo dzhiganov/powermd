@@ -478,3 +478,45 @@ describe('a remembered commit the branch has moved past', () => {
     expect(getStoredLastPushedCommit('alice', 'notes', 'main')).toBe('commit-on-tip-from-elsewhere')
   })
 })
+
+describe('content GitHub already has', () => {
+  it('is marked synced without an empty commit', async () => {
+    const api = await import('../lib/api')
+    vi.mocked(api.getBranchRef).mockResolvedValue({ sha: 'tip' })
+    vi.mocked(api.getCommit).mockResolvedValue({ treeSha: 'same-tree' })
+    vi.mocked(api.createBlob).mockResolvedValue({ sha: 'blob-1' })
+    // Layering the blob onto the base tree changes nothing: another tab
+    // already pushed this exact content.
+    vi.mocked(api.createTree).mockResolvedValue({ sha: 'same-tree' })
+
+    const { storeToken } = await import('../lib/token')
+    const { syncConnected } = await import('./connection')
+    const { documentsSnapshotChanged } = await import('./snapshot')
+    const { syncRequested, pushCompleted, $syncError } = await import('./sync')
+    const completed = vi.fn()
+    pushCompleted.watch(completed)
+
+    storeToken('tok')
+    syncConnected(CONNECTION)
+    await wait(5)
+    documentsSnapshotChanged([
+      {
+        id: 'doc-1',
+        title: 'Doc',
+        content: 'hello',
+        folderId: null,
+        origin: { ...CONNECTION, path: 'doc.md', syncedHash: null },
+      },
+    ])
+
+    syncRequested()
+    await wait(50)
+
+    expect(api.createCommit).not.toHaveBeenCalled()
+    expect(api.updateRef).not.toHaveBeenCalled()
+    expect($syncError.getState()).toBeNull()
+    const payload = completed.mock.lastCall?.[0] as { origin: { syncedHash: string } }[]
+    expect(payload).toHaveLength(1)
+    expect(payload[0].origin.syncedHash).not.toBeNull()
+  })
+})

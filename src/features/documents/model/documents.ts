@@ -6,6 +6,7 @@ import { readStorage, writeStorage } from '@/shared/lib/storage'
 import * as db from '../lib/db'
 import { createId } from '../lib/id'
 import { deriveTitle } from '../lib/title'
+import { mergeDocumentBroadcast } from '../lib/broadcastMerge'
 import type { Folder, GitHubOrigin, MarkdownDocument, SaveStatus } from './types'
 
 /** Autosave debounce default: writes land ~500ms after typing pauses,
@@ -926,18 +927,7 @@ if (typeof window !== 'undefined') {
 const documentBroadcastReceived = createEvent<db.DocumentBroadcast>()
 db.subscribeToDocumentBroadcasts((message) => documentBroadcastReceived(message))
 
-$documents.on(documentBroadcastReceived, (docs, message) => {
-  if (message.type === 'delete') {
-    return docs.filter((doc) => doc.id !== message.id)
-  }
-  const incoming = message.document
-  const existing = docs.find((doc) => doc.id === incoming.id)
-  if (existing === undefined) return [incoming, ...docs]
-  // Stale/out-of-order broadcast — this tab's copy is already at least as
-  // new, so keep it rather than regress.
-  if (incoming.updatedAt <= existing.updatedAt) return docs
-  return docs.map((doc) => (doc.id === incoming.id ? incoming : doc))
-})
+$documents.on(documentBroadcastReceived, mergeDocumentBroadcast)
 
 // --- Selecting a document ------------------------------------------------
 //
