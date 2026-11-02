@@ -73,12 +73,20 @@ const importFx = createEffect(({ config, docs }: ImportParams): Promise<ImportRe
         entry.type === 'blob' && isMarkdownPath(entry.path) && entry.path.startsWith(prefix),
     )
 
+    // Only a document that has actually been pushed to a path is that
+    // file's local copy. A local document merely *assigned* a path — which
+    // happens the moment the connection forms, before this import has even
+    // listed the tree — has never seen the remote file; counting it as
+    // linked skipped importing an existing `notes.md` and let the next push
+    // overwrite it with an unrelated local "Notes". The local document is
+    // given another path instead (`planPathMoves`).
     const alreadyLinkedPaths = new Set(
       docs
         .map((doc) => doc.origin)
         .filter(
           (origin): origin is GitHubOrigin =>
             origin !== null &&
+            origin.syncedHash !== null &&
             origin.owner === config.owner &&
             origin.repo === config.repo &&
             origin.branch === config.branch,
