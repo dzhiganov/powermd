@@ -247,6 +247,37 @@ describe('callWithToken keeps a good credential on failures that are not about i
   })
 })
 
+describe('a token another tab already refreshed', () => {
+  it('is used as-is instead of spending the refresh token a second time', async () => {
+    const { callWithToken, $connectionStatus } = await import('./connection')
+    const { storeToken } = await import('../lib/token')
+    const { storeAppAuthMeta } = await import('../lib/appAuth')
+    const { GitHubAuthError } = await import('../lib/api')
+    const { refreshAppToken, GitHubAppAuthError } = await import('../lib/appApi')
+
+    storeToken('expired-token')
+    storeAppAuthMeta({ refreshToken: 'ghr_old', expiresAt: null, refreshTokenExpiresAt: null })
+    // GitHub refresh tokens are single-use: the other tab already spent it.
+    vi.mocked(refreshAppToken).mockRejectedValue(
+      new GitHubAppAuthError('The refresh token passed is incorrect or expired.'),
+    )
+
+    const operation = vi.fn(async (token: string) => {
+      if (token === 'expired-token') {
+        // While this request was in flight, another tab refreshed.
+        storeToken('token-from-other-tab')
+        storeAppAuthMeta({ refreshToken: 'ghr_new', expiresAt: null, refreshTokenExpiresAt: null })
+        throw new GitHubAuthError('token expired')
+      }
+      return `ok:${token}`
+    })
+
+    await expect(callWithToken(operation)).resolves.toBe('ok:token-from-other-tab')
+    expect(refreshAppToken).not.toHaveBeenCalled()
+    expect($connectionStatus.getState()).not.toBe('reauth-required')
+  })
+})
+
 describe('postJson error classification', () => {
   it('treats GitHub rejecting the grant as a rejection, and a server failure as unavailable', async () => {
     const actual = await vi.importActual<typeof import('../lib/appApi')>('../lib/appApi')
