@@ -667,8 +667,13 @@ function canRunNow(
   connection: SyncConfig | null,
   rateLimitedUntil: Date | null,
   connectionStatus: ConnectionStatus,
+  importPending: boolean,
 ): boolean {
   if (connection === null) return false
+  // Pushing while the first-connect import is still reading the repository
+  // could overwrite a file before it is imported. `importCompleted` queues a
+  // sync of its own once the import is done.
+  if (importPending) return false
   // A token that needs re-authentication cannot push — trying anyway would
   // just fail the same 401 (already-attempted refresh included) on every
   // interval tick until the user signs in again. `callWithToken` itself only
@@ -688,9 +693,10 @@ sample({
     pending: runSyncFx.pending,
     rateLimitedUntil: $rateLimitedUntil,
     connectionStatus: $connectionStatus,
+    importPending: $importPending,
   },
-  filter: ({ connection, pending, rateLimitedUntil, connectionStatus }) =>
-    !pending && canRunNow(connection, rateLimitedUntil, connectionStatus),
+  filter: ({ connection, pending, rateLimitedUntil, connectionStatus, importPending }) =>
+    !pending && canRunNow(connection, rateLimitedUntil, connectionStatus, importPending),
   fn: ({ connection, docs, folders }): RunSyncParams => ({
     connection: connection as SyncConfig,
     docs,
@@ -710,9 +716,10 @@ sample({
     queued: $rerunQueued,
     rateLimitedUntil: $rateLimitedUntil,
     connectionStatus: $connectionStatus,
+    importPending: $importPending,
   },
-  filter: ({ connection, queued, rateLimitedUntil, connectionStatus }) =>
-    queued && canRunNow(connection, rateLimitedUntil, connectionStatus),
+  filter: ({ connection, queued, rateLimitedUntil, connectionStatus, importPending }) =>
+    queued && canRunNow(connection, rateLimitedUntil, connectionStatus, importPending),
   fn: ({ connection, docs, folders }): RunSyncParams => ({
     connection: connection as SyncConfig,
     docs,

@@ -36,6 +36,7 @@ vi.mock('../lib/api', async (importOriginal) => {
     // real network. An empty tree makes that import a harmless no-op so
     // these tests stay focused on the push/retry path.
     getTree: vi.fn(async () => ({ entries: [], truncated: false })),
+    getFileContent: vi.fn(),
   }
 })
 
@@ -619,5 +620,49 @@ describe('a renamed document', () => {
     expect(api.createTree).toHaveBeenCalledWith('tok', 'alice', 'notes', 'tree-1', [
       { path: 'architecture.md', sha: 'blob-1' },
     ])
+  })
+})
+
+describe('connecting to a repository that already has files', () => {
+  it('imports an existing file a local document was only assigned, and pushes nothing until the import is done', async () => {
+    const api = await import('../lib/api')
+    vi.mocked(api.getTree).mockResolvedValue({
+      entries: [{ path: 'notes.md', type: 'blob', sha: 'remote' }],
+      truncated: false,
+    })
+    vi.mocked(api.getFileContent).mockImplementation(async () => {
+      await wait(40)
+      return { content: 'remote notes', sha: 'remote', sizeBytes: 12 }
+    })
+
+    const { storeToken } = await import('../lib/token')
+    const { syncConnected } = await import('./connection')
+    const { documentsSnapshotChanged } = await import('./snapshot')
+    const { importCompleted } = await import('./import')
+    const { syncRequested } = await import('./sync')
+    const imported = vi.fn()
+    importCompleted.watch(imported)
+
+    storeToken('tok')
+    // A local "Notes", assigned notes.md the moment the connection formed,
+    // never pushed.
+    documentsSnapshotChanged([
+      {
+        id: 'local',
+        title: 'Notes',
+        content: 'local notes',
+        folderId: null,
+        origin: { ...CONNECTION, path: 'notes.md', syncedHash: null },
+      },
+    ])
+    syncConnected(CONNECTION)
+    await wait(5)
+    syncRequested()
+    await wait(10)
+    expect(api.getBranchRef).not.toHaveBeenCalled()
+
+    await wait(60)
+    const [batch] = imported.mock.lastCall as [{ origin: { path: string } }[]]
+    expect(batch.map((doc) => doc.origin.path)).toEqual(['notes.md'])
   })
 })
