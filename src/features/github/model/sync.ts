@@ -336,6 +336,15 @@ async function pushBatch(
     await updateRef(token, owner, repo, branch, commit.sha)
     storeLastPushedCommit(owner, repo, branch, commit.sha)
   } catch (error) {
+    // Built on the remembered commit rather than the ref read, and rejected:
+    // the remembered commit is not on the branch's history any more — the
+    // branch moved past it (an edit on github.com, another device, a push
+    // whose response never arrived) — so it can never be built on again.
+    // Forgotten here, or every retry and every later sync would rebuild on it
+    // and be rejected identically, forever.
+    if (error instanceof GitHubRefConflictError && baseSha !== ref.sha) {
+      forgetLastPushedCommit()
+    }
     // The branch moved between this cycle's `getBranchRef` and this update —
     // a concurrent writer, OR (the common real-world case this retry loop
     // was built for) GitHub's own read replicas simply hadn't caught up with
