@@ -352,7 +352,10 @@ async function pushBatch(
   // GitHub already has exactly this content — another tab of this app pushed
   // it first, or an earlier push landed but its response was lost. A commit
   // here would change nothing and only add an empty entry to the history.
-  if (tree.sha === baseTreeSha) {
+  // Only when the base is the branch tip itself: a base taken from the
+  // remembered commit says nothing about what the branch holds now (it may
+  // have been reset past it), so the push still has to go through.
+  if (tree.sha === baseTreeSha && baseSha === ref.sha) {
     return dirty.map(toSyncedOrigin)
   }
   const commit = await createCommit(token, owner, repo, commitMessageFor(dirty), tree.sha, [

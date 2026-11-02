@@ -666,3 +666,43 @@ describe('connecting to a repository that already has files', () => {
     expect(batch.map((doc) => doc.origin.path)).toEqual(['notes.md'])
   })
 })
+
+describe('content equal to the remembered commit but not to the branch tip', () => {
+  it('is still committed — the branch may have been reset past that commit', async () => {
+    const api = await import('../lib/api')
+    vi.mocked(api.getBranchRef).mockResolvedValue({ sha: 'reset-tip' })
+    vi.mocked(api.getCommit).mockImplementation(async (_t, _o, _r, sha) => ({
+      treeSha: sha === 'remembered' ? 'remembered-tree' : 'reset-tree',
+    }))
+    vi.mocked(api.createBlob).mockResolvedValue({ sha: 'blob-1' })
+    // Layered on the remembered commit's tree, nothing changes.
+    vi.mocked(api.createTree).mockResolvedValue({ sha: 'remembered-tree' })
+    vi.mocked(api.createCommit).mockResolvedValue({ sha: 'commit-1' })
+    vi.mocked(api.updateRef).mockResolvedValue(undefined)
+
+    const { storeToken } = await import('../lib/token')
+    const { storeLastPushedCommit } = await import('../lib/lastPushedCommit')
+    const { syncConnected } = await import('./connection')
+    const { documentsSnapshotChanged } = await import('./snapshot')
+    const { syncRequested } = await import('./sync')
+
+    storeToken('tok')
+    syncConnected(CONNECTION)
+    await wait(5)
+    storeLastPushedCommit('alice', 'notes', 'main', 'remembered')
+    documentsSnapshotChanged([
+      {
+        id: 'doc-1',
+        title: 'Doc',
+        content: 'hello',
+        folderId: null,
+        origin: { ...CONNECTION, path: 'doc.md', syncedHash: null },
+      },
+    ])
+    syncRequested()
+    await wait(50)
+
+    expect(api.createCommit).toHaveBeenCalled()
+    expect(api.updateRef).toHaveBeenCalled()
+  })
+})
