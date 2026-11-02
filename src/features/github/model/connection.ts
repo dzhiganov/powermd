@@ -5,7 +5,12 @@ import { clearStoredConfig, getStoredConfig, storeConfig, type SyncConfig } from
 import { normalizeSubfolder, validateSubfolder } from '../lib/path'
 import { validateToken, listBranches, GitHubAuthError } from '../lib/api'
 import { clearAppAuthMeta, getStoredAppAuthMeta, storeAppAuthMeta } from '../lib/appAuth'
-import { refreshAppToken, revokeAppToken, GitHubAppAuthError } from '../lib/appApi'
+import {
+  refreshAppToken,
+  revokeAppToken,
+  GitHubAppAuthError,
+  GitHubAppUnavailableError,
+} from '../lib/appApi'
 import {
   clearCredentialKind,
   getStoredCredentialKind,
@@ -433,7 +438,13 @@ async function performRefresh(): Promise<string> {
   try {
     result = await refreshAppToken(meta.refreshToken)
   } catch (error) {
-    throw error instanceof GitHubAppAuthError ? new GitHubReauthRequiredError() : error
+    // Only GitHub turning the refresh token down means signing in again.
+    // The sign-in server being unreachable or failing leaves the refresh
+    // token as good as it was — the next sync simply tries again.
+    if (error instanceof GitHubAppAuthError && !(error instanceof GitHubAppUnavailableError)) {
+      throw new GitHubReauthRequiredError()
+    }
+    throw error
   }
 
   storeToken(result.accessToken)
@@ -465,8 +476,8 @@ function refreshOnce(): Promise<string> {
  * Runs `operation` with the current access token. On a `GitHubAuthError`
  * (401), attempts exactly ONE refresh (deduped across concurrent callers via
  * `refreshOnce`) and retries `operation` once with the fresh token. If that
- * retry also fails, or there was nothing to refresh in the first place,
- * `reauthRequired` fires — clearing the stored credential and moving
+ * retry is rejected with a 401 too, or GitHub turns the refresh down (or
+ * there was nothing to refresh in the first place), `reauthRequired` fires — clearing the stored credential and moving
  * `$connectionStatus` to `'reauth-required'` — and a `GitHubReauthRequiredError`
  * propagates to the caller instead of retrying further; nothing above this
  * function loops or keeps hammering GitHub with an expired token.
@@ -479,12 +490,28 @@ export async function callWithToken<T>(operation: (token: string) => Promise<T>)
     return await operation(token)
   } catch (error) {
     if (!(error instanceof GitHubAuthError)) throw error
-    try {
-      const freshToken = await refreshOnce()
-      return await operation(freshToken)
-    } catch {
-      reauthRequired()
-      throw new GitHubReauthRequiredError()
-    }
+  }
+
+  let freshToken: string
+  try {
+    freshToken = await refreshOnce()
+  } catch (error) {
+    // A refresh that could not even be attempted (offline, the sign-in
+    // server down) is not an expired sign-in: the credential is kept and the
+    // error surfaces as an ordinary sync failure, retried on the next sync.
+    if (!(error instanceof GitHubReauthRequiredError)) throw error
+    reauthRequired()
+    throw error
+  }
+
+  try {
+    return await operation(freshToken)
+  } catch (error) {
+    // Only a second 401 means the fresh token is no good either. Anything
+    // else — a moved branch, a rate limit, the network — is the operation's
+    // own failure and must not throw away a credential that just worked.
+    if (!(error instanceof GitHubAuthError)) throw error
+    reauthRequired()
+    throw new GitHubReauthRequiredError()
   }
 }
