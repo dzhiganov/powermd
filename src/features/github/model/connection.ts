@@ -430,7 +430,25 @@ export class GitHubReauthRequiredError extends Error {
 // the first and fail.
 let refreshInFlight: Promise<string> | null = null
 
-async function performRefresh(): Promise<string> {
+// The same guard across tabs: two tabs hitting the 8-hour expiry together
+// would both spend the one refresh token, and the loser — told the token is
+// "incorrect or expired" — would sign out, deleting the fresh token the
+// winner had just stored. A Web Lock makes the second tab wait, and it then
+// finds the token already replaced (below) instead of refreshing again.
+const REFRESH_LOCK_NAME = 'markdown-editor:github-token-refresh'
+
+function withRefreshLock<T>(task: () => Promise<T>): Promise<T> {
+  if (typeof navigator === 'undefined' || navigator.locks === undefined) return task()
+  return navigator.locks.request(REFRESH_LOCK_NAME, task)
+}
+
+async function performRefresh(failedToken: string): Promise<string> {
+  // Another tab (or an earlier refresh in this one) already replaced the
+  // token that was rejected — use it rather than spending the refresh token,
+  // which that refresh has already rotated anyway.
+  const current = getStoredToken()
+  if (current !== null && current !== failedToken) return current
+
   const meta = getStoredAppAuthMeta()
   if (meta === null) throw new GitHubReauthRequiredError()
 
@@ -463,9 +481,9 @@ async function performRefresh(): Promise<string> {
   return result.accessToken
 }
 
-function refreshOnce(): Promise<string> {
+function refreshOnce(failedToken: string): Promise<string> {
   if (refreshInFlight === null) {
-    refreshInFlight = performRefresh().finally(() => {
+    refreshInFlight = withRefreshLock(() => performRefresh(failedToken)).finally(() => {
       refreshInFlight = null
     })
   }
@@ -494,7 +512,7 @@ export async function callWithToken<T>(operation: (token: string) => Promise<T>)
 
   let freshToken: string
   try {
-    freshToken = await refreshOnce()
+    freshToken = await refreshOnce(token)
   } catch (error) {
     // A refresh that could not even be attempted (offline, the sign-in
     // server down) is not an expired sign-in: the credential is kept and the
