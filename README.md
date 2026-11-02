@@ -84,6 +84,12 @@ Renaming a document, or moving it to another folder, moves its file on
 GitHub in the next push. Deleting a document locally leaves the file on GitHub
 untouched. It never force-pushes.
 
+When you first connect, the markdown files already in the repository are
+imported as documents, and new documents wait until that's done. A connection
+set up with an earlier version counts as imported once it has pushed
+anything, even if its first import never finished; disconnect and connect
+again to import.
+
 ---
 
 ## Appearance
